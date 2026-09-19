@@ -37,6 +37,13 @@ declare! {
 /// `u64`, one after the other with no framing between them.
 pub const ENTRY: usize = 24;
 
+/// The most a single line may cost the fill, its own `\n` counted.
+///
+/// Past it a window is not cut mid-line, which would fake `^` and `$`
+/// at the cut, so it fails `NoSpace` for good instead.
+/// `reovim_module_search`'s fill.rs turns this into a count of chunks.
+pub const LINE: u64 = 1 << 20;
+
 /// The whole entries `bytes` holds, dropping a trailing partial one: a
 /// read of `matches` always ends on an entry's own bound, but a
 /// caller stitching together reads of its own might not.

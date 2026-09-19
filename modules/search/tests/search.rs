@@ -192,6 +192,40 @@ fn turned(lines: usize, from_line: u64) -> Vec<u64> {
     after.into_iter().chain(before).collect()
 }
 
+/// 1024 lines, 65536 bytes exactly: 1023 of 63 `c` and a `\n`, then
+/// one of 62 `c`, an `a`, and a `\n` — the source's only `a` sits one
+/// byte short of a whole 64 KiB window's own end.
+fn w() -> String {
+    let mut text = String::new();
+    for _ in 0..1023 {
+        text.extend(std::iter::repeat_n('c', 63));
+        text.push('\n');
+    }
+    text.extend(std::iter::repeat_n('c', 62));
+    text.push('a');
+    text.push('\n');
+    text
+}
+
+/// `lines` lines of `a\n`, then one of `b\n`: `a\na` anchors every
+/// `a` line but the last, whose own next line is `b`'s.
+fn ab(lines: usize) -> String {
+    let mut text = "a\n".repeat(lines);
+    text.push_str("b\n");
+    text
+}
+
+/// Every offset an `a\na` match starts at in [`ab`]'s own text of
+/// `lines` `a` lines, turned so it starts at `from_n`'s own line: the
+/// unbounded, independent answer a fill over the same text and `from`
+/// must match.
+fn ab_turned(lines: usize, from_n: u64) -> Vec<u64> {
+    let start = from_n * 2;
+    let all = (0..lines as u64 - 1).map(|n| n * 2);
+    let (before, after): (Vec<u64>, Vec<u64>) = all.partition(|&p| p < start);
+    after.into_iter().chain(before).collect()
+}
+
 #[test]
 fn a_small_cell_is_gone_through_inside_open() {
     let sut = Sut::small("small");
@@ -590,4 +624,153 @@ fn a_view_over_a_draft_sends_nothing() {
     let _ = sut.info(view.progress);
     let _ = sut.progress(view.progress);
     assert_eq!(sut.rig.sent(), before, "a draft never leaves the Client");
+}
+
+#[test]
+fn a_match_across_the_wrap_is_found() {
+    // `from` on line 2: the fill starts there, and only the wrap
+    // brings it back over line 1's `a`, which nvim's `j/a\nb<CR>x`
+    // deletes.
+    let sut = Sut::small("wrap");
+    let source = sut.source("f", b"a\nb\nc\n");
+    let view = sut.opened(args(source, "a\\nb", 2));
+    let found = drained(&sut, view.matches);
+    let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(ats, [(0, 3)]);
+}
+
+#[test]
+fn a_match_across_a_window_is_found() {
+    let sut = Sut::small("window-cross");
+    let mut text = w();
+    assert_eq!(text.len(), 65536, "one window exactly");
+    text.push_str("b\n");
+    let source = sut.source("f", text.as_bytes());
+    let view = sut.opened(args(source, "a\\nb", 0));
+    let found = drained(&sut, view.matches);
+    let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(ats, [(65534, 3)]);
+}
+
+#[test]
+fn each_line_is_anchored() {
+    // nvim's `/a\na<CR>x` over `a`, `a`, `a`, `b` lands on line 2,
+    // `[2/2]`, the two matches overlapping.
+    let sut = Sut::small("anchored");
+    let source = sut.source("f", b"a\na\na\nb\n");
+    let view = sut.opened(args(source, "a\\na", 0));
+    let found = drained(&sut, view.matches);
+    let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(ats, [(0, 3), (2, 3)]);
+}
+
+#[test]
+fn a_match_into_a_last_line_with_no_newline_is_found() {
+    let sut = Sut::small("no-final-newline");
+    let source = sut.source("f", b"a\nb");
+    let view = sut.opened(args(source, "a\\nb", 0));
+    let found = drained(&sut, view.matches);
+    let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(ats, [(0, 3)]);
+}
+
+#[test]
+fn done_never_passes_total_with_the_read_ahead() {
+    const LINES: usize = 40_000;
+    const FROM_N: u64 = 35_000;
+    let text = ab(LINES);
+    let sut = Sut::with_budget("done-ahead", 500);
+    let source = sut.source("f", text.as_bytes());
+    let view = sut.opened(args(source, "a\\na", FROM_N * 2));
+    let total = sut.progress(view.progress).total;
+    assert_eq!(total, text.len() as u64);
+
+    let mut at = 0u64;
+    let mut last = 0u64;
+    let mut found = Vec::new();
+    loop {
+        let outcome = sut.read(view.matches, at, 1 << 20);
+        let done = sut.progress(view.progress).done;
+        assert!(done <= total, "done {done} past total {total}");
+        assert!(done >= last, "done {done} went back from {last}");
+        last = done;
+        match outcome {
+            Ok(bytes) if bytes.is_empty() => break,
+            Ok(bytes) => {
+                at += bytes.len() as u64;
+                found.extend(entries(&bytes));
+            }
+            Err(Error::Busy) => {}
+            Err(other) => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(last, total, "whole once drained");
+
+    let ats: Vec<u64> = found.iter().map(|m| m.at).collect();
+    // The last entry of the second pass, at `2 * (FROM_N - 1)`, runs
+    // past `start` into the first pass's own territory without being
+    // found twice.
+    assert_eq!(ats, ab_turned(LINES, FROM_N));
+    assert!(found.iter().all(|m| m.len == 3));
+}
+
+#[test]
+fn a_line_of_a_mebibyte_fills_and_a_byte_more_is_nospace() {
+    let line = usize::try_from(reovim_search_api::LINE).unwrap();
+
+    let within = Sut::with_budget("mebibyte", 1 << 21);
+    let mut fits = "a".repeat(line - 1);
+    fits.push('\n');
+    fits.push_str("x\n");
+    let source = within.source("f", fits.as_bytes());
+    let view = within.opened(args(source, "x", 0));
+    let found = drained(&within, view.matches);
+    let ats: Vec<u64> = found.iter().map(|m| m.at).collect();
+    assert_eq!(ats, [line as u64], "the read ahead stands outside the cap");
+
+    let over = Sut::with_budget("mebibyte-over", 1 << 21);
+    let mut longer = "a".repeat(line);
+    longer.push('\n');
+    let source = over.source("f", longer.as_bytes());
+    assert_eq!(over.open_call(args(source, "x", 0)), Err(Error::NoSpace));
+}
+
+#[test]
+fn a_match_past_the_read_ahead_is_not_found() {
+    let sut = Sut::small("past-ahead");
+    let mut text = w();
+    text.extend(std::iter::repeat_n('c', 131_072));
+    text.push('\n');
+    text.push_str("b\n");
+    let source = sut.source("f", text.as_bytes());
+    let view = sut.opened(args(source, "a\\nc*\\nb", 0));
+    let found = drained(&sut, view.matches);
+    assert!(found.is_empty(), "{found:?}");
+    let p = sut.progress(view.progress);
+    assert_eq!(p.done, p.total, "the fill still goes whole through");
+}
+
+#[test]
+fn a_read_ahead_costs_no_step() {
+    // The main case's own text and budget; the reads that drain it,
+    // counted against the old fill's own run, with no read ahead.
+    const LINES: usize = 7450;
+    const LINE: u64 = 6000;
+    let text = generated(LINES);
+    let from = LINE * 11 + 5;
+    let sut = Sut::with_budget("read-ahead-cost", 500);
+    let source = sut.source("f", text.as_bytes());
+    let view = sut.opened(args(source, "x", from));
+    let mut at = 0u64;
+    let mut reads = 0u32;
+    loop {
+        reads += 1;
+        match sut.read(view.matches, at, 1 << 20) {
+            Ok(bytes) if bytes.is_empty() => break,
+            Ok(bytes) => at += bytes.len() as u64,
+            Err(Error::Busy) => {}
+            Err(other) => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(reads, 168);
 }

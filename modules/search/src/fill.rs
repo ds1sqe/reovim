@@ -3,11 +3,15 @@
 //!
 //! Nothing here indexes the source, which may have changed under any
 //! read: every window is read fresh, and a slice picks up only from
-//! the two offsets [`Fill`] itself keeps. A window has no cap on
-//! finding its own `\n`, but one line may not cost more than [`LINE`]
-//! windows: past it the fill fails `NoSpace` for good, a Driver's own
-//! limit, since cutting the window mid-line would fake `^` and `$`
-//! at the cut.
+//! the two offsets [`Fill`] itself keeps. A window reads one chunk
+//! ahead of the line it holds, so a match that starts in it may run
+//! into the next; a match may not run further than that, one chunk
+//! past its own window and no more. A window has no cap on finding
+//! its own `\n`, but one line may not cost more than
+//! [`reovim_search_api::LINE`]: past it the fill fails `NoSpace` for
+//! good, a Driver's own limit, since cutting the window mid-line
+//! would fake `^` and `$` at the cut. The read ahead stands outside
+//! that cap.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -17,10 +21,8 @@ use reovim_pattern::{Pattern, Scan};
 use reovim_sdk::ops;
 use reovim_search_api::search;
 
-/// Bytes asked for per window read.
+/// Bytes asked for per read.
 const CHUNK: u32 = 64 * 1024;
-/// A window may grow this many chunks looking for a `\n`.
-const LINE: usize = 16;
 
 /// Where a fill stands: the source it goes through, the pattern it
 /// runs, and the two offsets that say where a window begins and where
@@ -36,8 +38,9 @@ pub struct Fill {
     line: u64,
     /// Where the scan goes on, at or after `line`.
     next: u64,
-    /// The end has been passed once; a window is now bounded by
-    /// `start`, never read past.
+    /// The end has been passed once; a window's own bound is now no
+    /// further than `start`, though what it reads ahead may run past
+    /// it.
     wrapped: bool,
     /// The end has been passed twice: the fill is whole.
     whole: bool,
@@ -90,9 +93,9 @@ impl Fill {
 
 /// One slice: matches found until `budget` runs out or the fill
 /// reaches its own end, whichever comes first; a window or a scan
-/// past it may fail (`NoSpace` for a scan or a line past [`LINE`]
-/// windows long, `Invalid` for a window that is not UTF-8), and
-/// whatever was already found stands either way.
+/// past it may fail (`NoSpace` for a scan or a line past the cap,
+/// `Invalid` for a window that is not UTF-8), and whatever was
+/// already found stands either way.
 pub fn slice(
     fill: &mut Fill,
     ctx: &dyn Calls,
@@ -117,9 +120,15 @@ fn run(
         if budget == 0 {
             return Ok(());
         }
-        let end = if fill.wrapped { fill.start } else { u64::MAX };
-        match window(ctx, fill.handle, fill.line, end)? {
-            Some(text) => through(fill, &text, &mut budget, found)?,
+        if fill.wrapped && fill.line >= fill.start {
+            fill.whole = true;
+            return Ok(());
+        }
+        match window(ctx, fill.handle, fill.line)? {
+            Some((text, natural)) => {
+                let (bound, upto) = bounded(fill, natural, &text);
+                through(fill, &text, bound, upto, &mut budget, found)?;
+            }
             None if fill.wrapped => {
                 fill.whole = true;
                 return Ok(());
@@ -133,16 +142,33 @@ fn run(
     }
 }
 
-/// Every match `budget` covers inside `text`, appended to `found` in
-/// the order they turn up.
+/// The window's own bound, and `upto`, how far inside it a match may
+/// start. Once wrapped the bound stops at `start` instead of the
+/// window's own `\n`, the read not knowing where the wrap falls and
+/// may hold more; `upto` stops at the bound's own `\n`, so an entry
+/// at `start` stays the opening pass's.
+fn bounded(fill: &Fill, natural: usize, text: &str) -> (usize, usize) {
+    let bound = if fill.wrapped {
+        usize::try_from(fill.start - fill.line)
+            .map_or(natural, |s| s.min(natural))
+    } else {
+        natural
+    };
+    let upto = bound - usize::from(text.as_bytes()[bound - 1] == b'\n');
+    (bound, upto)
+}
+
+/// Every match `budget` covers inside `text`, up to `upto`, `bound`
+/// carried along for [`close`].
 fn through(
     fill: &mut Fill,
     text: &str,
+    bound: usize,
+    upto: usize,
     budget: &mut usize,
     found: &mut Vec<search::Match>,
 ) -> Result<(), Error> {
-    let upto = text.len() - usize::from(text.ends_with('\n'));
-    while once(fill, text, upto, budget, found)? {}
+    while once(fill, text, upto, bound, budget, found)? {}
     Ok(())
 }
 
@@ -154,6 +180,7 @@ fn once(
     fill: &mut Fill,
     text: &str,
     upto: usize,
+    bound: usize,
     budget: &mut usize,
     found: &mut Vec<search::Match>,
 ) -> Result<bool, Error> {
@@ -165,10 +192,10 @@ fn once(
         .map_err(|_| Error::NoSpace)?;
     match scanned {
         Scan::Match(start, end, _) => {
-            Ok(matched(fill, text, start, end, found))
+            Ok(matched(fill, text, bound, start, end, found))
         }
         Scan::None => {
-            close(fill, text);
+            close(fill, bound);
             Ok(false)
         }
         Scan::Paused(at) => {
@@ -178,12 +205,15 @@ fn once(
     }
 }
 
-/// A match at `[start, end)` inside `text`, on from its end, or one
-/// char on for an empty one; an empty match unable to move past the
+/// A match at `[start, end)` inside `text`: on past its first `\n`
+/// when one stands before its last byte, so the line after is
+/// anchored too, as nvim finds it; at its own end otherwise, or a
+/// char on for an empty one. An empty match unable to move past the
 /// text's own end closes the window instead of looping on it.
 fn matched(
     fill: &mut Fill,
     text: &str,
+    bound: usize,
     start: usize,
     end: usize,
     found: &mut Vec<search::Match>,
@@ -193,18 +223,33 @@ fn matched(
         at: fill.line + start as u64,
         len: (end - start) as u64,
     });
-    let advance = if end == start { onward(text, end) } else { end };
+    let advance = if end == start {
+        onward(text, end)
+    } else {
+        onto_the_next_line(text, start, end)
+    };
     fill.next = fill.line + advance as u64;
     if advance <= start {
-        close(fill, text);
+        close(fill, bound);
         return false;
     }
     true
 }
 
+/// Past the first `\n` inside `[start, end)`, unless it stands at the
+/// match's own last byte, in which case `end` itself: nvim anchors
+/// every line, `a\na` over `a`, `a`, `a`, `b` being two matches.
+fn onto_the_next_line(text: &str, start: usize, end: usize) -> usize {
+    let held = &text.as_bytes()[start..end];
+    match held.iter().position(|&b| b == b'\n') {
+        Some(at) if at + 1 < held.len() => start + at + 1,
+        _ => end,
+    }
+}
+
 /// The window ended: the next one begins right past it.
-const fn close(fill: &mut Fill, text: &str) {
-    let end = fill.line + text.len() as u64;
+const fn close(fill: &mut Fill, bound: usize) {
+    let end = fill.line + bound as u64;
     fill.line = end;
     fill.next = end;
 }
@@ -263,34 +308,35 @@ pub fn line_start(
     Ok(0)
 }
 
-/// One window from `line`, read up to `end` (`u64::MAX` before the
-/// wrap): whole lines, [`CHUNK`] at a time until they hold a `\n` or
-/// `end` is reached, or there is nothing more. `None` at an empty
-/// read, the fill's own end. Cut after the last `\n`, or, at `end`,
-/// there exactly.
+/// Past `bytes`'s own last `\n`, or its length where it holds none.
+fn cut(bytes: &[u8]) -> usize {
+    bytes.iter().rposition(|&b| b == b'\n').map_or(bytes.len(), |p| p + 1)
+}
+
+/// One window from `line`, its line plus one chunk more: a match that
+/// starts in the line may run into what follows, and the extra read
+/// costs no step of the fill's own budget, standing outside its cap.
+/// The bound answered is the line alone, for [`bounded`]; the text is
+/// longer where the read ahead found more, except at the source's
+/// true end, where its last line stands whole with no `\n` to cut at.
 fn window(
     ctx: &dyn Calls,
     h: Handle,
     line: u64,
-    end: u64,
-) -> Result<Option<String>, Error> {
+) -> Result<Option<(String, usize)>, Error> {
+    let cap = usize::try_from(reovim_search_api::LINE).unwrap_or(usize::MAX);
     let mut bytes = Vec::new();
-    let mut chunks = 0usize;
+    let mut ended = false;
     loop {
         let at = line + bytes.len() as u64;
-        let want = u32::try_from(end.saturating_sub(at).min(u64::from(CHUNK)))
-            .unwrap_or(CHUNK);
-        if want == 0 {
-            break;
-        }
-        let chunk = ops::read(ctx, h, at, want)?;
+        let chunk = ops::read(ctx, h, at, CHUNK)?;
         if chunk.is_empty() {
+            ended = true;
             break;
         }
         let held_nl = chunk.contains(&b'\n');
         bytes.extend(chunk);
-        chunks += 1;
-        if chunks > LINE {
+        if bytes.len() > cap {
             return Err(Error::NoSpace);
         }
         if held_nl {
@@ -300,10 +346,22 @@ fn window(
     if bytes.is_empty() {
         return Ok(None);
     }
-    if let Some(pos) = bytes.iter().rposition(|&b| b == b'\n') {
-        bytes.truncate(pos + 1);
+    let bound = if ended { bytes.len() } else { cut(&bytes) };
+    if !ended {
+        let at = line + bytes.len() as u64;
+        let ahead = ops::read(ctx, h, at, CHUNK)?;
+        if ahead.is_empty() {
+            ended = true;
+        } else {
+            bytes.extend(ahead);
+        }
     }
-    String::from_utf8(bytes).map(Some).map_err(|_| Error::Invalid)
+    if !ended {
+        bytes.truncate(cut(&bytes));
+    }
+    String::from_utf8(bytes)
+        .map(|text| Some((text, bound)))
+        .map_err(|_| Error::Invalid)
 }
 
 /// `at`, past its char; unmoved at the text's end, a char's length
