@@ -5,7 +5,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use reovim_client_sh::Act;
-use reovim_pattern::{Pattern, expand};
+use reovim_pattern::{Pattern, Spent, expand};
 
 use crate::{Edit, Effect, Ex, Key, Mode, Motion, Vim, Wild};
 
@@ -325,14 +325,16 @@ impl Vim {
             return self.not_found();
         };
         let starts = (lines.0..=lines.1).rev().filter_map(|l| self.line_at(l));
-        let changes: Vec<(usize, usize, String)> = starts
+        let changes: Result<Vec<_>, Spent> = starts
             .map(|start| (start, self.line_end(start)))
-            .filter_map(|(start, end)| {
+            .map(|(start, end)| {
                 let line = &self.text[start..end];
-                substituted(line, &pattern, replacement, global)
-                    .map(|text| (start, end, text))
+                let done = substituted(line, &pattern, replacement, global);
+                done.map(|text| text.map(|text| (start, end, text)))
             })
             .collect();
+        let Ok(changes) = changes else { return self.too_costly() };
+        let changes = changes.into_iter().flatten();
         let mut edits = Vec::new();
         // The cursor goes to the last line substituted, after any
         // newline a `\r` brought in; each line changed above moves it.
@@ -354,18 +356,19 @@ impl Vim {
     }
 }
 
-/// `line` with its matches replaced, or `None` when there are none.
-/// An empty match at the line's end is not one after the first try.
+/// `line` with its matches replaced, or `None` when there are none,
+/// or [`Spent`] when the matcher never found out. An empty match at
+/// the line's end is not one after the first try.
 fn substituted(
     line: &str,
     pattern: &Pattern,
     replacement: &str,
     global: bool,
-) -> Option<String> {
+) -> Result<Option<String>, Spent> {
     let mut out = String::new();
     let mut col = 0;
     let mut first = true;
-    let mut found = pattern.find(line, col);
+    let mut found = pattern.find(line, col)?;
     while let Some((start, end, caps)) =
         found.filter(|m| first || m.0 < line.len())
     {
@@ -382,13 +385,14 @@ fn substituted(
         col = if end > start { end } else { start + width };
         found = (global && col < line.len())
             .then(|| pattern.find(line, col))
+            .transpose()?
             .flatten();
     }
     if first {
-        return None;
+        return Ok(None);
     }
     out.push_str(&line[col.min(line.len())..]);
-    Some(out)
+    Ok(Some(out))
 }
 
 /// What Tab found, as the status row says it after the line: the usage
@@ -496,7 +500,7 @@ mod tests {
 
     fn subst(line: &str, pat: &str, rep: &str, all: bool) -> Option<String> {
         let pattern = Pattern::parse(pat, false, false).unwrap();
-        substituted(line, &pattern, rep, all)
+        substituted(line, &pattern, rep, all).expect("a budget to spare")
     }
 
     #[test]

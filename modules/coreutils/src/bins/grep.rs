@@ -15,7 +15,9 @@
 //! The dialect is the matcher's, which is Vim's and not POSIX: `a\+`
 //! and not `a+`, `\(a\|b\)x` and not `(a|b)x`, and `\c` is how one asks
 //! for case-blindness. A pattern the subset has not is `Invalid`,
-//! answered before any target is read. Nothing of that is in the
+//! answered before any target is read; so is one that costs a line
+//! more than the matcher will spend on it, which is a bound exceeded
+//! and not a line without a match. Nothing of that is in the
 //! declaration, which carries names and types and no prose.
 
 use alloc::format;
@@ -88,7 +90,11 @@ fn matched(
     let text = String::from_utf8(bytes).map_err(|_| Error::Invalid)?;
     let mut out = String::new();
     for line in text.split_terminator('\n') {
-        if pattern.find(line, 0).is_some() {
+        // A line the matcher will not spend what the pattern costs on
+        // is no answer, so the run says so rather than passing the
+        // line by as one with nothing in it.
+        let found = pattern.find(line, 0).map_err(|_| Error::Invalid)?;
+        if found.is_some() {
             let _ = writeln!(out, "{prefix}{line}");
         }
     }

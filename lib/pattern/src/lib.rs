@@ -4,7 +4,10 @@
 //! `\+`, `\?`, `^`, `$`, `[...]`, `\<`, `\>`, `\d \w \s` and their
 //! negations, `\c`, `\C`, `\(...\)`, `\|`, `\n`; magic as nvim's
 //! default. Anything else parses to nothing, and the refusal is the
-//! caller's to word.
+//! caller's to word. Nesting deeper than a pattern written by hand
+//! ever does is refused with it, and a search that would cost more
+//! than the budget below answers [`Spent`] rather than no match: the
+//! matcher did not find out, and says so.
 
 extern crate alloc;
 
@@ -55,11 +58,129 @@ pub struct Pattern {
 /// What a match captured: the whole, then `\1` to `\9`.
 pub type Captures = Vec<Option<(usize, usize)>>;
 
+/// A search that cost more than this matcher will spend: the pattern
+/// is one it will not answer for on this text, which is neither a
+/// match nor the absence of one. Saying so is the caller's.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Spent;
+
+/// What one attempt at one offset carries: the captures placed so
+/// far, the steps it has spent, and how many groups it stands inside.
+struct Attempt {
+    caps: Captures,
+    steps: usize,
+    depth: usize,
+}
+
+/// The rest of the pattern, behind the piece being matched. A piece
+/// that can match several ways is given it, so that it gives back
+/// what only the rest rejects; the end of the whole match is what it
+/// answers.
+type Cont<'a> = &'a dyn Fn(usize, &mut Attempt) -> Option<usize>;
+
+/// How deep `\(` may nest, which is how deep the parser recurses. A
+/// pattern written by hand nests a handful deep at most; one that
+/// nests further is one the parser would run the stack out on, and is
+/// refused as anything else outside the subset is.
+const DEPTH: usize = 32;
+
+/// How many groups one attempt may stand inside at once, which is how
+/// deep the matcher recurses: every `\(...\)`, and every turn of one
+/// under a quantifier, is matched with the rest of the pattern behind
+/// it and so stands on the stack while that rest is tried.
+const LOOPS: usize = 256;
+
+/// What one attempt may spend, counted in the two things that can
+/// multiply: a piece tried at a place the rest of the pattern gave
+/// back to, and a turn of a group. Walking a plain atom along the
+/// text is not counted, so `.*x` costs two steps on a line of any
+/// length, while `\(a*\)*b` spends this on a line of thirty `a`s and
+/// answers [`Spent`].
+const STEPS: usize = 400_000;
+
 struct Parser<'a> {
     rest: &'a str,
     groups: usize,
+    /// How many `\(` are open, which [`DEPTH`] bounds.
+    depth: usize,
     /// `\c` or `\C` seen.
     case: Option<bool>,
+}
+
+impl Attempt {
+    /// One step of the budget, `None` once [`STEPS`] are gone.
+    fn spend(&mut self) -> Option<()> {
+        self.steps += 1;
+        (self.steps <= STEPS).then_some(())
+    }
+
+    /// Whether the attempt ran out before it found out.
+    const fn spent(&self) -> bool {
+        self.steps > STEPS
+    }
+
+    /// What an attempt with no match to show answers: no match, or
+    /// that it never found out.
+    const fn missed<T>(&self) -> Result<Option<T>, Spent> {
+        if self.spent() { Err(Spent) } else { Ok(None) }
+    }
+
+    /// One group deeper, `None` at [`LOOPS`]. An attempt that
+    /// recursed past that would run the stack out, so it spends the
+    /// whole budget and answers as a spent one does.
+    const fn deeper(&mut self) -> Option<()> {
+        if self.depth == LOOPS {
+            self.steps = STEPS + 1;
+            return None;
+        }
+        self.depth += 1;
+        Some(())
+    }
+}
+
+/// A turn of a group that took `span`, matched with `rest` behind
+/// it: the capture stands while `rest` runs and is given back to what
+/// it held when `rest` refuses the match, so a turn that was rejected
+/// leaves nothing of itself behind. A turn inside it that stood keeps
+/// what it captured, which is the last turn's, as Vim keeps it.
+fn captured(
+    number: usize,
+    span: (usize, usize),
+    attempt: &mut Attempt,
+    rest: Cont,
+) -> Option<usize> {
+    let held = attempt.caps[number];
+    attempt.caps[number] = Some(span);
+    let found = rest(span.1, attempt);
+    if found.is_none() {
+        attempt.caps[number] = held;
+    }
+    found
+}
+
+/// The rest of the pattern tried at `end`, one step of the budget
+/// spent on the try. Every place a piece gives back to is one of
+/// these, and giving back is what can multiply.
+fn given(attempt: &mut Attempt, end: usize, rest: Cont) -> Option<usize> {
+    attempt.spend()?;
+    rest(end, attempt)
+}
+
+/// How many turns are behind one that began at `at` and ended at
+/// `end`: a turn that matched nothing is the last one there is, so it
+/// counts as all `max` of them.
+const fn counted(taken: usize, max: usize, at: usize, end: usize) -> usize {
+    if end == at { max } else { taken + 1 }
+}
+
+/// How few and how many times a piece may match.
+const fn bounds(quant: Quant) -> (usize, usize) {
+    match quant {
+        Quant::One => (1, 1),
+        Quant::Star => (0, usize::MAX),
+        Quant::Plus => (1, usize::MAX),
+        Quant::Opt => (0, 1),
+    }
 }
 
 impl Pattern {
@@ -70,7 +191,8 @@ impl Pattern {
         ignorecase: bool,
         smartcase: bool,
     ) -> Option<Self> {
-        let mut parser = Parser { rest: source, groups: 0, case: None };
+        let mut parser =
+            Parser { rest: source, groups: 0, depth: 0, case: None };
         let alts = parser.alternatives()?;
         if !parser.rest.is_empty() {
             return None;
@@ -80,60 +202,168 @@ impl Pattern {
         Some(Self { alts, ignore_case: folded, groups: parser.groups })
     }
 
-    /// The leftmost match starting at or after `from`.
-    #[must_use]
+    /// The leftmost match starting at or after `from`, or `Ok(None)`
+    /// when there is none; [`Spent`] when the pattern cost more than
+    /// a search will spend, which is not the same answer.
+    ///
+    /// # Errors
+    ///
+    /// [`Spent`] once one offset has run the budget out: it ran out
+    /// on the pattern and not on that offset, and no offset after it
+    /// would fare any better.
     pub fn find(
         &self,
         text: &str,
         from: usize,
-    ) -> Option<(usize, usize, Captures)> {
+    ) -> Result<Option<(usize, usize, Captures)>, Spent> {
         let mut at = from;
-        let mut found = self.match_at(text, at);
-        while found.is_none() {
-            let c = text[at..].chars().next()?;
-            at += c.len_utf8();
-            found = self.match_at(text, at);
+        let mut attempt = self.attempt();
+        let mut end = self.matched(text, at, &mut attempt);
+        while end.is_none() && !attempt.spent() && at < text.len() {
+            at += text[at..].chars().next().map_or(0, char::len_utf8);
+            attempt = self.attempt();
+            end = self.matched(text, at, &mut attempt);
         }
-        let (end, caps) = found?;
-        Some((at, end, caps))
+        let Some(end) = end else { return attempt.missed() };
+        attempt.caps[0] = Some((at, end));
+        Ok(Some((at, end, attempt.caps)))
     }
 
     /// A match starting exactly at `at`: its end and captures.
-    #[must_use]
-    pub fn match_at(&self, text: &str, at: usize) -> Option<(usize, Captures)> {
-        let mut caps = alloc::vec![None; self.groups + 1];
-        let end = self.alts.iter().find_map(|alt| {
-            caps.iter_mut().skip(1).for_each(|c| *c = None);
-            self.seq(text, alt, 0, at, &mut caps)
-        })?;
-        caps[0] = Some((at, end));
-        Some((end, caps))
+    ///
+    /// # Errors
+    ///
+    /// [`Spent`] when the attempt ran the budget out before it found
+    /// out whether there is a match here.
+    pub fn match_at(
+        &self,
+        text: &str,
+        at: usize,
+    ) -> Result<Option<(usize, Captures)>, Spent> {
+        let mut attempt = self.attempt();
+        let Some(end) = self.matched(text, at, &mut attempt) else {
+            return attempt.missed();
+        };
+        attempt.caps[0] = Some((at, end));
+        Ok(Some((end, attempt.caps)))
     }
 
-    /// `pieces[i..]` matched at `at`, backtracking through quantifiers.
+    /// One attempt's room: a capture for the whole and one per group,
+    /// and nothing of the budget spent yet.
+    fn attempt(&self) -> Attempt {
+        let caps = alloc::vec![None; self.groups + 1];
+        Attempt { caps, steps: 0, depth: 0 }
+    }
+
+    /// The end of a match starting exactly at `at`, the alternatives
+    /// tried in turn on `attempt`'s budget.
+    fn matched(
+        &self,
+        text: &str,
+        at: usize,
+        attempt: &mut Attempt,
+    ) -> Option<usize> {
+        let whole = |end: usize, _: &mut Attempt| Some(end);
+        self.alts.iter().find_map(|alt| {
+            attempt.caps.iter_mut().skip(1).for_each(|c| *c = None);
+            self.seq(text, alt, at, attempt, &whole)
+        })
+    }
+
+    /// `pieces` matched at `at`, and then `rest`.
     fn seq(
         &self,
         text: &str,
         pieces: &[Piece],
-        i: usize,
         at: usize,
-        caps: &mut Captures,
+        attempt: &mut Attempt,
+        rest: Cont,
     ) -> Option<usize> {
-        let Some(piece) = pieces.get(i) else { return Some(at) };
-        let (min, max) = match piece.quant {
-            Quant::One => (1, 1),
-            Quant::Star => (0, usize::MAX),
-            Quant::Plus => (1, usize::MAX),
-            Quant::Opt => (0, 1),
+        let Some((piece, tail)) = pieces.split_first() else {
+            return rest(at, attempt);
         };
-        let ends = self.reach(text, &piece.atom, at, max, caps);
+        let onward = |end: usize, attempt: &mut Attempt| -> Option<usize> {
+            self.seq(text, tail, end, attempt, rest)
+        };
+        self.piece(text, piece, at, attempt, &onward)
+    }
+
+    /// One `piece` at `at`, its quantifier greedy, and then `rest`.
+    /// A group is matched with `rest` behind it, the rest of the
+    /// pattern being what says which alternative and which length of
+    /// it the group must give back to.
+    ///
+    /// The budget is spent here, one step for the piece and one for
+    /// every further place the rest is tried at. Walking the atom
+    /// along the text in [`Pattern::reach`] is not a step: it is
+    /// linear in the line and cannot multiply.
+    fn piece(
+        &self,
+        text: &str,
+        piece: &Piece,
+        at: usize,
+        attempt: &mut Attempt,
+        rest: Cont,
+    ) -> Option<usize> {
+        attempt.spend()?;
+        if matches!(piece.atom, Atom::Group(..)) {
+            return self.repeated(text, piece, at, 0, attempt, rest);
+        }
+        let (min, max) = bounds(piece.quant);
+        let ends = self.reach(text, &piece.atom, at, max);
         if ends.len() <= min {
             return None;
         }
-        ends.iter()
-            .skip(min)
-            .rev()
-            .find_map(|&end| self.seq(text, pieces, i + 1, end, caps))
+        ends.iter().skip(min).rev().find_map(|&end| given(attempt, end, rest))
+    }
+
+    /// A `\(...\)` under its quantifier with `taken` turns behind it:
+    /// one more, greedily, and then `rest`. A turn that matched
+    /// nothing is the last one, which is what ends a group that
+    /// matches the empty string under `*`.
+    fn repeated(
+        &self,
+        text: &str,
+        piece: &Piece,
+        at: usize,
+        taken: usize,
+        attempt: &mut Attempt,
+        rest: Cont,
+    ) -> Option<usize> {
+        let Atom::Group(alts, number) = &piece.atom else { return None };
+        let (min, max) = bounds(piece.quant);
+        attempt.spend()?;
+        let again = |end: usize, attempt: &mut Attempt| -> Option<usize> {
+            let taken = counted(taken, max, at, end);
+            self.repeated(text, piece, end, taken, attempt, rest)
+        };
+        let longer = (taken < max)
+            .then(|| self.group(text, alts, *number, at, attempt, &again))
+            .flatten();
+        longer.or_else(|| {
+            (taken >= min).then(|| given(attempt, at, rest)).flatten()
+        })
+    }
+
+    /// One turn of a `\(...\)` at `at`: the alternatives tried in
+    /// order, each with `rest` behind it.
+    fn group(
+        &self,
+        text: &str,
+        alts: &[Vec<Piece>],
+        number: usize,
+        at: usize,
+        attempt: &mut Attempt,
+        rest: Cont,
+    ) -> Option<usize> {
+        attempt.deeper()?;
+        let turn = |end: usize, attempt: &mut Attempt| -> Option<usize> {
+            captured(number, (at, end), attempt, rest)
+        };
+        let end =
+            alts.iter().find_map(|alt| self.seq(text, alt, at, attempt, &turn));
+        attempt.depth -= 1;
+        end
     }
 
     /// Every end `atom` reaches from `at`, greedily, up to `max`
@@ -144,28 +374,20 @@ impl Pattern {
         atom: &Atom,
         at: usize,
         max: usize,
-        caps: &mut Captures,
     ) -> Vec<usize> {
         let mut ends = alloc::vec![at];
         let mut here = at;
-        let mut next = self.atom(text, atom, here, caps);
+        let mut next = self.one(text, atom, here);
         while let Some(end) = next.filter(|_| ends.len() <= max) {
             ends.push(end);
-            next = (end != here)
-                .then(|| self.atom(text, atom, end, caps))
-                .flatten();
+            next = (end != here).then(|| self.one(text, atom, end)).flatten();
             here = end;
         }
         ends
     }
 
-    fn atom(
-        &self,
-        text: &str,
-        atom: &Atom,
-        at: usize,
-        caps: &mut Captures,
-    ) -> Option<usize> {
+    /// One atom that holds no pattern of its own, matched at `at`.
+    fn one(&self, text: &str, atom: &Atom, at: usize) -> Option<usize> {
         let c = text[at..].chars().next();
         let step = |ok: bool| {
             (ok && c != Some('\n')).then(|| at + c.map_or(0, char::len_utf8))
@@ -195,24 +417,10 @@ impl Pattern {
             Atom::WordEnd => (before.is_some_and(keyword)
                 && !c.is_some_and(keyword))
             .then_some(at),
-            Atom::Group(alts, number) => {
-                self.group(text, alts, *number, at, caps)
-            }
+            // A group holds pieces of its own, so it is matched with
+            // the rest of the pattern behind it, which `piece` does.
+            Atom::Group(..) => None,
         }
-    }
-
-    fn group(
-        &self,
-        text: &str,
-        alts: &[Vec<Piece>],
-        number: usize,
-        at: usize,
-        caps: &mut Captures,
-    ) -> Option<usize> {
-        let end =
-            alts.iter().find_map(|alt| self.seq(text, alt, 0, at, caps))?;
-        caps[number] = Some((at, end));
-        Some(end)
     }
 
     fn same(&self, a: char, b: char) -> bool {
@@ -298,7 +506,19 @@ impl Parser<'_> {
                 return Ok(None);
             }
             '(' => self.group().ok_or(())?,
-            '+' | '?' | '|' | ')' | '{' | '=' | '@' | 'z' | '%' | '_' => {
+            // `\1` to `\9` are Vim's backreferences, which the subset
+            // has not got; a literal digit is not what they mean.
+            '+'
+            | '?'
+            | '|'
+            | ')'
+            | '{'
+            | '='
+            | '@'
+            | 'z'
+            | '%'
+            | '_'
+            | '1'..='9' => {
                 return Err(());
             }
             c => Atom::Char(c),
@@ -306,11 +526,14 @@ impl Parser<'_> {
         Ok(Some(atom))
     }
 
+    /// `\(...\)` after its `\(`; nothing past [`DEPTH`] of them.
     fn group(&mut self) -> Option<Atom> {
         self.groups += 1;
+        self.depth += 1;
         let number = self.groups;
-        let alts = self.alternatives()?;
+        let alts = (self.depth <= DEPTH).then(|| self.alternatives())??;
         self.rest = self.rest.strip_prefix("\\)")?;
+        self.depth -= 1;
         Some(Atom::Group(alts, number))
     }
 
@@ -397,23 +620,27 @@ mod tests {
     use alloc::string::String;
     use alloc::vec;
 
-    use super::{Pattern, expand};
+    use super::{Pattern, Spent, expand};
 
     fn parse(source: &str) -> Pattern {
         Pattern::parse(source, false, false).unwrap()
     }
 
     fn found(pattern: &str, text: &str) -> Option<(usize, usize)> {
-        parse(pattern).find(text, 0).map(|(a, b, _)| (a, b))
+        let found = parse(pattern).find(text, 0).expect("a budget to spare");
+        found.map(|(a, b, _)| (a, b))
     }
 
     fn folded(pattern: &str, ic: bool, scs: bool, text: &str) -> Option<usize> {
-        Pattern::parse(pattern, ic, scs)?.find(text, 0).map(|m| m.0)
+        let pattern = Pattern::parse(pattern, ic, scs)?;
+        pattern.find(text, 0).expect("a budget to spare").map(|m| m.0)
     }
 
     #[test]
     fn the_subset_parses_and_the_rest_is_refused() {
-        for bad in ["a\\{2}", "\\zs", "\\(ab", "[ab", "a\\@!", "\\%d"] {
+        for bad in
+            ["a\\{2}", "\\zs", "\\(ab", "[ab", "a\\@!", "\\%d", "\\(a\\)\\1"]
+        {
             assert!(Pattern::parse(bad, false, false).is_none(), "{bad}");
         }
         let good = [
@@ -469,26 +696,81 @@ mod tests {
         assert_eq!(found("ab\\=c", "abc"), Some((0, 3)));
         assert_eq!(found("^*a", "a"), Some((0, 1)));
         assert_eq!(found("x*", "abc"), Some((0, 0)), "an empty match");
-        let (start, end, caps) = parse("a*").find("bbb", 1).unwrap();
+        let (start, end, caps) = parse("a*").find("bbb", 1).unwrap().unwrap();
         assert_eq!((start, end, caps), (1, 1, vec![Some((1, 1))]));
-        assert_eq!(parse("z").find("abc", 0), None);
-        assert_eq!(parse("b").match_at("abc", 0), None, "exactly there");
-        assert_eq!(parse("b").match_at("abc", 1).map(|m| m.0), Some(2));
+        assert_eq!(parse("z").find("abc", 0), Ok(None));
+        assert_eq!(parse("b").match_at("abc", 0), Ok(None), "exactly there");
+        let at = parse("b").match_at("abc", 1).unwrap().map(|m| m.0);
+        assert_eq!(at, Some(2));
     }
 
     #[test]
     fn groups_alternate_and_capture() {
         let pattern = parse("\\(foo\\|ba\\(r\\|z\\)\\)!");
-        let (start, end, caps) = pattern.find("xbaz!", 0).unwrap();
+        let (start, end, caps) = pattern.find("xbaz!", 0).unwrap().unwrap();
         assert_eq!((start, end), (1, 5));
         assert_eq!(caps, vec![Some((1, 5)), Some((1, 4)), Some((3, 4))]);
         let text = expand("[&|\\1|\\2|\\0]", "xbaz!", &caps);
         assert_eq!(text, "[baz!|baz|z|baz!]");
-        let (_, _, caps) = pattern.find("foo!", 0).unwrap();
+        let (_, _, caps) = pattern.find("foo!", 0).unwrap().unwrap();
         assert_eq!(caps[2], None, "an alternative not taken holds nothing");
         assert_eq!(expand("\\2-", "foo!", &caps), "-");
         assert_eq!(found("a\\|b", "cb"), Some((1, 2)));
         assert_eq!(found("\\(ab\\)*c", "ababc"), Some((0, 5)));
+    }
+
+    #[test]
+    fn a_group_gives_back_what_follows_it_needs() {
+        assert_eq!(found("\\(a\\|ab\\)c", "abc"), Some((0, 3)));
+        assert_eq!(found("\\(a\\|ab\\)\\(c\\|bc\\)", "abc"), Some((0, 3)));
+        assert_eq!(found("\\(a*\\)ab", "aab"), Some((0, 3)));
+        assert_eq!(found("\\(a\\|aa\\)*$", "aaa"), Some((0, 3)));
+        let caps = parse("\\(a*\\)ab").find("aab", 0).unwrap().unwrap().2;
+        assert_eq!(caps[1], Some((0, 1)), "the group gave back an `a`");
+    }
+
+    #[test]
+    fn a_rejected_attempt_leaves_its_captures_as_they_were() {
+        let found = parse("\\(\\(a\\)x\\|ab\\)").find("ab", 0);
+        let caps = found.unwrap().unwrap().2;
+        assert_eq!(caps[2], None, "the alternative that failed holds none");
+        assert_eq!(expand("[\\2]", "ab", &caps), "[]");
+    }
+
+    #[test]
+    fn a_long_plain_line_costs_no_budget() {
+        let mut line: String = core::iter::repeat_n('a', 1 << 20).collect();
+        line.push('x');
+        let end = line.len();
+        assert_eq!(found(".*x", &line), Some((0, end)), "a megabyte of `.`");
+        assert_eq!(found("a*x", &line), Some((0, end)));
+        assert_eq!(found("\\w\\+x", &line), Some((0, end)));
+    }
+
+    #[test]
+    fn a_pattern_that_ran_out_is_not_a_pattern_that_is_missing() {
+        let text: String = core::iter::repeat_n('a', 30).collect();
+        let spent = parse("\\(a*\\)*b").find(&text, 0);
+        let missing = parse("zzz").find(&text, 0);
+        assert_ne!(spent, missing, "a spent attempt must not read as none");
+    }
+
+    #[test]
+    fn what_no_budget_can_match_says_spent_and_does_not_hang() {
+        let text: String = core::iter::repeat_n('a', 30).collect();
+        assert_eq!(parse("\\(a*\\)*b").find(&text, 0), Err(Spent));
+        assert_eq!(found("\\(a*\\)*b", "aaab"), Some((0, 4)));
+        assert_eq!(found("\\(x*\\)*", "abc"), Some((0, 0)), "empty, once");
+        assert_eq!(found("\\(\\)*x", "x"), Some((0, 1)));
+        let deep: String = core::iter::repeat_n("\\(", 500)
+            .chain(core::iter::once("a"))
+            .chain(core::iter::repeat_n("\\)", 500))
+            .collect();
+        assert!(Pattern::parse(&deep, false, false).is_none(), "too deep");
+        let long: String = core::iter::repeat_n('a', 1000).collect();
+        let turns = parse("\\(a\\)*b").find(&long, 0);
+        assert_eq!(turns, Err(Spent), "more turns than the stack holds");
+        assert_eq!(found("a*b", &long), None, "a plain atom has no turns");
     }
 
     #[test]
