@@ -124,33 +124,8 @@ load_manifest() {
     command -v perl >/dev/null || fail CI_TOOL_MISSING 'required: perl' 3
     [[ -f "$ROOT/ci.json" && ! -L "$ROOT/ci.json" ]] || \
         fail CI_MANIFEST 'ci.json must be a regular non-symlink file' 2
-    records="$(perl -MJSON::PP - "$ROOT/ci.json" <<'PERL'
-use strict;
-use warnings;
-
-sub invalid { die "ci.sh: CI_MANIFEST: $_[0]\n"; }
-open my $file, '<', $ARGV[0] or invalid("cannot read ci.json: $!");
-my $input = do { local $/; <$file> };
-my $manifest = eval { JSON::PP->new->decode($input) };
-invalid("invalid JSON: $@") if $@;
-invalid('expected a JSON object') unless ref($manifest) eq 'HASH';
-my %formats = (
-    'rust-stable' => qr/\A[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/,
-    'rust-nightly' =>
-        qr/\Anightly-[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])\z/,
-);
-for my $key (keys %$manifest) {
-    invalid("unknown key: $key") unless exists $formats{$key};
-}
-for my $role (qw(stable nightly)) {
-    my $key = "rust-$role";
-    my $pin = $manifest->{$key};
-    invalid("missing or invalid exact pin: $key")
-        unless defined($pin) && !ref($pin) && $pin =~ $formats{$key};
-    print "$role\t$pin\n";
-}
-PERL
-)" || fail CI_MANIFEST 'cannot load declared testing window' 2
+    records="$("$ROOT/scripts/check-cache.sh" toolchain-manifest)" || \
+        fail CI_MANIFEST 'cannot load declared testing window' 2
     while IFS=$'\t' read -r role pin; do
         TOOLCHAIN_PINS["$role"]="$pin"
     done <<<"$records"

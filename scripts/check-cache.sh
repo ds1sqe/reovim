@@ -1392,6 +1392,80 @@ check_cache_publish() {
     check_cache_atomic_replace "$context_directory" "$state" "$post"
 }
 
+# ci.json's declared stable/nightly pins, one role\tpin line each,
+# validated the way both ci.sh (the matrix) and check.sh (the stable
+# lane's default) need to trust it: unknown keys and a malformed pin
+# in either role fail the whole read, not just the role that is bad.
+check_cache_toolchain_manifest() {
+    local manifest="$1"
+
+    command -v perl >/dev/null || return 1
+    [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+    perl -MJSON::PP - "$manifest" <<'PERL'
+use strict;
+use warnings;
+
+sub invalid { die "ci.json: $_[0]\n"; }
+open my $file, '<', $ARGV[0] or invalid("cannot read: $!");
+my $input = do { local $/; <$file> };
+my $manifest = eval { JSON::PP->new->decode($input) };
+invalid("invalid JSON: $@") if $@;
+invalid('expected a JSON object') unless ref($manifest) eq 'HASH';
+my %formats = (
+    'rust-stable' => qr/\A[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/,
+    'rust-nightly' =>
+        qr/\Anightly-[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])\z/,
+);
+for my $key (keys %$manifest) {
+    invalid("unknown key: $key") unless exists $formats{$key};
+}
+for my $role (qw(stable nightly)) {
+    my $key = "rust-$role";
+    my $pin = $manifest->{$key};
+    invalid("missing or invalid exact pin: $key")
+        unless defined($pin) && !ref($pin) && $pin =~ $formats{$key};
+    print "$role\t$pin\n";
+}
+PERL
+}
+
+check_cache_toolchain_installed() {
+    local toolchain="$1"
+
+    command -v rustup >/dev/null || return 1
+    rustup run "$toolchain" true >/dev/null 2>&1
+}
+
+# The lane check.sh runs when a caller has not already pinned one:
+# RUSTUP_TOOLCHAIN wins when set (ci.sh sets it before check.sh --full);
+# otherwise ci.json's rust-stable pin does, so a local run and ci.sh's
+# stable lane share a compiler. Prints the chosen toolchain on success.
+# check.sh is offline: a missing pin is reported, never installed.
+check_cache_toolchain_select() {
+    local manifest="${1:-$ROOT/ci.json}"
+    local records role value pin toolchain
+
+    if [[ -n "${RUSTUP_TOOLCHAIN:-}" ]]; then
+        printf '%s\n' "$RUSTUP_TOOLCHAIN"
+        return 0
+    fi
+    records="$(check_cache_toolchain_manifest "$manifest")" || {
+        check_cache_issue CHECK_CACHE_TOOLCHAIN_MANIFEST \
+            'cannot read the pinned stable toolchain from ci.json'
+        return 1
+    }
+    while IFS=$'\t' read -r role value; do
+        [[ "$role" != stable ]] || pin="$value"
+    done <<<"$records"
+    toolchain="$pin-x86_64-unknown-linux-gnu"
+    if ! check_cache_toolchain_installed "$toolchain"; then
+        check_cache_issue CHECK_CACHE_TOOLCHAIN_MISSING \
+            "$toolchain is not installed; scripts/ci.sh installs it"
+        return 3
+    fi
+    printf '%s\n' "$toolchain"
+}
+
 check_cache_assert_set() {
     local name="$1"
     local actual="$2"
@@ -1829,6 +1903,64 @@ check_cache_run_context_fixtures() (
     check_cache_run_context_fixtures_controlled "$directory"
 )
 
+check_cache_run_toolchain_fixtures() (
+    local directory="$1"
+    local manifest="$directory/toolchain-pin.json"
+    local missing="$directory/toolchain-missing-pin.json"
+    local output error status
+
+    printf '%s\n' \
+        '{' '  "rust-stable": "1.98.1",' \
+        '  "rust-nightly": "nightly-2026-09-07"' '}' >"$manifest"
+
+    unset RUSTUP_TOOLCHAIN
+    output="$(check_cache_toolchain_select "$manifest")" || {
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'an unset RUSTUP_TOOLCHAIN did not select the ci.json pin'
+        return 1
+    }
+    [[ "$output" == 1.98.1-x86_64-unknown-linux-gnu ]] || {
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'an unset RUSTUP_TOOLCHAIN did not name the ci.json pin'
+        return 1
+    }
+
+    export RUSTUP_TOOLCHAIN=nightly-2026-09-07-x86_64-unknown-linux-gnu
+    output="$(check_cache_toolchain_select "$manifest")" || {
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'a set RUSTUP_TOOLCHAIN was not selected'
+        return 1
+    }
+    [[ "$output" == "$RUSTUP_TOOLCHAIN" ]] || {
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'a set RUSTUP_TOOLCHAIN was not named back unchanged'
+        return 1
+    }
+
+    # No toolchain is uninstalled to prove this: the seam is the
+    # manifest path, so a pin this host never had stands in instead.
+    unset RUSTUP_TOOLCHAIN
+    printf '%s\n' \
+        '{' '  "rust-stable": "9.9.9",' \
+        '  "rust-nightly": "nightly-2026-09-07"' '}' >"$missing"
+    status=0
+    error="$(check_cache_toolchain_select "$missing" 2>&1 1>/dev/null)" \
+        || status=$?
+    [[ "$status" == 3 ]] || {
+        check_cache_issue CHECK_CACHE_FIXTURE \
+            'an uninstalled pin did not exit 3'
+        return 1
+    }
+    case "$error" in
+        *'9.9.9-x86_64-unknown-linux-gnu is not installed'*'scripts/ci.sh'*) ;;
+        *)
+            check_cache_issue CHECK_CACHE_FIXTURE \
+                'an uninstalled pin did not name it, or how ci.sh installs it'
+            return 1
+            ;;
+    esac
+)
+
 check_cache_run_publication_fixtures() {
     local directory="$1"
     local atomic="$directory/atomic-publication"
@@ -1913,6 +2045,7 @@ check_cache_run_fixtures() {
     check_cache_run_failed_snapshot_fixture "$directory" || return 1
     check_cache_run_state_fixtures "$directory" || return 1
     check_cache_run_context_fixtures "$directory" || return 1
+    check_cache_run_toolchain_fixtures "$directory" || return 1
     check_cache_run_publication_fixtures "$directory"
 }
 
@@ -1924,6 +2057,8 @@ Internal checked commands:
   prepare DIRECTORY {yes|no}
   publish DIRECTORY
   fixtures DIRECTORY
+  toolchain
+  toolchain-manifest
 EOF
 }
 
@@ -1959,6 +2094,20 @@ case "${1:-}" in
         }
         check_cache_safe_argument_directory "$2" || exit 2
         check_cache_run_fixtures "$2"
+        ;;
+    toolchain)
+        [[ $# == 1 ]] || {
+            check_cache_usage >&2
+            exit 2
+        }
+        check_cache_toolchain_select
+        ;;
+    toolchain-manifest)
+        [[ $# == 1 ]] || {
+            check_cache_usage >&2
+            exit 2
+        }
+        check_cache_toolchain_manifest "$ROOT/ci.json"
         ;;
     -h | --help)
         [[ $# == 1 ]] || exit 2

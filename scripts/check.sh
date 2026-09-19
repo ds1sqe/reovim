@@ -15,6 +15,19 @@ export GIT_CONFIG_NOSYSTEM=1
 unset RIPGREP_CONFIG_PATH
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# A bare cargo/rustc lands on this host's default toolchain, not
+# necessarily ci.sh's stable lane. RUSTUP_TOOLCHAIN wins when already
+# set; ci.json's rust-stable pin does otherwise.
+if [[ -n "${RUSTUP_TOOLCHAIN:-}" ]]; then
+    toolchain_source='RUSTUP_TOOLCHAIN'
+else
+    toolchain_source="ci.json's rust-stable pin"
+fi
+RUSTUP_TOOLCHAIN="$("$ROOT/scripts/check-cache.sh" toolchain)" || exit $?
+export RUSTUP_TOOLCHAIN
+printf 'check.sh: toolchain %s (%s)\n' "$RUSTUP_TOOLCHAIN" "$toolchain_source"
+
 readonly PRODUCT_MANIFEST="$ROOT/Cargo.toml"
 readonly PRODUCT_TARGET=x86_64-unknown-linux-gnu
 readonly PORTABLE_TARGET=x86_64-unknown-none
@@ -31,6 +44,11 @@ readonly CHECK_RUSTDOCFLAGS
 usage() {
     cat <<'EOF'
 Usage: ./scripts/check.sh [--full]
+
+Runs on RUSTUP_TOOLCHAIN when a caller has pinned one, and on ci.json's
+rust-stable pin otherwise; the first line says which. A pin that is not
+installed stops this script (exit 3), naming the toolchain and that
+scripts/ci.sh installs it; this script does not.
 
 Checks documentation, style, and affected Product components. Successful
 toolchain-bound local coverage selects changed components and their reverse
