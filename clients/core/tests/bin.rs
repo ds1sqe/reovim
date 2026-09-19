@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use reovim_client::{Calls, Error, Host, ROOT, Rd, Rvm, SELF, bin};
 use reovim_host::clock;
-use reovim_module_coreutils::bins::ls;
+use reovim_module_coreutils::bins::{grep, ls};
 use reovim_rig::Rig;
 use reovim_sdk::{Encode, cell, encode, ops};
 
@@ -51,6 +51,13 @@ const fn listing(cwd: Rd) -> ls::Args {
         color: false,
         targets: Vec::new(),
     }
+}
+
+/// `grep PATTERN` over the cell a stage before answered, as a shell
+/// fills the record for the stage after a `|`: no target of its own.
+fn filtering(input: Rd, pattern: &str) -> grep::Args {
+    let pattern = pattern.to_string();
+    grep::Args { input, cwd: ROOT, pattern, targets: Vec::new() }
 }
 
 /// `load [-l] PATH`, `local` being the field `-l` sets.
@@ -143,6 +150,17 @@ fn a_clients_own_name_reads_both_sides_and_the_servers_reads_one() {
     let theirs = at(ctx, "/bin/ls");
     assert_eq!(run(ctx, theirs, &listing(SELF)), Err(Error::Invalid));
     assert_eq!(run(ctx, theirs, &listing(root)).unwrap(), "note\n");
+
+    // A stage's input is the same fact about the same rd: the cell a
+    // run of this Client's answered is no rd the server can open, so
+    // the server's `grep` handed it is `Invalid` and the cell stands;
+    // this Client's own then reads it, which is what ends it.
+    let out = ops::call_by_name(ctx, mine, "run", encode(&listing(SELF)));
+    let cell: Rd = reovim_sdk::decode(&out.unwrap()).unwrap();
+    let held = filtering(cell, "core");
+    assert_eq!(run(ctx, at(ctx, "/bin/grep"), &held), Err(Error::Invalid));
+    let ours = at(ctx, "/self/bin/grep");
+    assert_eq!(run(ctx, ours, &held).unwrap(), "coreutils\n");
 }
 
 #[test]

@@ -33,6 +33,16 @@ const PATH: [&str; 3] = ["/self/vim/bin", "/self/bin", "/bin"];
 /// Bytes asked per read of an output cell.
 const CHUNK: u32 = 64 * 1024;
 
+/// A stage, or a whole line, that names nothing to run.
+pub const NO_NAME: &str = "no name; help lists them";
+
+/// One stage of a line: the name it runs, and the tokens after it.
+pub type Stage<'a> = (&'a str, &'a [&'a str]);
+
+/// Where a redirect writes: the target, and the offset the run's bytes
+/// begin at.
+type Pour = (Rd, u64);
+
 /// One typed line: what it printed, and the run it left open.
 pub struct Ran {
     /// What to print; empty for a line that redirects.
@@ -84,20 +94,38 @@ impl Open {
     }
 }
 
-/// The tokens before a redirect and where it puts the output; `>` and
-/// `>>` are the shell's own and take a target after them.
-pub fn split<'a>(
+/// The line cut into stages at `|`, and where the last one's output
+/// goes. A `>` or `>>` belongs to the last stage; one anywhere else is
+/// refused, a stage's output being the next stage's input.
+///
+/// # Errors
+/// `Miss` for a stage that names nothing, a redirect off the last
+/// stage, and one that takes other than one target.
+pub fn stages<'a>(
     typed: &'a [&'a str],
-) -> Result<(&'a [&'a str], Option<Sink<'a>>), Miss> {
-    let Some(at) = typed.iter().position(|t| matches!(*t, ">" | ">>")) else {
-        return Ok((typed, None));
-    };
-    let (tokens, rest) = typed.split_at(at);
-    let [arrow, target] = rest else {
-        return Err(Miss::line("a redirect takes one target"));
-    };
-    let sink = Sink { target, append: *arrow == ">>" };
-    Ok((tokens, Some(sink)))
+) -> Result<(Vec<Stage<'a>>, Option<Sink<'a>>), Miss> {
+    let cut: Vec<&[&str]> = typed.split(|token| *token == "|").collect();
+    let end = cut.len() - 1;
+    let (mut stages, mut sink) = (Vec::new(), None);
+    let pours = |t: &&str| matches!(*t, ">" | ">>");
+    let off = "a redirect belongs to the last stage";
+    for (at, stage) in cut.into_iter().enumerate() {
+        let poured = stage.iter().position(pours).unwrap_or(stage.len());
+        let (tokens, rest) = stage.split_at(poured);
+        sink = match rest {
+            [] => None,
+            [arrow, target] if at == end => {
+                Some(Sink { target, append: *arrow == ">>" })
+            }
+            [_, _] => return Err(Miss::line(off)),
+            _ => return Err(Miss::line("a redirect takes one target")),
+        };
+        let Some((name, args)) = tokens.split_first() else {
+            return Err(Miss::line(NO_NAME));
+        };
+        stages.push((*name, args));
+    }
+    Ok((stages, sink))
 }
 
 /// The names PATH holds, in the order a name resolves: PATH's order,
@@ -135,6 +163,18 @@ pub fn fields(ctx: &dyn Calls, name: &str) -> Option<Vec<Field>> {
     }
 }
 
+/// Whether the run of `name` can be filled from the stage before it,
+/// which is one declared `input: Rd` field. A name PATH does not hold
+/// declares nothing to read and answers true, the run of it being what
+/// says why the line cannot stand.
+pub fn joins(ctx: &dyn Calls, name: &str) -> bool {
+    let Some(fields) = fields(ctx, name) else {
+        return true;
+    };
+    let takes = |f: &Field| f.name == "input" && f.ty == Ty::Rd;
+    fields.iter().any(takes)
+}
+
 /// The line `help` prints for `name`.
 ///
 /// # Errors
@@ -151,18 +191,21 @@ pub fn form(
 }
 
 /// The run of `name`: the record filled from the tokens, the call, and
-/// the output cell read to its end.
+/// the rd of the one output cell it answered with, beside where a
+/// redirect puts the bytes. The cell is not opened here, a stage that
+/// is not the last ending at this and the stage after it being the one
+/// reader.
 ///
 /// # Errors
 /// `Miss` for a name PATH does not hold, a token no field takes, a
 /// redirect whose target is not there, or whatever the run says.
-pub fn under_path(
+pub fn called(
     ctx: &dyn Calls,
     shell: &Shell,
     name: &str,
     args: &[&str],
     sink: Option<Sink<'_>>,
-) -> Result<Ran, Miss> {
+) -> Result<(Rd, Option<Pour>), Miss> {
     let Some(rd) = lookup(ctx, name) else {
         // The line named this one, so the Miss is the one a host tells
         // from the rest: Vim's `:` line says E492 of it.
@@ -171,17 +214,47 @@ pub fn under_path(
     let typed = args.join(" ");
     let refused = |e: Error| miss(name, &typed, Step::Op, e, "");
     let (api, method) = ops::method(ctx, rd, "run").map_err(refused)?;
-    let input = decode::record(shell, name, &method.input, args)?;
+    let record = decode::record(shell, name, &method.input, args)?;
     // The target resolves first, so a bad one runs nothing.
     let into = match sink {
         Some(sink) => Some(poured(ctx, shell, name, &sink)?),
         None => None,
     };
-    let out = ops::call(ctx, rd, api, &method, input).map_err(refused)?;
+    let out = ops::call(ctx, rd, api, &method, record).map_err(refused)?;
     let answered = dynamic::decode(&method.output, &out).map_err(refused)?;
     let Value::Rd(cell) = answered else {
         return Err(refused(Error::Invalid));
     };
+    Ok((cell, into))
+}
+
+/// The cell a stage was handed and did not take: opened and closed,
+/// which ends it. A stage that read its input closed it there and the
+/// open fails, the rd being gone; an rd is never spelled twice, so this
+/// can reach nothing else.
+pub fn dropped(ctx: &dyn Calls, rd: Rd) {
+    if rd == ROOT {
+        return;
+    }
+    if let Ok(h) = ctx.open(rd, Rights::READ) {
+        let _ = closed(ctx, h);
+    }
+}
+
+/// The last stage of a line: [`called`], and its output cell read to
+/// the empty read that ends it, into the sink where there is one.
+///
+/// # Errors
+/// As [`called`], and whatever the reads and the write say.
+pub fn under_path(
+    ctx: &dyn Calls,
+    shell: &Shell,
+    name: &str,
+    args: &[&str],
+    sink: Option<Sink<'_>>,
+) -> Result<Ran, Miss> {
+    let (cell, into) = called(ctx, shell, name, args, sink)?;
+    let refused = |e: Error| miss(name, &args.join(" "), Step::Op, e, "");
     let h = ctx.open(cell, Rights::READ).map_err(refused)?;
     let mut open = Open { name: name.to_string(), h, at: 0 };
     let read = reading(ctx, name, h, &mut open.at);

@@ -127,6 +127,7 @@ impl Shell {
     pub fn at(cwd: Rd, path: String) -> Self {
         let mut shell = Self { cwd, path, back: None, env: Vec::new() };
         shell.screen(0, false);
+        shell.input(ROOT);
         shell
     }
 
@@ -136,6 +137,14 @@ impl Shell {
     pub fn screen(&mut self, width: u64, color: bool) {
         self.give("width", Value::U64(width));
         self.give("color", Value::Bool(color));
+    }
+
+    /// Where a run reads its input: the cell the stage before answered,
+    /// and the root where none stands before it. It is set on every
+    /// stage, the only stage of a line with no `|` included, so a
+    /// declared `input` is always the shell's and never a positional.
+    pub fn input(&mut self, rd: Rd) {
+        self.give("input", Value::Rd(rd));
     }
 
     /// One name of the environment a run reads, as the host of this
@@ -248,33 +257,93 @@ const CAUSES: &[(Step, Error, &str)] = &[
 
 /// One typed line: what it printed, and the run it left open.
 ///
-/// `>` and `>>` are the shell's own, so a line that redirects prints
-/// nothing and the bytes are in the target instead.
+/// `|`, `>` and `>>` are the shell's own, so a line that redirects
+/// prints nothing and the bytes are in the target instead, and a line
+/// that pipes prints what its last stage found.
 ///
 /// # Errors
-/// `Miss` for a name PATH does not hold, a token no field takes, or
-/// whatever the tree says.
+/// `Miss` for a name PATH does not hold, a token no field takes, a
+/// stage that names nothing, or whatever the tree says.
 pub fn run(
     ctx: &dyn Calls,
     shell: &mut Shell,
     text: &str,
 ) -> Result<Ran, Miss> {
     let typed: Vec<&str> = text.split_whitespace().collect();
-    let (tokens, sink) = run::split(&typed)?;
-    let Some((name, args)) = tokens.split_first() else {
-        return Err(Miss::line("no name; help lists them"));
+    let (stages, sink) = run::stages(&typed)?;
+    // A builtin answers bytes and not a cell, so neither a pipe nor a
+    // redirect has anything of its to take.
+    let itself = |stage: &&run::Stage<'_>| builtin(stage.0).is_some();
+    let Some(&(name, args)) = stages.iter().find(itself) else {
+        return piped(ctx, shell, &stages, sink);
     };
-    if builtin(name).is_none() {
-        return run::under_path(ctx, shell, name, args, sink);
+    if stages.len() > 1 {
+        return Err(no_stage("a pipe takes a run's output", name, args));
     }
     if sink.is_some() {
-        let cause = "a redirect takes a run's output".to_string();
-        let target = args.join(" ");
-        let name = (*name).to_string();
-        return Err(Miss { name, target, cause, unknown: false });
+        return Err(no_stage("a redirect takes a run's output", name, args));
     }
     let out = builtin_ran(ctx, shell, name, args)?;
     Ok(Ran { out, open: None })
+}
+
+/// A line's stages in order: each answers a cell, and every one but the
+/// last is opened, read and closed by the stage after it, which takes
+/// it out of the tree; the shell opens the last stage's alone. What a
+/// stage did not take is ended here, so a line that stops early and a
+/// last stage that declares no `input` both leave nothing behind.
+fn piped(
+    ctx: &dyn Calls,
+    shell: &Shell,
+    stages: &[run::Stage<'_>],
+    sink: Option<run::Sink<'_>>,
+) -> Result<Ran, Miss> {
+    let Some((last, before)) = stages.split_last() else {
+        return Err(Miss::line(run::NO_NAME));
+    };
+    // A stage after a `|` is filled through a declared `input: Rd`, so
+    // one that declares none would leave the cell before it unread and
+    // print as if nothing stood there: refused from the declarations,
+    // before anything is called.
+    for (name, _) in stages.iter().skip(1) {
+        if !run::joins(ctx, name) {
+            return Err(no_stage("takes no input", name, &[]));
+        }
+    }
+    let mut input = ROOT;
+    for (name, args) in before {
+        // No stage but the last takes a redirect, so the pair this
+        // answers with holds nothing but the cell.
+        let stage = staged(shell, input, false);
+        let cell = run::called(ctx, &stage, name, args, None);
+        run::dropped(ctx, input);
+        input = cell?.0;
+    }
+    let stage = staged(shell, input, sink.is_none());
+    let ran = run::under_path(ctx, &stage, last.0, last.1, sink);
+    run::dropped(ctx, input);
+    ran
+}
+
+/// The Shell one stage runs with: the cell the stage before answered as
+/// its input, and the host's screen only where the bytes reach one. A
+/// stage that feeds another, and every stage of a line that redirects,
+/// writes for no screen at all, so a file holds text and no escape.
+fn staged(shell: &Shell, input: Rd, screen: bool) -> Shell {
+    let mut stage = shell.clone();
+    stage.input(input);
+    if !screen {
+        stage.screen(0, false);
+    }
+    stage
+}
+
+/// A name that cannot stand where the line put it: a builtin, which
+/// answers bytes and no cell for a `|` or a `>` to take, and a stage
+/// after a `|` whose run declares no `input: Rd` to be filled through.
+fn no_stage(cause: &str, name: &str, args: &[&str]) -> Miss {
+    let (name, target) = (name.to_string(), args.join(" "));
+    Miss { name, target, cause: cause.to_string(), unknown: false }
 }
 
 /// One name run with the tokens its host split for it.

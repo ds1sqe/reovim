@@ -1,8 +1,8 @@
 //! A typed line over the rig: the name resolved under `/bin`, the
 //! record filled from the tokens, and the output cell read to its end.
 
-use reovim_client_sh::{Shell, run};
-use reovim_kernel_interface::{Calls, Error};
+use reovim_client_sh::{Shell, ran, run};
+use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_rig::Rig;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
@@ -21,6 +21,20 @@ fn shown(ctx: &dyn Calls, line: &str, width: Option<u16>) -> String {
     let mut shell = Shell::default();
     shell.screen(u64::from(width.unwrap_or(0)), false);
     typed(ctx, &mut shell, line)
+}
+
+/// The output cell of one run of `/bin/uptime`, whose record has no
+/// field: answered and never opened, as a stage before a `|` leaves it.
+fn celled(ctx: &dyn Calls) -> Rd {
+    let rd = cell::resolve(ctx, ROOT, "/bin/uptime").unwrap();
+    let out = ops::call_by_name(ctx, rd, "run", Vec::new()).unwrap();
+    reovim_sdk::decode(&out).unwrap()
+}
+
+/// The cells the run of `name` under `/bin` has open.
+fn cells(ctx: &dyn Calls, name: &str) -> Vec<Rd> {
+    let rd = cell::resolve(ctx, ROOT, &format!("/bin/{name}")).unwrap();
+    ops::children(ctx, rd).unwrap()
 }
 
 #[test]
@@ -328,6 +342,103 @@ fn a_redirect_puts_a_runs_output_in_the_target() {
     let line = "ls / > /sys/info/mem";
     assert_eq!(typed(ctx, &mut shell, line), "ls /: denied");
     assert_eq!(ops::children(ctx, ls), Ok(Vec::new()));
+}
+
+#[test]
+fn a_pipe_puts_one_runs_output_into_the_next_runs_input() {
+    let rig = Rig::new("sh-pipe");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+
+    // `input` is an environment field like `cwd`, so no `|` is needed
+    // for the mechanism: a run reads whatever cell stands there, and
+    // reading it ends it, this run being its one reader.
+    let cell = celled(ctx);
+    shell.input(cell);
+    let out = ran(ctx, &shell, "grep", &["^up"]).unwrap().out;
+    assert!(String::from_utf8(out).unwrap().starts_with("up "));
+    assert_eq!(cells(ctx, "uptime"), Vec::new());
+    assert_eq!(ops::info(ctx, cell), Err(Error::Invalid));
+
+    // What a `|` does is fill it: the first stage answers a cell it
+    // never opens, the second opens, reads and closes it, and the line
+    // prints what the last stage found. Three stages the same way.
+    let mut shell = Shell::default();
+    let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
+    assert_eq!(go(ctx, "ls /module | grep text"), "text\n");
+    assert_eq!(go(ctx, "ls /module | grep text | grep ex"), "text\n");
+    assert_eq!(cells(ctx, "ls"), Vec::new(), "the cell `ls` answered");
+    assert_eq!(cells(ctx, "grep"), Vec::new());
+}
+
+#[test]
+fn a_stage_that_cannot_stand_is_refused_and_leaves_no_cell_behind() {
+    let rig = Rig::new("sh-stages");
+    rig.file("out", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    let root = "/module/fs/root";
+    let out = cell::resolve(ctx, ROOT, &format!("{root}/out")).unwrap();
+    let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
+
+    // A stage that names nothing is the line that names nothing.
+    let none = "no name; help lists them";
+    assert_eq!(go(ctx, "ls /module |"), none);
+    assert_eq!(go(ctx, "| grep x"), none);
+    assert_eq!(go(ctx, "ls | | grep x"), none);
+
+    // A builtin answers bytes and not a cell, wherever it stands; and a
+    // stage's output being the next stage's input, only the last one
+    // has anywhere else to put it.
+    let takes = "a pipe takes a run's output";
+    assert_eq!(go(ctx, "cd | grep x"), format!("cd: {takes}"));
+    assert_eq!(go(ctx, "ls | cd"), format!("cd: {takes}"));
+    let line = format!("ls > {root}/out | grep x");
+    assert_eq!(go(ctx, &line), "a redirect belongs to the last stage");
+
+    // And a stage after a `|` is filled through a declared `input: Rd`,
+    // so a name that declares none is refused from the declarations,
+    // wherever it stands and before anything is called.
+    assert_eq!(go(ctx, "ls /module | cat"), "cat: takes no input");
+    assert_eq!(go(ctx, "ls | stat | grep x"), "stat: takes no input");
+
+    // A later stage that fails takes the cell it was handed with it.
+    assert_eq!(go(ctx, "ls /module | nope"), {
+        "nope: not under /self/vim/bin /self/bin /bin; help lists them"
+    });
+    assert_eq!(go(ctx, "ls /module | grep a\\{2}"), "grep a\\{2}: invalid");
+    assert_eq!(cells(ctx, "ls"), Vec::new(), "the cells `ls` answered");
+    assert_eq!(cells(ctx, "grep"), Vec::new());
+    assert_eq!(ops::bytes(ctx, out), Ok(Vec::new()), "none of it ran");
+}
+
+#[test]
+fn a_line_that_redirects_or_pipes_writes_for_no_screen_at_all() {
+    let rig = Rig::new("sh-color");
+    rig.file("out", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    let root = "/module/fs/root";
+    let out = cell::resolve(ctx, ROOT, &format!("{root}/out")).unwrap();
+
+    // The host's screen, as the cli buffer sets it: wide and painted.
+    shell.screen(80, true);
+    let seen = typed(ctx, &mut shell, "ls /module");
+    assert!(seen.contains("\x1b["), "what the screen shows is painted");
+
+    // A line with a `>` writes for no screen, so the file holds the
+    // text and not the escapes 01.8 left in it; and so does every stage
+    // of a pipe but the last, which is why a pattern matches a name.
+    let line = format!("ls /module > {root}/out");
+    assert_eq!(typed(ctx, &mut shell, &line), "");
+    let held = ops::bytes(ctx, out).unwrap();
+    assert_eq!(held, b"coreutils\nfs\nsysutils\ntext\n".to_vec());
+    let line = format!("ls /module | grep text > {root}/out");
+    assert_eq!(typed(ctx, &mut shell, &line), "");
+    assert_eq!(ops::bytes(ctx, out), Ok(b"text\n".to_vec()));
 }
 
 #[test]

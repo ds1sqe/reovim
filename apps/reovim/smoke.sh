@@ -187,6 +187,10 @@ keys shell c d " " / m o d u l e Enter
 shown shell '^/module >'
 keys shell l s Enter
 shown shell 'coreutils  fs  sysutils  text'
+# `|` puts one run's output into the next run's input; every stage but
+# the last writes for no screen, so `grep` matches a name and no escape.
+keys shell l s " " "|" " " g r e p " " t e x t Enter
+shown shell '^text$'
 keys shell p w d Enter
 shown shell '^/module$'
 keys shell C-d
@@ -411,6 +415,10 @@ keys clibuf : c l i Enter
 shown clibuf "^/module/fs/root$DIR/shell >$"
 keys clibuf l s Enter
 shown clibuf '^alpha  note$'
+# The one host that runs with color: what it paints on the way to its
+# own region it does not put in a file, a `>` writing for no screen.
+: > "$DIR/shell/f"
+keys clibuf l s " " / m o d u l e " " ">" " " f Enter
 keys clibuf C-d
 editing clibuf note
 shown clibuf '^one$'
@@ -431,8 +439,25 @@ keys words : l s Enter
 shown words "note  1:1  r1   alpha"
 keys words : p w d Enter
 shown words "note  1:1  r1   /module/fs/root$DIR/words"
+: > "$DIR/words/f"
+keys words : l s " " / m o d u l e " " ">" " " f Enter
+shown words "note  1:1  r1 *$"
+# The process cli's turn at the same line, while this editor holds the
+# socket it reaches.
+: > "$DIR/f"
+"$BIN" cli ls /module '>' "/module/fs/root$DIR/f"
 keys words : q Enter
 [[ "$(ended words)" == 0 ]] || fail ":q after a shell line did not quit"
+
+# --- one line, three hosts, one file --------------------------------
+# `ls /module > f` from `reovim cli`, from the cli buffer and from
+# Vim's `:` line: a redirect runs every stage of its line for no screen
+# at all, so neither the buffer's color nor anyone's width reaches the
+# target, where 01.8 left the escapes in.
+for host in "$DIR/f" "$DIR/shell/f" "$DIR/words/f"; do
+    [[ "$(cat "$host")" == $'coreutils\nfs\nsysutils\ntext' ]] \
+        || fail "$host holds $(tr '\n' ' ' < "$host")"
+done
 
 # --- Tab on the : line: the name expanded, its usage line, the menu --
 # A token only one name under PATH begins is expanded to that name and

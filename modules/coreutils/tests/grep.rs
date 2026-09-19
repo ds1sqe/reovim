@@ -7,9 +7,10 @@ use reovim_module_coreutils::bins::grep::Args;
 use reovim_rig::Rig;
 
 /// A run of the pattern over the targets, as a shell fills the record:
-/// from the root.
+/// from the root, with no stage standing before this one.
 fn args(pattern: &str, targets: &[&str]) -> Args {
     Args {
+        input: ROOT,
         cwd: ROOT,
         pattern: pattern.to_string(),
         targets: targets.iter().map(|t| (*t).to_string()).collect(),
@@ -122,6 +123,37 @@ fn a_pattern_or_a_target_the_run_cannot_take_leaves_no_cell() {
         Ok(Vec::new()),
         "a cell for a failed run"
     );
+}
+
+#[test]
+fn an_input_is_read_before_the_targets_and_stands_under_no_name() {
+    let rig = Rig::new("grep-input");
+    rig.file("one", b"alpha\nbeta\n");
+    let mut client = rig.client();
+    let grep = client.resolve("/bin/grep").unwrap();
+    let one = "/module/fs/root/one";
+
+    // The cell one run answered with is what the next one reads: the
+    // shell fills `input` with it and no token ever spells it. The
+    // lines stand under no name, the cell being nobody's file.
+    let cell = run(&mut client, &args("a", &[one])).unwrap();
+    let mut after = args("^beta", &[]);
+    after.input = cell;
+    assert_eq!(text(&mut client, &after), "beta\n");
+    // One reader: reading it ended it, and neither run left a cell.
+    assert_eq!(client.children(grep), Ok(Vec::new()));
+
+    // An input and a target are both read, the input first; and an rd
+    // this run cannot open is no place to look, the cell it named
+    // having been read and ended already.
+    let cell = run(&mut client, &args("a", &[one])).unwrap();
+    let mut both = args("beta", &[one]);
+    both.input = cell;
+    assert_eq!(text(&mut client, &both), "beta\nbeta\n");
+    let mut gone = args("a", &[]);
+    gone.input = cell;
+    assert_eq!(run(&mut client, &gone), Err(Fault::Kernel(Error::Invalid)));
+    assert_eq!(client.children(grep), Ok(Vec::new()));
 }
 
 #[test]

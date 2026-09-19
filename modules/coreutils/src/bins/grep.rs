@@ -7,6 +7,11 @@
 //! makes several of them readable. A target that holds no bytes, a
 //! Container among them, fails the run and leaves no cell.
 //!
+//! `input` is the cell a run before this one answered, which the shell
+//! fills where a `|` stands and no token ever spells. Its lines come
+//! before the targets' and stand under no name, it being nobody's file;
+//! the run is its one reader, and reading it ends it.
+//!
 //! The dialect is the matcher's, which is Vim's and not POSIX: `a\+`
 //! and not `a+`, `\(a\|b\)x` and not `(a|b)x`, and `\c` is how one asks
 //! for case-blindness. A pattern the subset has not is `Invalid`,
@@ -20,6 +25,7 @@ use core::fmt::Write as _;
 
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_pattern::Pattern;
+use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
 use crate::Coreutils;
@@ -29,7 +35,8 @@ reovim_sdk::declare! {
     api grep ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { cwd: Rd, pattern: utf8(1024), targets: [utf8(256); 64] }
+    record Args { input: Rd, cwd: Rd, pattern: utf8(1024),
+                  targets: [utf8(256); 64] }
 }
 
 /// What a run takes, beside the api it belongs to.
@@ -46,6 +53,12 @@ impl grep::Api for Coreutils {
         }
         let named = targets.len() > 1;
         let mut out = String::new();
+        // The root is the empty `Rd` of a line with no stage before
+        // this one; every other is a cell this run reads and ends.
+        if args.input != ROOT {
+            let held = ops::bytes(ctx, args.input)?;
+            out.push_str(&matched(&pattern, held, "")?);
+        }
         for target in targets {
             out.push_str(&found(ctx, &pattern, target, named)?);
         }
@@ -54,8 +67,7 @@ impl grep::Api for Coreutils {
 }
 
 /// Every line of `target` the pattern is found in, under the target's
-/// own name where the run has more than one. A target that is not text
-/// is no place to look for a line.
+/// own name where the run has more than one.
 fn found(
     ctx: &dyn Calls,
     pattern: &Pattern,
@@ -63,7 +75,16 @@ fn found(
     named: bool,
 ) -> Result<String, Error> {
     let prefix = if named { prefix(ctx, target)? } else { String::new() };
-    let bytes = ops::bytes(ctx, target)?;
+    matched(pattern, ops::bytes(ctx, target)?, &prefix)
+}
+
+/// Every line of `bytes` the pattern is found in, each under `prefix`.
+/// Bytes that are not text are no place to look for a line.
+fn matched(
+    pattern: &Pattern,
+    bytes: Vec<u8>,
+    prefix: &str,
+) -> Result<String, Error> {
     let text = String::from_utf8(bytes).map_err(|_| Error::Invalid)?;
     let mut out = String::new();
     for line in text.split_terminator('\n') {
