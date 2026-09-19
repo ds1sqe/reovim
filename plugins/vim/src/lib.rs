@@ -19,6 +19,7 @@ extern crate alloc;
 
 pub mod bins;
 mod command;
+mod marks;
 mod motion;
 mod object;
 mod operator;
@@ -31,11 +32,13 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub use marks::Pos;
 pub use operator::Motion;
 pub use plugin::Editor;
 pub use reovim_client_api::{Key, notation};
 pub use visual::Visual;
 
+use marks::Marks;
 use operator::{Find, Operator};
 use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, window};
 use reovim_client_sh::{Line, Shell};
@@ -134,6 +137,11 @@ pub enum Effect {
     Complete(String),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
+    /// A file mark whose source is not the loaded Buffer's: the
+    /// source to show here instead, and the position and its
+    /// exactness, for the Plugin to read into `arrive` once the ask
+    /// has gone out; see that field for the rest of the story.
+    Goto(Rd, Pos, bool),
 }
 
 /// One `:` line as Vim read it: the range off its front, in lines from
@@ -286,11 +294,21 @@ struct Wild {
     form: Option<String>,
 }
 
-/// Where the cursor was before each change, for undo to put it back
-/// as nvim does, and how many of those changes stand undone.
+/// The cursor and the `a`-`z` marks as they stood before one change,
+/// for undo to extend the current marks with, as nvim's `uh_namedm`
+/// does; redo is `marked` alone.
+#[derive(Debug)]
+struct Change {
+    cursor: (usize, usize),
+    marks: Vec<(char, Pos)>,
+}
+
+/// Where the cursor and the marks were before each change, for undo
+/// to put them back as nvim does, and how many of those changes stand
+/// undone.
 #[derive(Debug, Default)]
 struct Undone {
-    before: Vec<(usize, usize)>,
+    before: Vec<Change>,
     count: usize,
     /// An undo (`false`) or redo (`true`) is waiting for its reload.
     /// Never outlives one key, so a `Place` carries it for free.
@@ -299,14 +317,17 @@ struct Undone {
 
 /// What one Buffer keeps of Vim between a `left` and the `opened` that
 /// finds it again: the cursor, the first line shown, the undo cursor
-/// list and the visual marks. Kept in [`Vim::places`], by the draft's
-/// rd.
+/// list, the visual marks and the local marks. Kept in
+/// [`Vim::places`], by the draft's rd. Not the index: that is never
+/// stale, always rebuilt by the `loaded` inside the `opened` that
+/// restores this.
 #[derive(Debug, Default)]
 struct Place {
     cursor: usize,
     top: usize,
     undone: Undone,
     last_visual: Option<Selection>,
+    marks: BTreeMap<char, Pos>,
 }
 
 /// The text, the cursor as a byte index on a char boundary, the first
@@ -363,6 +384,9 @@ pub struct Vim {
     top: usize,
     undone: Undone,
     last_visual: Option<Selection>,
+    /// This Buffer's local marks, `a`-`z` and `' [ ] < > .`, and the
+    /// index that moves them.
+    marks: Marks,
 
     // Kept.
     /// The unnamed register, `None` until something fills it; an
@@ -399,6 +423,19 @@ pub struct Vim {
     clip: Option<Rd>,
     /// How many rows the region has: what `top` scrolls by.
     rows: usize,
+    /// `A`-`Z`, by source: not one Buffer's, and not moved by an edit
+    /// in a Buffer that is not the one they name.
+    files: BTreeMap<char, (Rd, Pos)>,
+    /// A file mark named by a Buffer that is not the loaded one: set
+    /// by the Plugin once `Effect::Goto`'s ask has gone out, never by
+    /// the engine itself, so a refused ask leaves nothing here to
+    /// set. `start` takes it at its very own top, before the fallible
+    /// work between the swap and its own `opened`, which is passed
+    /// what was taken: a `start` that fails drops it with the local
+    /// it became, rather than leaving it here for a later, unrelated
+    /// `start` to find. Not `left`'s to reset: it must outlive the
+    /// `leave` and `start` the swap runs between.
+    arrive: Option<(Rd, Pos, bool)>,
 }
 
 impl Vim {
@@ -462,7 +499,14 @@ impl Vim {
     /// line (`top`), at the column the cursor had before that change
     /// when this was its line, one line up for a change made by `o`,
     /// else at the wanted column.
-    fn undone_cursor(&mut self, top: usize, redo: bool) {
+    ///
+    /// An undo also extends the current marks with the `a`-`z` ones
+    /// that change's `Change` kept, wiping nothing set since (nvim's
+    /// `uh_namedm`); a redo is `marked` alone, its own forward shift
+    /// already applied. `[`, `]` and `.` are set as nvim sets them
+    /// for either: `[` and `]` to `top` and `bottom`, `.` to `top` on
+    /// an undo and to `bottom` on a redo.
+    fn undone_cursor(&mut self, top: usize, bottom: usize, redo: bool) {
         let made = self.undone.before.len() - self.undone.count;
         let before = if redo {
             self.undone.count = self.undone.count.saturating_sub(1);
@@ -471,38 +515,161 @@ impl Vim {
             self.undone.count = (self.undone.count + 1).min(made.max(1));
             made.checked_sub(1).and_then(|i| self.undone.before.get(i))
         };
+        if !redo && let Some(change) = before {
+            self.marks.local.extend(change.marks.iter().copied());
+        }
         let line = match before {
-            Some(&(was, _)) if was + 1 == top && top > 0 => was,
+            Some(change) if change.cursor.0 + 1 == top && top > 0 => {
+                change.cursor.0
+            }
             _ => top,
         };
         let start = self.line_at(line).unwrap_or_else(|| {
             self.line_at(self.line_count() - 1).unwrap_or(0)
         });
         self.cursor = match before {
-            Some(&(was, column)) if was == line => {
-                self.at_column(start, column)
+            Some(change) if change.cursor.0 == line => {
+                self.at_column(start, change.cursor.1)
             }
             _ => self.at_screen_column(start, self.want),
         };
         self.want = self.wanted();
+        self.marks.local.insert('[', Pos { line: top, column: 0 });
+        self.marks.local.insert(']', Pos { line: bottom, column: 0 });
+        let dot = if redo { bottom } else { top };
+        self.marks.local.insert('.', Pos { line: dot, column: 0 });
     }
 
-    /// A change is being made: the cursor `before` it kept for undo;
-    /// what stood undone is forgotten, as a new change ends redo.
-    fn changing(&mut self, before: (usize, usize), effect: &Effect) {
-        let change = match effect {
-            Effect::Edit(edit) => !edit.join,
-            Effect::Edits(_) => true,
+    /// `[`, from the lowest edit start of `edits`, and `]`, from the
+    /// highest edit end, each carried through the edits after it into
+    /// final coordinates (`carried`); `None` for no edits at all,
+    /// `.min()`'s and `.max()`'s own `?` on an empty `edits`.
+    ///
+    /// `typed` (insert mode's own edits, `changing`'s caller says)
+    /// leaves `]` where the typing itself left the cursor, one past
+    /// the last byte put in, nvim's own rule for `Insstart`; untyped
+    /// (a put among them, `len == 0` on every edit just as typing is)
+    /// leaves `]` on the last byte actually put in, the general case
+    /// `last_char_before` reads, as does one that took bytes too
+    /// (`:s`, `J`, a delete).
+    fn batch_span(&self, edits: &[Edit], typed: bool) -> Option<(Pos, Pos)> {
+        let open = (0..edits.len())
+            .map(|i| carried(edits[i].at, &edits[i + 1..]))
+            .min()?;
+        let close_end = (0..edits.len())
+            .map(|i| {
+                carried(edits[i].at + edits[i].text.len(), &edits[i + 1..])
+            })
+            .max()?;
+        let close = if typed {
+            close_end
+        } else {
+            self.last_char_before(close_end, open)
+        };
+        Some((self.pos_at(open), self.pos_at(close)))
+    }
+
+    /// A change is being made: the cursor kept for undo, with the
+    /// `a`-`z` marks as they stood; what stood undone is forgotten,
+    /// as a new change ends redo. Every edit the effect made moves
+    /// the marks in order, [`Self::marked`] being the one door,
+    /// unless a replay is putting them through `key` a second time.
+    /// `typed` is whether the mode this key (or `pasted`, `did`) found
+    /// Vim in was Insert, before the key itself may have left it: a
+    /// block insert's Esc is still typed on its way out; a `c` that
+    /// enters Insert as part of the same key is not, on its way in.
+    fn changing(
+        &mut self,
+        before: (usize, usize),
+        effect: &Effect,
+        typed: bool,
+    ) {
+        match effect {
             Effect::Undo => return self.undone.walking = Some(false),
             Effect::Redo => return self.undone.walking = Some(true),
-            _ => false,
-        };
-        if change && !self.repeat.replaying {
-            let made = self.undone.before.len() - self.undone.count;
-            self.undone.before.truncate(made);
-            self.undone.before.push(before);
-            self.undone.count = 0;
+            _ => {}
         }
+        if self.repeat.replaying {
+            return;
+        }
+        let edits = effect_edits(effect);
+        let starting = edits.first().is_some_and(|e| !e.join);
+        if starting {
+            self.snapshot(before);
+        }
+        for edit in edits {
+            self.marked(edit);
+        }
+        self.mark_batch(edits, starting, typed);
+    }
+
+    /// The undo snapshot a revision's own first edit takes: the
+    /// cursor before it, with the `a`-`z` marks as they stood.
+    fn snapshot(&mut self, before: (usize, usize)) {
+        let made = self.undone.before.len() - self.undone.count;
+        self.undone.before.truncate(made);
+        let marks = self.marks.local.range('a'..='z').map(|(&c, &p)| (c, p));
+        self.undone
+            .before
+            .push(Change { cursor: before, marks: marks.collect() });
+        self.undone.count = 0;
+    }
+
+    /// `[`, `]` and `.` after `edits`: `batch_span` reads the text
+    /// now held, which is every edit of this effect already applied;
+    /// `carried` maps each edit's own start and end through the edits
+    /// after it into that final state. `[` and `.` are the
+    /// revision's own start, set once and never moved by an edit that
+    /// joins it (a session's second keystroke and on); `]` is the
+    /// revision's own end so far, and every edit of it, joining or
+    /// not, reaches that far.
+    fn mark_batch(&mut self, edits: &[Edit], starting: bool, typed: bool) {
+        let Some((open, close)) = self.batch_span(edits, typed) else { return };
+        if starting {
+            self.marks.local.insert('[', open);
+            self.marks.local.insert('.', open);
+        }
+        self.marks.local.insert(']', close);
+    }
+
+    /// The one door every edit reaches positions through: the local
+    /// marks, and of this source the file marks, moved past `edit`.
+    /// `loaded`'s own synthetic edit goes through it too, before
+    /// `undone_cursor`, and stops there: a reload is not a change,
+    /// and sets no `[`, `]` or `.`.
+    fn marked(&mut self, edit: &Edit) {
+        let source = self.source;
+        self.marks.moved(edit, &mut self.files, source);
+    }
+
+    /// The last real char before byte `end` of the text now held, a
+    /// trailing `\n` skipped first, `prev_char` reading the char
+    /// boundaries of the text so a wide char never splits, never
+    /// before `floor`.
+    pub(crate) fn last_char_before(&self, end: usize, floor: usize) -> usize {
+        let before_nl = end - usize::from(self.text[..end].ends_with('\n'));
+        if before_nl <= floor { floor } else { self.prev_char(before_nl) }
+    }
+
+    /// `at` as a [`Pos`]: the line it is on, and its column, in
+    /// bytes from that line's own start, as nvim's `col` reads.
+    pub(crate) fn pos_at(&self, at: usize) -> Pos {
+        let line = self.text[..at].matches('\n').count();
+        Pos { line, column: at - self.line_start(at) }
+    }
+
+    /// A [`Pos`] as a byte of the text now held, its line clamped to
+    /// one the text still has, its column floored to a char boundary
+    /// the text still has one at or before. A column of `usize::MAX`
+    /// is nvim's MAXCOL, a line's end however long it has grown.
+    pub(crate) fn byte_at(&self, pos: Pos) -> usize {
+        let line = pos.line.min(self.line_count() - 1);
+        let start = self.line_at(line).unwrap_or(0);
+        let mut at = start.saturating_add(pos.column).min(self.line_end(start));
+        while !self.text.is_char_boundary(at) {
+            at -= 1;
+        }
+        at
     }
 
     /// The cursor's line and column, in chars from 0.
@@ -544,7 +711,9 @@ impl Vim {
             return self.motion(motion, n);
         }
         let effect = match key {
-            Key::Char(first @ ('g' | 'f' | 't' | 'F' | 'T' | '"')) => {
+            Key::Char(
+                first @ ('g' | 'f' | 't' | 'F' | 'T' | '"' | '\'' | '`' | 'm'),
+            ) => {
                 return self.wait(first, count);
             }
             Key::Char(first @ ('i' | 'a'))
@@ -629,6 +798,9 @@ impl Vim {
             ('g', Key::Char('~')) => self.operator(Operator::Toggle, n),
             ('g', Key::Char('v')) => self.reselect(),
             ('"', Key::Char(name)) => self.named(name, count),
+            ('m', Key::Char(name @ ('a'..='z' | 'A'..='Z'))) => {
+                self.set_mark(name)
+            }
             ('Z', Key::Char('Z')) => Effect::Quit(Quit::Write),
             ('Z', Key::Char('Q')) => Effect::Quit(Quit::Force),
             _ => {
@@ -656,6 +828,8 @@ impl Vim {
             't' => Motion::Find(Find::ForwardTo, c),
             'F' => Motion::Find(Find::Backward, c),
             'T' => Motion::Find(Find::BackwardTo, c),
+            '\'' => Motion::Mark { name: c, exact: false },
+            '`' => Motion::Mark { name: c, exact: true },
             _ => return None,
         };
         if let Motion::Find(kind, c) = motion {
@@ -910,18 +1084,31 @@ impl Vim {
 impl Vim {
     /// `bytes` as the text, lossily; the cursor stays where it can.
     /// True when the text differs from before.
+    ///
+    /// The difference from the text held before is one synthetic
+    /// edit over the common prefix and suffix, which moves every
+    /// position through `marked` before the cursor is placed: an
+    /// undo, a redo, and the reload a stale flush or `:e`/`:e!` makes
+    /// are each one of these, never a change of their own. The
+    /// prefix and suffix are found over chars, never a byte that
+    /// splits one, so the edit's own `at` is always a boundary.
     pub fn loaded(&mut self, bytes: &[u8]) -> bool {
         let text = String::from_utf8_lossy(bytes);
         let walking = self.undone.walking.take();
         if text == self.text {
             return false;
         }
-        let common =
-            self.text.bytes().zip(text.bytes()).take_while(|(a, b)| a == b);
-        let top = self.text[..common.count()].matches('\n').count();
+        let synthetic = minimal_edit(0, &self.text, &text, false);
+        let top = self.text[..synthetic.at].matches('\n').count();
+        // Not `synthetic.text.len()` whole: a trailing `\n` of the
+        // inserted text is the *next* line's own start, not this
+        // one's, and would count one line too many.
+        let put = synthetic.text.strip_suffix('\n').unwrap_or(&synthetic.text);
+        let bottom = text[..synthetic.at + put.len()].matches('\n').count();
         self.text = text.into_owned();
+        self.marked(&synthetic);
         match walking {
-            Some(redo) => self.undone_cursor(top, redo),
+            Some(redo) => self.undone_cursor(top, bottom, redo),
             None => self.cursor = self.cursor.min(self.bound()),
         }
         self.resettled();
@@ -950,6 +1137,11 @@ impl Vim {
         self.message.clear();
         self.undone.walking = None;
         let before = self.position();
+        // Caught before the mode this key leaves: a block insert's
+        // Esc is still Insert here, so `finish_block`'s own edits, on
+        // the way out, still read as typed; a `c` that enters Insert
+        // is still Normal here, so its own delete does not.
+        let typed = self.mode == Mode::Insert;
         let effect = match self.mode {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
@@ -960,7 +1152,7 @@ impl Vim {
                 effect
             }
         };
-        self.changing(before, &effect);
+        self.changing(before, &effect, typed);
         if !core::mem::take(&mut self.keep_want) {
             self.want = self.wanted();
         }
@@ -986,20 +1178,24 @@ impl Vim {
             self.message = String::from("E353: Nothing in register +");
             Effect::Moved
         };
-        self.changing(before, &effect);
+        // A put, never typing, whatever mode asked for it.
+        self.changing(before, &effect, false);
         self.settle(&effect);
         effect
     }
 
     /// The `\n` Vim writes at the end of a last line that has none, as
-    /// `fixendofline` does.
+    /// `fixendofline` does: its own edit, through `marked`, since it
+    /// reaches no key's `changing`.
     pub fn fixed_eol(&mut self) -> Option<Edit> {
         if self.text.is_empty() || self.text.ends_with('\n') {
             return None;
         }
         let at = self.text.len();
         self.text.push('\n');
-        Some(Edit { at, len: 0, text: String::from("\n"), join: false })
+        let edit = Edit { at, len: 0, text: String::from("\n"), join: false };
+        self.marked(&edit);
+        Some(edit)
     }
 
     /// The cursor to the byte `at`, at its line's first non-blank:
@@ -1010,26 +1206,46 @@ impl Vim {
     }
 
     /// The text the Buffer held when it was opened, whole: cleared
-    /// first, so two files of the same bytes are two Buffers and
-    /// `loaded`'s own diff, which is for the one Buffer changing under
-    /// it, never runs here. Then the `Place` this draft left behind
-    /// when there is one and `line` is 0, else the cursor at the line
-    /// the Client was started at, counted from 1; 0 is the first line,
-    /// where it begins without one.
-    pub(crate) fn opened(&mut self, bytes: &[u8], line: u64) {
+    /// first, so two files of the same bytes are two Buffers, then
+    /// `marks` too, so its index describes this empty start truly;
+    /// `loaded`'s own diff over it then builds the index for what is
+    /// read in, exact by construction, needing no reindex after.
+    ///
+    /// The `Place` this draft left behind is restored first when
+    /// there is one and `line` is 0, else the cursor is put at the
+    /// line the Client was started at, counted from 1, 0 being the
+    /// first line, where it begins without one. Only then, and only
+    /// when `arrive` (see that field) names this source, is it jumped
+    /// to: a file mark elsewhere must land on the Buffer's own kept
+    /// place, undo list and local marks, not before they are there.
+    pub(crate) fn opened(
+        &mut self,
+        bytes: &[u8],
+        line: u64,
+        arrive: Option<(Rd, Pos, bool)>,
+    ) {
         self.text.clear();
+        self.marks = Marks::default();
         self.loaded(bytes);
         let place = (line == 0)
             .then(|| self.buffer.and_then(|rd| self.places.remove(&rd)))
             .flatten();
-        let Some(Place { cursor, top, undone, last_visual }) = place else {
-            return self.begin(self.beginning(line));
-        };
-        self.cursor = cursor;
-        self.top = top;
-        self.undone = undone;
-        self.last_visual = last_visual;
-        self.resettled();
+        match place {
+            Some(Place { cursor, top, undone, last_visual, marks }) => {
+                self.cursor = cursor;
+                self.top = top;
+                self.undone = undone;
+                self.last_visual = last_visual;
+                self.marks.local = marks;
+                self.resettled();
+            }
+            None => self.begin(self.beginning(line)),
+        }
+        if let Some((rd, pos, exact)) = arrive
+            && Some(rd) == self.source
+        {
+            self.jump_to(pos, exact);
+        }
     }
 
     /// Where `opened` begins with no kept `Place`: the byte line
@@ -1058,6 +1274,7 @@ impl Vim {
                     top: self.top,
                     undone: core::mem::take(&mut self.undone),
                     last_visual: self.last_visual.take(),
+                    marks: core::mem::take(&mut self.marks.local),
                 },
             );
         }
@@ -1163,5 +1380,90 @@ fn collect(edits: &mut Vec<Edit>, effect: Effect) {
         Effect::Edit(edit) => edits.push(edit),
         Effect::Edits(more) => edits.extend(more),
         _ => {}
+    }
+}
+
+/// The edits `effect` made, borrowed and in order.
+fn effect_edits(effect: &Effect) -> &[Edit] {
+    match effect {
+        Effect::Edit(edit) => core::slice::from_ref(edit),
+        Effect::Edits(edits) => edits,
+        _ => &[],
+    }
+}
+
+/// `byte`, from before any of `later`'s own edits, carried through
+/// them into the coordinates they leave: one past it shifts it by
+/// what it put in less what it took; one at or before it moves it to
+/// its own start, since whatever stood there did not survive; one
+/// that reaches past it leaves it where it is.
+fn carried(byte: usize, later: &[Edit]) -> usize {
+    later.iter().fold(byte, |b, e| {
+        if e.at + e.len <= b {
+            b + e.text.len() - e.len
+        } else if e.at <= b {
+            e.at
+        } else {
+            b
+        }
+    })
+}
+
+/// The narrowest [`Edit`], `at` added to its own start, that turns
+/// `old` into `new`: the bytes common at both ends left alone, chars
+/// never split. `substitute` rebuilds a whole line to find what
+/// changed in it; a mark past the changed bytes must keep its column,
+/// which only holds when the edit `moved` and `batch_span` read is
+/// this narrow, not the whole line.
+pub(crate) fn minimal_edit(
+    at: usize,
+    old: &str,
+    new: &str,
+    join: bool,
+) -> Edit {
+    let prefix: usize = old
+        .chars()
+        .zip(new.chars())
+        .take_while(|(a, b)| a == b)
+        .map(|(a, _)| a.len_utf8())
+        .sum();
+    let suffix: usize = old[prefix..]
+        .chars()
+        .rev()
+        .zip(new[prefix..].chars().rev())
+        .take_while(|(a, b)| a == b)
+        .map(|(a, _)| a.len_utf8())
+        .sum();
+    Edit {
+        at: at + prefix,
+        len: old.len() - prefix - suffix,
+        text: String::from(&new[prefix..new.len() - suffix]),
+        join,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::String;
+
+    use super::{Edit, carried};
+
+    fn edit(at: usize, len: usize, text: &str) -> Edit {
+        Edit { at, len, text: String::from(text), join: false }
+    }
+
+    #[test]
+    fn carried_reads_a_byte_through_one_edit_after_it_three_ways() {
+        // An edit that already ended (`reach <= b`) shifts `b` by
+        // what it put in less what it took.
+        let ended = &[edit(1, 2, "xyz")][..];
+        assert_eq!(carried(6, ended), 7, "6 + (3 - 2)");
+        // An edit that reaches `b` or starts before it collapses `b`
+        // onto its own start: nothing that stood there survived.
+        let reaches_it = &[edit(4, 4, "")][..];
+        assert_eq!(carried(6, reaches_it), 4, "taken, to that edit's start");
+        // An edit that starts after `b` has not reached it yet.
+        let not_yet = &[edit(6, 1, "xy")][..];
+        assert_eq!(carried(4, not_yet), 4, "ahead of it, left alone");
     }
 }

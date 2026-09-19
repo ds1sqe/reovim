@@ -133,6 +133,42 @@ fn loaded_replaces_and_clamps() {
 }
 
 #[test]
+fn loaded_moves_marks_by_its_own_real_diff() {
+    // `loaded`'s synthetic edit must come from `minimal_edit` reading
+    // the two texts themselves, not a hand-built `Edit`: a line
+    // inserted before the mark's own shifts it down by one.
+    let mut vim = on("one\ntwo\nthree\n");
+    assert_eq!(typed(&mut vim, "Gma"), Effect::Moved);
+    assert!(vim.loaded(b"one\ntwo\nTWO\nthree\n"));
+    assert_eq!(typed(&mut vim, "'a"), Effect::Moved);
+    assert_eq!(vim.position(), (3, 0), "the mark moved down with its line");
+}
+
+#[test]
+fn loaded_diffs_by_chars_not_bytes_across_multibyte_ones() {
+    // "é" and "ç" share their own first UTF-8 byte: a byte-based
+    // prefix would stop mid-char, and slicing there panics.
+    // `minimal_edit` must walk `.chars()`, never raw bytes.
+    let mut vim = on("é\n");
+    assert!(vim.loaded("ç\n".as_bytes()));
+    assert_eq!(vim.text(), "ç\n");
+}
+
+#[test]
+fn fixed_eol_reaches_marked_so_dd_of_that_line_takes_its_mark() {
+    // Without `fixed_eol`'s own edit reaching `marked`, the index
+    // keeps thinking the text has no final `\n`, so `dd` of the
+    // marked line (now taking that `\n` with it) reads the line as
+    // shorter than it is and its mark survives where nvim's does not.
+    let mut vim = on("a\nb");
+    assert_eq!(typed(&mut vim, "jma"), Effect::Moved);
+    assert!(vim.fixed_eol().is_some(), "no final newline to add one to");
+    assert_eq!(typed(&mut vim, "dd"), edit(2, 2, "", false));
+    assert_eq!(typed(&mut vim, "'a"), Effect::Moved, "a message is a change");
+    assert_eq!(vim.status(), "E20: Mark not set");
+}
+
+#[test]
 fn a_view_keeps_the_cursor_in_the_region() {
     let mut vim = on("1\n2\n3\n4\n5 is long");
     typed(&mut vim, "4j$");

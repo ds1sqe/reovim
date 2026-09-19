@@ -59,7 +59,15 @@ fn an_operator_is_one_revision_and_a_change_types_into_it() {
         ]
     );
     assert_eq!(vim.text(), "xy\nbaz\n");
-    assert_eq!(typed(&mut vim, "J"), edit(0, 6, "xy baz", false));
+    assert_eq!(
+        typed(&mut vim, "J"),
+        Effect::Edits(vec![Edit {
+            at: 2,
+            len: 1,
+            text: " ".into(),
+            join: false
+        }])
+    );
     assert_eq!(typed(&mut vim, ">>"), edit(0, 6, "\txy baz", false));
     assert_eq!(typed(&mut vim, "wgUiw"), edit(1, 2, "XY", false));
     assert_eq!(typed(&mut vim, "~"), edit(1, 1, "x", false));
@@ -87,6 +95,70 @@ fn many_places_change_as_one_revision() {
     let again = edits(&mut vim, ".");
     assert_eq!(again.len(), 6, "`.` repeats the block change: {again:?}");
     assert_eq!(vim.text(), "ax\ncx\nex\n");
+}
+
+#[test]
+fn gv_after_an_edit_above_selects_the_same_words() {
+    // `<` and `>` need no tree: a Buffer of its own is enough for an
+    // edit above the selection to shift them before `gv` reads them.
+    let mut vim = on("one two\nthree four\n");
+    typed(&mut vim, "wve<Esc>");
+    typed(&mut vim, "Onew<Esc>");
+    typed(&mut vim, "gvd");
+    assert_eq!(
+        vim.text(),
+        "new\none \nthree four\n",
+        "two, followed onto its new line"
+    );
+}
+
+#[test]
+fn gv_after_its_own_line_is_deleted_reselects_at_the_edits_first_line() {
+    // A8: `<` and `>`, wholly taken by the `dd` that follows, relocate
+    // to the edit's own first line rather than vanishing, the way
+    // `[`, `]` and `.` do; `gv` still has something to reselect.
+    let mut vim = on("one\ntwo\nthree\n");
+    typed(&mut vim, "jve<Esc>");
+    assert_eq!(typed(&mut vim, "0dd"), edit(4, 4, "", false));
+    assert_eq!(vim.text(), "one\nthree\n", "two, taken whole");
+    assert_eq!(typed(&mut vim, "gv"), Effect::Moved);
+    typed(&mut vim, "d");
+    assert_eq!(
+        vim.text(),
+        "one\nee\n",
+        "the selection, now on three's own line"
+    );
+}
+
+#[test]
+fn dot_replaying_an_inserted_line_still_shifts_a_later_mark() {
+    // `replay`'s own inner keys carry `self.repeat.replaying`, which
+    // `changing` reads to skip `marked` there; the edits reach it
+    // once, through the outer key that called `replay`, once it
+    // returns them as one `Effect::Edits`. No case exercised this at
+    // all: a mark past where `.` inserts a line must still move.
+    //
+    // The mark goes on "two", an interior line, not the text's own
+    // last: a mark on the last line would still land there if `.`
+    // shifted it twice (once inner, once outer) and a clamp brought
+    // it back, hiding that fault behind a right-looking answer.
+    let mut vim = on("one\ntwo\nthree\n");
+    typed(&mut vim, "oNEW<Esc>");
+    assert_eq!(
+        vim.text(),
+        "one\nNEW\ntwo\nthree\n",
+        "one line opened below one"
+    );
+    assert_eq!(typed(&mut vim, "Gk0ma"), Effect::Moved);
+    assert_eq!(vim.position(), (2, 0), "a, on two");
+    typed(&mut vim, "gg.");
+    assert_eq!(vim.text(), "one\nNEW\nNEW\ntwo\nthree\n");
+    assert_eq!(typed(&mut vim, "'a"), Effect::Moved);
+    assert_eq!(
+        vim.position(),
+        (3, 0),
+        "a shifted once by the one line `.` added"
+    );
 }
 
 #[test]

@@ -7,14 +7,15 @@
 //! this Client has to it. The last one reads a cell from inside Vim's
 //! own frame, which is where the one `RefCell` would be held twice.
 
+mod common;
+
 use std::rc::Rc;
 
+use common::cat;
 use reovim_client::Host;
 use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::Tui;
 use reovim_rig::{Rig, listed, opened, said, typed};
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
 
 /// Vim for a cell; nothing else is opened here. One `Editor` across
 /// every swap, as the app's own table gives one (01.0).
@@ -35,13 +36,6 @@ fn over(test: &str) -> (Rig, Tui, Rc<Host>) {
     let tui =
         opened(&host, table(), Clip::none(), "", Some("note"), None).unwrap();
     (rig, tui, host)
-}
-
-/// What the cell `path` under `/self/vim` holds, as `cat` prints it.
-fn cat(host: &Rc<Host>, path: &str) -> String {
-    let ctx = host.own();
-    let rd = cell::resolve(&ctx, ROOT, &format!("/self/vim/{path}")).unwrap();
-    String::from_utf8(ops::bytes(&ctx, rd).unwrap()).unwrap()
 }
 
 #[test]
@@ -119,7 +113,7 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
 
     assert_eq!(
         listed(&host, "/self/vim"),
-        ["view", "mode", "pending", "registers", "bin"]
+        ["view", "mode", "pending", "registers", "marks", "bin"]
     );
     let names = listed(&host, "/self/vim/registers");
     assert_eq!(names.len(), 27, "the unnamed one and `a` to `z`");

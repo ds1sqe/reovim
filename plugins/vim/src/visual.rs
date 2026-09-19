@@ -15,13 +15,14 @@ pub enum Visual {
     Block,
 }
 
-/// A selection, kept for `gv`.
+/// A selection, kept for `gv`: its ends are the marks `<` and `>`,
+/// which an edit since moves with the text, `backward` saying which
+/// end was the cursor's.
 #[derive(Clone, Copy, Debug)]
 pub struct Selection {
     pub kind: Visual,
-    pub anchor: usize,
-    pub cursor: usize,
     pub to_end: bool,
+    pub backward: bool,
 }
 
 /// An insert on the first line of a block, to be copied onto the
@@ -58,23 +59,40 @@ impl Vim {
         }
     }
 
-    /// Back to normal mode, the selection kept for `gv`.
+    /// Back to normal mode, the selection kept for `gv`: `<` and `>`
+    /// set to its real low and high ends, which then move with the
+    /// text. `V`'s own whole-line reading (`<` at column 0, `>` at
+    /// MAXCOL) is `found_mark`'s to give a direct read of them, not
+    /// stored here: `gv` needs the real columns back, the ones typing
+    /// or a motion left the selection at, not the line's own bounds.
     pub(crate) fn leave_visual(&mut self) -> Effect {
         if let Mode::Visual(kind) = self.mode {
-            let (anchor, cursor, to_end) =
-                (self.anchor, self.cursor, self.to_end);
-            self.last_visual = Some(Selection { kind, anchor, cursor, to_end });
+            let backward = self.cursor < self.anchor;
+            let (lo, hi) = self.ends();
+            let (lo, hi) = (self.pos_at(lo), self.pos_at(hi));
+            self.marks.local.insert('<', lo);
+            self.marks.local.insert('>', hi);
+            self.last_visual =
+                Some(Selection { kind, to_end: self.to_end, backward });
         }
         self.mode = Mode::Normal;
         self.clamp();
         Effect::Moved
     }
 
-    /// `gv`: the last selection again.
+    /// `gv`: the last selection again, its ends read from `<` and
+    /// `>`, wherever an edit since has moved them.
     pub(crate) fn reselect(&mut self) -> Effect {
         let Some(last) = self.last_visual else { return Effect::Nothing };
-        self.anchor = last.anchor.min(self.bound());
-        self.cursor = last.cursor.min(self.bound());
+        let (Some(&lo), Some(&hi)) =
+            (self.marks.local.get(&'<'), self.marks.local.get(&'>'))
+        else {
+            return Effect::Nothing;
+        };
+        let (lo, hi) = (self.byte_at(lo), self.byte_at(hi));
+        let (anchor, cursor) = if last.backward { (hi, lo) } else { (lo, hi) };
+        self.anchor = anchor.min(self.bound());
+        self.cursor = cursor.min(self.bound());
         self.to_end = last.to_end;
         self.mode = Mode::Visual(last.kind);
         Effect::Moved
@@ -95,7 +113,8 @@ impl Vim {
         }
         match key {
             Key::Char(
-                first @ ('g' | 'f' | 't' | 'F' | 'T' | 'i' | 'a' | 'r' | '"'),
+                first @ ('g' | 'f' | 't' | 'F' | 'T' | 'i' | 'a' | 'r' | '"'
+                | '\'' | '`'),
             ) => self.wait(first, count),
             Key::Esc => self.leave_visual(),
             Key::Char('v') => self.enter_visual(Visual::Char),

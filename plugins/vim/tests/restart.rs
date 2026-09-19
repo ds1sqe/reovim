@@ -9,8 +9,11 @@
 //! file can carry; these two cannot be recorded — nvim's `:Explore` is
 //! netrw and a case's files are flat — so they are rig cases here.
 
+mod common;
+
 use std::rc::Rc;
 
+use common::{cat, one};
 use reovim_client::Host;
 use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_region::Region;
@@ -18,27 +21,14 @@ use reovim_client_tui::Step;
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_plugin_vim::Editor;
 use reovim_rig::{Rig, Seen, Stub, lines, listed, opened, said, status, typed};
+use reovim_sdk::cell;
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
-
-/// What the cell `path` under `/self/vim` holds, as `cat` prints it.
-fn cat(host: &Rc<Host>, path: &str) -> String {
-    let ctx = host.own();
-    let rd = cell::resolve(&ctx, ROOT, &format!("/self/vim/{path}")).unwrap();
-    String::from_utf8(ops::bytes(&ctx, rd).unwrap()).unwrap()
-}
 
 /// The rd of `path`, a name under the root, through a Client's own
 /// calls.
 fn rd(host: &Rc<Host>, path: &str) -> Rd {
     let ctx = host.own();
     cell::resolve(&ctx, ROOT, &format!("/module/fs/root/{path}")).unwrap()
-}
-
-/// A table over one `Editor`, given for every want alike: what the
-/// app's own table does for `vim` (tui.rs, 01.0), in the small.
-fn one(vim: Rc<Editor>) -> Table {
-    Box::new(move |_| Some((String::from("vim"), vim.booted())))
 }
 
 /// What `Stub::typing` scripts as a listing's pick: a key asks for
@@ -81,7 +71,7 @@ fn one_editor_started_twice_serves_every_cell() {
     // nothing is left stale from the first.
     assert_eq!(
         listed(&host, "/self/vim"),
-        ["view", "mode", "pending", "registers", "bin"]
+        ["view", "mode", "pending", "registers", "marks", "bin"]
     );
     assert_eq!(listed(&host, "/self/vim/registers").len(), 27);
     assert_eq!(listed(&host, "/self/vim/bin").len(), 11);

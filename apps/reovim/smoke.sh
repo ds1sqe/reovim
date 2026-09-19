@@ -760,6 +760,18 @@ ended kept
 [[ "$(cat "$DIR/kept/b")" == $'beta\nalpha' ]] \
     || fail "the register did not cross :explore: $(cat "$DIR/kept/b")"
 
+# --- m a, G, ' a: a mark that survives the jump; /self/vim/marks -----
+mkdir "$DIR/marks"
+printf 'one\ntwo\nthree\n' > "$DIR/marks/a"
+start marks "$DIR/marks" "$BIN a"
+editing marks a
+keys marks m a G "'" a
+keys marks : c a t Space / s e l f / v i m / m a r k s Enter
+shown marks 'a 1 0$'
+keys marks : q Enter
+ended marks
+[[ "$ENDED" == 0 ]] || fail "the marks pane did not quit"
+
 # --- :cli: a shell in a region of its own ----------------------------
 # `:cli` is Vim asking its Client for this region in the Plugin the
 # name `cli` stands for, over where the `:` line's own lines stand:

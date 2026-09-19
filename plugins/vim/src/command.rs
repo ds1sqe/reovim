@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use reovim_client_sh::Act;
 use reovim_pattern::{Pattern, Spent, expand};
 
-use crate::{Edit, Effect, Ex, Key, Mode, Motion, Vim, Wild};
+use crate::{Effect, Ex, Key, Mode, Motion, Vim, Wild, minimal_edit};
 
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
@@ -196,7 +196,10 @@ impl Vim {
     /// first token PATH has not, as it always did.
     fn ex(&mut self, line: &str) -> Effect {
         let line = line.trim();
-        let (range, rest) = self.range(line);
+        let Some((range, rest)) = self.range(line) else {
+            self.message = String::from("E20: Mark not set");
+            return Effect::Nothing;
+        };
         let rest = rest.trim();
         if rest.is_empty() {
             return self.addressed(range, rest.len() < line.len());
@@ -210,41 +213,41 @@ impl Vim {
 
     /// A `:` line with no word on it: the cursor to the last line the
     /// range names, at its first non-blank, where `:12` and `:$` leave
-    /// it; nothing at all for a line that named no range either.
+    /// it, `'` set first when it moves; nothing at all for a line
+    /// that named no range either.
     fn addressed(&mut self, range: Lines, named: bool) -> Effect {
         if !named {
             return Effect::Moved;
         }
         let at = self.line_at(range.1).unwrap_or(self.cursor);
-        self.go_clamped(self.first_non_blank(at))
+        let to = self.first_non_blank(at);
+        if to != self.cursor {
+            self.set_previous();
+        }
+        self.go_clamped(to)
     }
 
-    /// `[range]` off the front: `%`, `'<,'>`, `N`, `.`, `$`, `A,B`;
-    /// the current line alone when there is none.
-    fn range<'a>(&self, line: &'a str) -> (Lines, &'a str) {
+    /// `[range]` off the front: `%`, `'a,'b` (`'<,'>` among them, `<`
+    /// and `>` being marks like any other), `N`, `.`, `$`, `A,B`; the
+    /// current line alone when there is none. `None` for a mark
+    /// named that is not set.
+    fn range<'a>(&self, line: &'a str) -> Option<(Lines, &'a str)> {
         let here = self.position().0;
         let last = self.line_count() - 1;
         if let Some(rest) = line.strip_prefix('%') {
-            return ((0, last), rest);
+            return Some(((0, last), rest));
         }
-        if let Some(rest) = line.strip_prefix("'<,'>") {
-            return (self.visual_lines().unwrap_or((here, here)), rest);
-        }
-        let (from, rest) = address(line, here, last);
-        let Some(after_comma) = rest.strip_prefix(',') else {
-            return ((from, from), rest);
+        let mark = |name: char| {
+            self.found_mark(name)
+                .filter(|(elsewhere, _)| elsewhere.is_none())
+                .map(|(_, p)| p.line)
         };
-        let (to, rest) = address(after_comma, here, last);
-        ((from.min(to), from.max(to)), rest)
-    }
-
-    /// The lines of the last selection.
-    fn visual_lines(&self) -> Option<Lines> {
-        let last = self.line_count() - 1;
-        let v = self.last_visual?;
-        let (a, c) =
-            (self.position_of(v.anchor).0, self.position_of(v.cursor).0);
-        Some((a.min(c).min(last), a.max(c).min(last)))
+        let (from, rest) = address(line, here, last, mark)?;
+        let Some(after_comma) = rest.strip_prefix(',') else {
+            return Some(((from, from), rest));
+        };
+        let (to, rest) = address(after_comma, here, last, mark)?;
+        Some(((from.min(to), from.max(to)), rest))
     }
 
     /// `:set` with its arguments, which `/self/vim/bin/set` runs: the
@@ -338,15 +341,24 @@ impl Vim {
         let mut edits = Vec::new();
         // The cursor goes to the last line substituted, after any
         // newline a `\r` brought in; each line changed above moves it.
+        // The edit kept for `moved` and `batch_span` is the narrowest
+        // one the line's own rebuild admits, not the whole line: `[`
+        // and `]` must land on what changed, not on a byte the
+        // substitution only carried along unchanged.
         let mut last = None;
         for (start, end, text) in changes {
+            let edit = minimal_edit(
+                start,
+                &self.text[start..end],
+                &text,
+                !edits.is_empty(),
+            );
             self.text.replace_range(start..end, &text);
             last = Some(last.map_or_else(
                 || start + text.rfind('\n').map_or(0, |i| i + 1),
                 |below| below + text.len() - (end - start),
             ));
-            let join = !edits.is_empty();
-            edits.push(Edit { at: start, len: end - start, text, join });
+            edits.push(edit);
         }
         let Some(line) = last else { return self.not_found() };
         self.cursor = self.first_non_blank(line);
@@ -476,17 +488,28 @@ fn split_unescaped(args: &str, sep: char) -> Vec<&str> {
     parts
 }
 
-/// One address: `.`, `$`, digits, or nothing for the current line.
-fn address(line: &str, here: usize, last: usize) -> (usize, &str) {
+/// One address: `.`, `$`, `'x` off `mark`, digits, or nothing for the
+/// current line. `None` for a mark named that `mark` does not answer.
+fn address(
+    line: &str,
+    here: usize,
+    last: usize,
+    mark: impl Fn(char) -> Option<usize>,
+) -> Option<(usize, &str)> {
     if let Some(rest) = line.strip_prefix('.') {
-        return (here, rest);
+        return Some((here, rest));
     }
     if let Some(rest) = line.strip_prefix('$') {
-        return (last, rest);
+        return Some((last, rest));
+    }
+    if let Some(rest) = line.strip_prefix('\'') {
+        let name = rest.chars().next()?;
+        let at = mark(name)?;
+        return Some((at.min(last), &rest[name.len_utf8()..]));
     }
     let digits = line.chars().take_while(char::is_ascii_digit).count();
     let number: usize = line[..digits].parse().unwrap_or(here + 1);
-    (number.saturating_sub(1).min(last), &line[digits..])
+    Some((number.saturating_sub(1).min(last), &line[digits..]))
 }
 
 #[cfg(test)]
@@ -527,11 +550,23 @@ mod tests {
 
     #[test]
     fn an_address_is_a_line_from_one_clamped() {
-        assert_eq!(address(".x", 4, 9), (4, "x"));
-        assert_eq!(address("$", 4, 9), (9, ""));
-        assert_eq!(address("3,", 4, 9), (2, ","));
-        assert_eq!(address("0", 4, 9), (0, ""));
-        assert_eq!(address("50", 4, 9), (9, ""));
-        assert_eq!(address("s/a/b/", 4, 9), (4, "s/a/b/"), "none: this line");
+        let none = |_: char| None;
+        assert_eq!(address(".x", 4, 9, none), Some((4, "x")));
+        assert_eq!(address("$", 4, 9, none), Some((9, "")));
+        assert_eq!(address("3,", 4, 9, none), Some((2, ",")));
+        assert_eq!(address("0", 4, 9, none), Some((0, "")));
+        assert_eq!(address("50", 4, 9, none), Some((9, "")));
+        assert_eq!(
+            address("s/a/b/", 4, 9, none),
+            Some((4, "s/a/b/")),
+            "none: this line"
+        );
+    }
+
+    #[test]
+    fn a_quote_address_reads_the_mark_or_answers_none() {
+        let set = |c: char| (c == 'a').then_some(2);
+        assert_eq!(address("'ax", 4, 9, set), Some((2, "x")));
+        assert_eq!(address("'bx", 4, 9, set), None, "b is not set");
     }
 }

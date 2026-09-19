@@ -32,6 +32,7 @@ use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{Cell, Ref, RefCell};
+use core::fmt::Write as _;
 
 use reovim_client_api::{NONE, draft, part};
 use reovim_client_region::{Region, Surface, count, drafted};
@@ -46,7 +47,7 @@ use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
-use crate::{Edit, Effect, Ex, Mode, Quit, Vim, bins};
+use crate::{Edit, Effect, Ex, Mode, Pos, Quit, Vim, bins};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -115,6 +116,9 @@ struct Cells {
     pending: Rd,
     /// One rd per register that can exist, by its name.
     registers: BTreeMap<Rd, char>,
+    /// A line a mark: `NAME LINE COLUMN`, a file mark's followed by
+    /// where its source is.
+    marks: Rd,
     /// `/self/vim/bin`, whose listing is the order a `:` line resolves
     /// a name in.
     bin: Rd,
@@ -168,7 +172,12 @@ impl Module for Editor {
     /// stay: `root` is `None` only before the very first `start`, so
     /// they are found once there and never again, `:cd` and the
     /// shell's own state living on through every swap since.
+    ///
+    /// `arrive` (see that field) is taken here first, before any of
+    /// this can fail: a `start` that fails after drops it with the
+    /// local it became, never `opened`'s to see.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let arrive = self.vim.borrow_mut().arrive.take();
         let surface = Surface::default();
         let view = surface.start(ctx, home)?;
         let cells = registered(ctx, home, view)?;
@@ -202,7 +211,7 @@ impl Module for Editor {
             vim.clip = kept.clip;
         }
         vim.rows = rows;
-        vim.opened(&bytes, ask.line);
+        vim.opened(&bytes, ask.line, arrive);
         drop(vim);
         self.announce(ctx)
     }
@@ -237,7 +246,7 @@ impl Driver for Editor {
             return stay.surface.read(at, len, || self.framed(ctx));
         }
         let output = || stay.outputs.read(ctx, rd, at, len).into();
-        self.held(&stay.cells, rd)
+        self.held(ctx, &stay.cells, rd)
             .map_or_else(output, |held| Reply::ok(part(&held, at, len)))
     }
 
@@ -263,12 +272,14 @@ impl Editor {
     /// read: the borrow is this statement's, and Vim's own frame has
     /// returned by the time another Plugin asks. `None` for an rd that
     /// is no cell of the state's.
-    fn held(&self, cells: &Cells, rd: Rd) -> Option<Vec<u8>> {
+    fn held(&self, ctx: &dyn Calls, cells: &Cells, rd: Rd) -> Option<Vec<u8>> {
         let vim = self.vim.borrow();
         let read = if rd == cells.mode {
             format!("{}\n", vim.mode().name())
         } else if rd == cells.pending {
             vim.showcmd()
+        } else if rd == cells.marks {
+            marks_listed(ctx, &vim)
         } else {
             vim.stored(*cells.registers.get(&rd)?)
         };
@@ -374,7 +385,28 @@ impl Editor {
             Effect::Line(ex) => self.ran(ctx, &ex),
             Effect::Cli(bang) => self.cli(ctx, bang),
             Effect::Complete(line) => self.completing(ctx, &line),
+            // The empty name, as `edited` uses: the Client's table
+            // answers by the rd's shape, there being no second Vim to
+            // ask for by name; see `arrive` for the rest.
+            Effect::Goto(rd, pos, exact) => self.arriving(ctx, rd, pos, exact),
         })
+    }
+
+    /// `Effect::Goto`'s own arm, kept apart from it: inlined into the
+    /// `match` above, its own `if` nests one level past what clippy's
+    /// `excessive_nesting` allows there (the `match` is already one
+    /// deep inside `stale`'s own closure).
+    fn arriving(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        pos: Pos,
+        exact: bool,
+    ) -> Result<(), Error> {
+        if self.shown(ctx, rd, "", false)? {
+            self.vim.borrow_mut().arrive = Some((rd, pos, exact));
+        }
+        Ok(())
     }
 
     /// One of Vim's own names run: the effect it asks for, with the
@@ -401,7 +433,8 @@ impl Editor {
             vim.message.clear();
             let before = vim.position();
             let effect = made(&mut vim);
-            vim.changing(before, &effect);
+            // `did` is `:s` and Vim's own `bin` names, never typing.
+            vim.changing(before, &effect, false);
             vim.settle(&effect);
             effect
         };
@@ -676,7 +709,7 @@ impl Editor {
         bang: bool,
     ) -> Result<(), Error> {
         let Some(name) = name else {
-            return self.shown(ctx, self.here(ctx)?, "", bang);
+            return self.shown(ctx, self.here(ctx)?, "", bang).map(drop);
         };
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
@@ -684,7 +717,7 @@ impl Editor {
             self.says(&format!("{E344} \"{name}\" in cdpath"));
             return Ok(());
         };
-        self.shown(ctx, target, "", bang)
+        self.shown(ctx, target, "", bang).map(drop)
     }
 
     /// `:e[dit][!] PATH`: the file that name holds in this region,
@@ -700,7 +733,7 @@ impl Editor {
             self.says(&format!("{E345} \"{name}\" in path"));
             return Ok(());
         };
-        self.shown(ctx, target, "", bang)
+        self.shown(ctx, target, "", bang).map(drop)
     }
 
     /// `:e` with no name: the Buffer read again, taking what another
@@ -724,7 +757,7 @@ impl Editor {
     /// `:cli` opens over as it moves what `:ls` lists.
     fn cli(&self, ctx: &dyn Calls, bang: bool) -> Result<(), Error> {
         let cwd = self.vim.borrow().shell.cwd();
-        self.shown(ctx, cwd, "cli", bang)
+        self.shown(ctx, cwd, "cli", bang).map(drop)
     }
 
     /// The Client asked to show `target` in this region, in the Plugin
@@ -732,19 +765,21 @@ impl Editor {
     /// gives that rd's shape. This is the end of this Vim: the swap
     /// takes the draft with it, so unsaved changes are E37 without the
     /// bang, as `:q` has it. Nothing is shown again here; the Plugin
-    /// that comes shows itself.
+    /// that comes shows itself. Whether the ask went out: `false` for
+    /// E37's refusal, which `arriving` reads before it sets `arrive`.
     fn shown(
         &self,
         ctx: &dyn Calls,
         target: Rd,
         plugin: &str,
         bang: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         if !bang && self.unsaved(ctx)? {
             self.says(E37);
-            return Ok(());
+            return Ok(false);
         }
-        self.stay()?.surface.region()?.opens(ctx, target, plugin)
+        self.stay()?.surface.region()?.opens(ctx, target, plugin)?;
+        Ok(true)
     }
 
     /// One `:` line past its range: the name its first token stands
@@ -1010,11 +1045,32 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     for name in core::iter::once('"').chain('a'..='z') {
         registers.insert(read(under, &format!("{name}"), one)?, name);
     }
+    let marks = read(home, "marks", one)?;
     let bin = read(home, "bin", held)?;
     for (name, decl) in bins::declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
     }
-    Ok(Cells { view, mode, pending, registers, bin })
+    Ok(Cells { view, mode, pending, registers, marks, bin })
+}
+
+/// `/self/vim/marks`: a line a mark, `NAME LINE COLUMN`, the line
+/// from 1 and the column from 0 as nvim's `:marks` has them, a file
+/// mark's followed by where its source is. Letters come before the
+/// punctuation marks not because nvim orders them so, but because a
+/// test that only reads the first row (smoke wants `a 1 0`) needs a
+/// letter mark there when one is set.
+fn marks_listed(ctx: &dyn Calls, vim: &Vim) -> String {
+    let mut out = String::new();
+    let order = ('a'..='z').chain(['\'', '.', '[', ']', '<', '>']);
+    for name in order {
+        let Some(&pos) = vim.marks.local.get(&name) else { continue };
+        let _ = writeln!(out, "{name} {} {}", pos.line + 1, pos.column);
+    }
+    for (&name, &(source, pos)) in &vim.files {
+        let path = ops::where_is(ctx, source).unwrap_or_default();
+        let _ = writeln!(out, "{name} {} {} {path}", pos.line + 1, pos.column);
+    }
+    out
 }
 
 /// Vim's own language in the environment of the Shell a run reads: the

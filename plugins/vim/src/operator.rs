@@ -5,7 +5,11 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::{Edit, Effect, Key, Kind, Mode, Put, Register, Vim, moved};
+use reovim_kernel_interface::Rd;
+
+use crate::{
+    Edit, Effect, Key, Kind, Mode, Pos, Put, Register, Vim, Visual, moved,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Operator {
@@ -96,6 +100,13 @@ pub enum Motion {
         inner: bool,
         kind: char,
     },
+    /// `'x` and `` `x ``: `exact` for the backtick form, which lands
+    /// on the mark's own column; the quote form is linewise, to the
+    /// first non-blank.
+    Mark {
+        name: char,
+        exact: bool,
+    },
     /// `/` and `?` run: the last pattern in that direction.
     Search {
         forward: bool,
@@ -171,6 +182,7 @@ impl Motion {
             Self::Up | Self::Down | Self::Line(_) | Self::Lines => {
                 Extent::Linewise
             }
+            Self::Mark { exact: false, .. } => Extent::Linewise,
             Self::WordEnd | Self::Percent => Extent::Inclusive,
             Self::Find(kind, _) if kind.forward() => Extent::Inclusive,
             Self::FindAgain { reversed } if last_forward != reversed => {
@@ -199,6 +211,7 @@ impl Vim {
             Motion::Find(kind, c) => self.repeat_find(n, kind, c),
             Motion::FindAgain { reversed } => self.find_again(n, reversed),
             Motion::Percent => self.percent(),
+            Motion::Mark { name, exact } => self.go_to_mark(name, exact),
             Motion::Lines | Motion::Object { .. } => Effect::Nothing,
             Motion::Search { forward } => self.search(forward, n),
             Motion::SearchAgain { reversed } => {
@@ -232,6 +245,7 @@ impl Vim {
         if line == from {
             return Effect::Nothing;
         }
+        self.set_previous();
         let start = self.line_at(line).unwrap_or(0);
         self.go_clamped(self.at_screen_column(start, self.want))
     }
@@ -280,7 +294,9 @@ impl Vim {
     /// `%`: from the first bracket at or after the cursor on its line
     /// to the one it pairs with.
     fn percent(&mut self) -> Effect {
-        self.matching_bracket().map_or(Effect::Nothing, |to| self.go(to))
+        let Some(to) = self.matching_bracket() else { return Effect::Nothing };
+        self.set_previous();
+        self.go(to)
     }
 
     fn matching_bracket(&self) -> Option<usize> {
@@ -305,6 +321,84 @@ impl Vim {
             depth -= usize::from(b == pair);
         }
         Some(i)
+    }
+
+    /// `m{a-zA-Z}`: the mark set to the cursor, `a`-`z` in this
+    /// Buffer's own table, `A`-`Z` in `files`, keyed by this Buffer's
+    /// source; nothing over a Buffer with none to key it by.
+    pub(crate) fn set_mark(&mut self, name: char) -> Effect {
+        let pos = self.pos_at(self.cursor);
+        if name.is_ascii_lowercase() {
+            self.marks.local.insert(name, pos);
+        } else if let Some(source) = self.source {
+            self.files.insert(name, (source, pos));
+        }
+        Effect::Moved
+    }
+
+    /// `'` set to the cursor's own position, before a jump moves it:
+    /// `Line`, `Percent`, the three searches, `Mark` and `addressed`
+    /// when the cursor moved.
+    pub(crate) fn set_previous(&mut self) {
+        let pos = self.pos_at(self.cursor);
+        self.marks.local.insert('\'', pos);
+    }
+
+    /// Where `name` points, and the source elsewhere than this
+    /// Buffer's when it is a file mark that names one. `None` for a
+    /// name not set: the tables only ever hold valid names, so
+    /// nothing here filters `name` first. The quote and the backtick
+    /// both read `'`, the one previous-position mark.
+    pub(crate) fn found_mark(&self, name: char) -> Option<(Option<Rd>, Pos)> {
+        let key = if name == '`' { '\'' } else { name };
+        if let Some(&pos) = self.marks.local.get(&key) {
+            return Some((None, self.visual_end(key, pos)));
+        }
+        let &(rd, pos) = self.files.get(&name)?;
+        let elsewhere = (self.source != Some(rd)).then_some(rd);
+        Some((elsewhere, pos))
+    }
+
+    /// `<` and `>` as a direct read (not `gv`'s, which reads
+    /// `marks.local` itself): `V`'s own whole-line reading, column 0
+    /// for `<` and MAXCOL for `>`, substituted in over the real
+    /// columns `leave_visual` stores, the ones `gv` needs back to
+    /// reselect the same columns, not the line's own bounds.
+    fn visual_end(&self, key: char, pos: Pos) -> Pos {
+        let lines = self.last_visual.is_some_and(|s| s.kind == Visual::Line);
+        match (key, lines) {
+            ('<', true) => Pos { column: 0, ..pos },
+            ('>', true) => Pos { column: usize::MAX, ..pos },
+            _ => pos,
+        }
+    }
+
+    /// `'x` and `` `x ``: the mark's position, `a`-`z`, `[ ] < > .`
+    /// local, `A`-`Z` a file's own, the quote and the backtick both
+    /// reading the one previous-position mark. A file mark whose
+    /// source is not this Buffer's asks the Client to arrive there
+    /// instead, and does nothing under an operator, which cannot
+    /// span a swap; `arrive` is not this door's to set, only the
+    /// Plugin's, once the ask it ends in has gone out. Not set is
+    /// E20.
+    pub(crate) fn go_to_mark(&mut self, name: char, exact: bool) -> Effect {
+        let Some((elsewhere, pos)) = self.found_mark(name) else {
+            self.message = String::from("E20: Mark not set");
+            return Effect::Nothing;
+        };
+        let Some(rd) = elsewhere else { return self.jump_to(pos, exact) };
+        if self.pending.running {
+            return Effect::Nothing;
+        }
+        Effect::Goto(rd, pos, exact)
+    }
+
+    /// `pos`, exact or linewise to its first non-blank.
+    pub(crate) fn jump_to(&mut self, pos: Pos, exact: bool) -> Effect {
+        self.set_previous();
+        let at = self.byte_at(pos);
+        let to = if exact { at } else { self.first_non_blank(at) };
+        self.go_clamped(to)
     }
 
     /// The span `motion` covers from the cursor, `n` times, for an
@@ -461,7 +555,7 @@ impl Vim {
             Operator::Delete => self.deleted(at, len, linewise),
             Operator::Change if linewise => self.change_lines(from, to),
             Operator::Change => self.changed(at, len),
-            _ => self.yanked(from),
+            _ => self.yanked(from, at, len),
         }
     }
 
@@ -540,9 +634,13 @@ impl Vim {
         effect
     }
 
-    /// After a yank: the cursor where the span began, so `yy` does not
+    /// After a yank: `[` and `]` set to its span, `]` `last_char_before`
+    /// its own end; the cursor where the span began, so `yy` does not
     /// move and `yk` keeps its column on the line above.
-    fn yanked(&mut self, from: usize) -> Effect {
+    fn yanked(&mut self, from: usize, at: usize, len: usize) -> Effect {
+        let close = self.last_char_before(at + len, at);
+        self.marks.local.insert('[', self.pos_at(at));
+        self.marks.local.insert(']', self.pos_at(close));
         self.go_clamped(from.min(self.bound()));
         Effect::Moved
     }
@@ -813,6 +911,12 @@ impl Vim {
 
     /// `J`: `n` lines (at least two) made one, a space between unless
     /// the next starts with `)` or the line ends in a blank.
+    ///
+    /// One minimal edit per seam, its own `\n` and the next line's
+    /// leading blanks replaced by the gap: no edit ever retypes a
+    /// line's own content, so a mark within one is never taken by
+    /// this, `moved`'s merge arm finding it afresh where its line
+    /// now begins, `3J`'s middle lines among them.
     pub(crate) fn join(&mut self, n: usize) -> Effect {
         let line = self.position().0;
         let joins = (n.max(2) - 1).min(self.line_count() - 1 - line);
@@ -820,22 +924,24 @@ impl Vim {
             return Effect::Nothing;
         }
         let start = self.line_start(self.cursor);
-        let mut out = String::from(&self.text[start..self.line_end(start)]);
-        let mut end = self.line_end(start);
+        let mut edits = Vec::new();
         let mut seam = start;
-        for _ in 0..joins {
-            let next = self.line_end(end + 1);
-            let piece =
-                self.text[end + 1..next].trim_start_matches([' ', '\t']);
-            seam = start + out.len();
-            out.push_str(gap(&out, piece));
-            out.push_str(piece);
-            end = next;
+        for i in 0..joins {
+            let at = self.line_end(start);
+            let next = at + 1;
+            let end = self.line_end(next);
+            let piece = self.text[next..end].trim_start_matches([' ', '\t']);
+            let blanks = (end - next) - piece.len();
+            let text = String::from(gap(&self.text[start..at], piece));
+            let len = 1 + blanks;
+            self.text.replace_range(at..at + len, &text);
+            seam = at;
+            edits.push(Edit { at, len, text, join: i > 0 });
         }
-        let effect = self.replace(start, end - start, out);
         self.cursor = seam;
         self.clamp();
-        effect
+        self.joining = false;
+        Effect::Edits(edits)
     }
 }
 

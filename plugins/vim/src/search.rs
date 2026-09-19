@@ -74,6 +74,9 @@ impl Vim {
         };
         let Some(at) = at else { return self.not_found() };
         self.search.stale = false;
+        if at != self.cursor {
+            self.set_previous();
+        }
         self.go(at);
         Effect::Moved
     }
