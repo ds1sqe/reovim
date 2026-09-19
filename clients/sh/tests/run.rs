@@ -7,14 +7,8 @@ use reovim_rig::Rig;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
-/// One typed line from where `shell` stands; its output, or the line a
-/// Miss would print.
-fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
-    match run(ctx, shell, line) {
-        Ok(ran) => String::from_utf8(ran.out).unwrap(),
-        Err(miss) => miss.to_string(),
-    }
-}
+mod common;
+use common::typed;
 
 /// One typed line from the root, on a screen `width` wide; its output.
 fn shown(ctx: &dyn Calls, line: &str, width: Option<u16>) -> String {

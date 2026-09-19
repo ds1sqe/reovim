@@ -1,5 +1,5 @@
 // Declarations and values, as kernel/interface/src/decl.rs and value.rs
-// and clients/core/src/value.rs have them: a declaration parsed from its
+// and sdk/rust/src/dynamic.rs have them: a declaration parsed from its
 // canonical bytes, a value decoded by its type, shown on one line.
 
 import { Reader } from './codec.js';

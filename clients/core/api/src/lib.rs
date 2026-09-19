@@ -468,51 +468,13 @@ impl Region {
     }
 }
 
-/// The `view` cell a Plugin serves: what a whole read of it answers.
-///
-/// One whole read is one frame. The read at 0 runs the frame and keeps
-/// what it answered; every read past those bytes serves their tail, so
-/// the reader gets one View and then the empty read that ends it.
-#[derive(Debug, Default)]
-pub struct Frames(RefCell<Vec<u8>>);
-
-impl Frames {
-    /// The `Driver::read` of a `view` cell: `frame` at the head of a
-    /// read, its bytes from `at`.
-    pub fn read<F>(&self, at: u64, len: usize, frame: F) -> Reply<Vec<u8>>
-    where
-        F: FnOnce() -> Result<Vec<u8>, Error>,
-    {
-        self.reading(at, len, frame).into()
-    }
-
-    fn reading<F>(
-        &self,
-        at: u64,
-        len: usize,
-        frame: F,
-    ) -> Result<Vec<u8>, Error>
-    where
-        F: FnOnce() -> Result<Vec<u8>, Error>,
-    {
-        if at == 0 {
-            // The borrow is taken only once the frame has answered: a
-            // frame reads cells of its own and may not find this one
-            // held.
-            let shown = frame()?;
-            *self.0.borrow_mut() = shown;
-        }
-        Ok(part(&self.0.borrow(), at, len))
-    }
-}
-
 /// The `view` cell a Plugin serves and the region it holds: the head
 /// of every Plugin over a region of `/self/dev`, whose own state then
 /// holds none of the Client's and is free at every op.
 #[derive(Debug, Default)]
 pub struct Surface {
     region: OnceCell<Region>,
-    frames: Frames,
+    frames: RefCell<Vec<u8>>,
 }
 
 impl Surface {
@@ -537,12 +499,29 @@ impl Surface {
         self.region.get().ok_or(Error::Closed)
     }
 
-    /// The `view` cell read, as [`Frames::read`].
+    /// The `Driver::read` of the `view` cell: one whole read is one
+    /// frame. The read at 0 runs `frame` and keeps what it answered;
+    /// every read past those bytes serves their tail, so the reader
+    /// gets one View and then the empty read that ends it.
     pub fn read<F>(&self, at: u64, len: usize, frame: F) -> Reply<Vec<u8>>
     where
         F: FnOnce() -> Result<Vec<u8>, Error>,
     {
-        self.frames.read(at, len, frame)
+        self.framed(at, len, frame).into()
+    }
+
+    fn framed<F>(&self, at: u64, len: usize, frame: F) -> Result<Vec<u8>, Error>
+    where
+        F: FnOnce() -> Result<Vec<u8>, Error>,
+    {
+        if at == 0 {
+            // The borrow is taken only once the frame has answered: a
+            // frame reads cells of its own and may not find this one
+            // held.
+            let shown = frame()?;
+            *self.frames.borrow_mut() = shown;
+        }
+        Ok(part(&self.frames.borrow(), at, len))
     }
 }
 

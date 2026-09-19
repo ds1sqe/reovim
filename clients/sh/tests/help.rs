@@ -4,7 +4,7 @@
 //! no Module of its own, so `/self/bin` holds the two the Host serves
 //! and every other name resolves at the server's `/bin`.
 
-use reovim_client_sh::{Shell, complete, run};
+use reovim_client_sh::{Shell, complete};
 use reovim_kernel_interface::{
     Calls, Decl, DriverId, Flags, Method, Rights, Ty,
 };
@@ -12,13 +12,8 @@ use reovim_rig::Rig;
 use reovim_sdk::cell;
 use reovim_sdk::walk::ROOT;
 
-/// One typed line; its output, or the line a Miss would print.
-fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
-    match run(ctx, shell, line) {
-        Ok(ran) => String::from_utf8(ran.out).unwrap(),
-        Err(miss) => miss.to_string(),
-    }
-}
+mod common;
+use common::typed;
 
 #[test]
 fn help_is_the_builtins_and_then_one_line_per_name_under_path() {

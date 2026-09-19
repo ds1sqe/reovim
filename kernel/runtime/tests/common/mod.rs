@@ -65,7 +65,7 @@ pub fn written(kernel: &Kernel) -> Vec<(String, u8, String)> {
 /// A Kernel with one Module loaded and one caller of its own.
 pub struct Rig {
     pub kernel: Kernel,
-    pub module: ModuleId,
+    module: ModuleId,
     pub caller: Caller,
     seq: Cell<u64>,
     cursor: Cell<u64>,

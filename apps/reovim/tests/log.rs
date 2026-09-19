@@ -16,7 +16,7 @@ fn the_log_file_holds_every_entry() {
     assert!(first.contains(" kernel 6 connect session="), "{first}");
 
     let made = server.out(&["call", "/module/fs/root", "create", "made"]);
-    assert!(made.trim().parse::<u64>().is_ok(), "{made}");
+    assert!(made.trim().parse::<u64>().unwrap() > 0, "an rd: {made}");
     // The cli's link, from its connect to the disconnect its end
     // writes; the `call` pair the op made is measurement, kept at
     // `debug`, so it is not here.

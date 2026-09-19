@@ -174,7 +174,7 @@ uptime\nwatch"
     );
     for name in ["coreutils", "sysutils"] {
         let rd = server.rd(&format!("/module/{name}"));
-        assert!(rd.parse::<u64>().is_ok(), "{rd}");
+        assert!(rd.parse::<u64>().unwrap() > 0, "an rd: {rd}");
         assert_eq!(
             server.cli(&["unload", name], b"").unwrap_err(),
             format!("reovim: unload {name}: denied\n")
@@ -220,7 +220,7 @@ fn a_bad_call_fails_before_anything_is_sent() {
         "the Driver refuses a slash"
     );
     let made = server.line(&["call", "/module/fs/root", "create", "made"]);
-    assert!(made.parse::<u64>().is_ok(), "an rd: {made}");
+    assert!(made.parse::<u64>().unwrap() > 0, "an rd: {made}");
     assert!(server.dir.join("made").exists());
 }
 
@@ -235,7 +235,7 @@ fn a_cli_run_takes_its_session_with_it() {
     }
     let listed = server.sessions(1);
     assert_eq!(listed.len(), 1, "ten runs left {listed:?}");
-    assert!(listed[0].parse::<u64>().is_ok(), "a Session id: {listed:?}");
+    assert!(listed[0].parse::<u64>().unwrap() > 0, "a Session: {listed:?}");
 
     // A watcher in a run of its own, which the listing shows once it
     // has connected; then one more run for it to watch.

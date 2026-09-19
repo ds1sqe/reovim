@@ -64,9 +64,9 @@ pub struct Link {
 /// The tree a Client reaches: its credential, its Session and its
 /// client rd, with the seven ops and the helpers above them.
 ///
-/// This is what a `Plugin` is handed: everything the tree offers, and
-/// nothing of the Client's own, the watch cursor above all, which one
-/// reader drains for every Plugin at once.
+/// The app holds this; a Plugin never sees it. A Plugin is handed
+/// `Calls`, which a `Host` makes over this tree and the Client's own
+/// under `/self`, and the watch cursor stays with its one reader.
 pub struct Tree {
     carrier: Box<dyn Carrier>,
     endpoint: Endpoint,

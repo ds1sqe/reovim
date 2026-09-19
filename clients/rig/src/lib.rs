@@ -24,4 +24,4 @@ pub use reovim_kernel_runtime::Limits;
 #[cfg(feature = "std")]
 pub use rig::Rig;
 #[cfg(feature = "std")]
-pub use stub::{Seen, Stub, Typed, buffer_over, shown};
+pub use stub::{Seen, Stub, buffer_over, shown};

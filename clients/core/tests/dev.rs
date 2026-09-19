@@ -10,17 +10,16 @@
 //! The rig's own stub shows a Buffer and does no more; these cases
 //! script what a Plugin asks for, so the stub here has a queue.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
 use reovim_client::{Client, Clip, Host, HostCalls, ROOT, SELF, bin, log};
-use reovim_client_api::{Frames, Key, NONE, Region, keyboard, open, window};
+use reovim_client_api::{Key, NONE, Region, Surface, keyboard, open, window};
 use reovim_host::clock;
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Flags, Handle, Kind, Module, Rd,
-    Reply, Rights,
+    Booted, Calls, Driver, Error, Handle, Kind, Module, Rd, Reply, Rights,
 };
 use reovim_rig::bins::said;
 use reovim_rig::{Rig, screen, shown};
@@ -61,9 +60,8 @@ struct Script {
 #[derive(Default)]
 struct Held {
     script: RefCell<Script>,
-    /// The cells of `/self/dev`, found once at `start`.
-    region: OnceCell<Region>,
-    view: Frames,
+    /// The `view` cell it serves and the cells of `/self/dev`.
+    surface: Surface,
 }
 
 /// A Plugin of scripted calls. The state is shared, so a test writes
@@ -114,7 +112,7 @@ impl Stub {
 
     /// The cells of `/self/dev` it holds.
     fn region(&self) -> &Region {
-        self.0.region.get().unwrap()
+        self.0.surface.region().unwrap()
     }
 
     /// One frame: every key it has not taken, then the act it was
@@ -145,12 +143,10 @@ impl Stub {
 
 impl Module for Stub {
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = ctx.register(DriverId(0), home, Some("view"))?;
-        ctx.report(view, Flags::READ, &[])?;
-        let region = Region::of(ctx)?;
+        let view = self.0.surface.start(ctx, home)?;
+        let region = self.region();
         let (ask, dir) = (region.ask(ctx)?, region.cwd(ctx)?);
         let size = region.size(ctx)?;
-        let _ = self.0.region.set(region);
         let script = &mut *self.0.script.borrow_mut();
         script.view = Some(view);
         (script.ask, script.dir) = (Some(ask), dir);
@@ -171,7 +167,7 @@ impl Driver for Stub {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.0.view.read(at, len, || self.framed(ctx))
+        self.0.surface.read(at, len, || self.framed(ctx))
     }
 }
 

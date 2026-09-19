@@ -3,17 +3,12 @@
 //! `cat`. What a write of a parameter does is
 //! kernel/runtime/tests/sys.rs's.
 
-use reovim_client_sh::{Shell, run};
+use reovim_client_sh::Shell;
 use reovim_kernel_interface::Calls;
 use reovim_rig::Rig;
 
-/// One typed line; its output, or the line a Miss would print.
-fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
-    match run(ctx, shell, line) {
-        Ok(ran) => String::from_utf8(ran.out).unwrap(),
-        Err(miss) => miss.to_string(),
-    }
-}
+mod common;
+use common::typed;
 
 #[test]
 fn a_parameter_is_a_file_under_sys_limit() {

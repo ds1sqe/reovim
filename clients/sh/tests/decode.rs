@@ -3,7 +3,7 @@
 //! each answers with holds the same bytes. The declaration is the whole
 //! of what the shell reads, so this is the rule and nothing else.
 
-use reovim_client_sh::{Shell, run};
+use reovim_client_sh::Shell;
 use reovim_kernel_interface::{Calls, Rd, Rights};
 use reovim_module_coreutils::bins::ls;
 use reovim_rig::Rig;
@@ -11,14 +11,8 @@ use reovim_sdk::dynamic::Value;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
-/// One typed line from where `shell` stands; its output, or the line a
-/// Miss would print.
-fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
-    match run(ctx, shell, line) {
-        Ok(ran) => String::from_utf8(ran.out).unwrap(),
-        Err(miss) => miss.to_string(),
-    }
-}
+mod common;
+use common::typed;
 
 /// `call /bin/<name> run <bytes>`, its output cell read at an offset to
 /// the empty read that ends it and closed, which is how a shell reads

@@ -10,20 +10,19 @@
 //! the nvim corpus in plugins/vim judges that; the region's swap is
 //! `dev`'s, and clients/core/tests/dev.rs judges that.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client::{Client, Host, ROOT};
 use reovim_client_api::{
-    BAR, BLOCK, BLUE, Frames, GREEN, Key, MATCH, NONE, RED, Region, SELECTION,
+    BAR, BLOCK, BLUE, GREEN, Key, MATCH, NONE, RED, Region, SELECTION, Surface,
     count, display, open, window,
 };
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Flags, Handle, Module, Rd, Reply,
-    Rights,
+    Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,
 };
 use reovim_rig::{Limits, Rig, buffer_over, shown};
 use reovim_sdk::{cell, decode, encode, ops};
@@ -83,9 +82,8 @@ impl Script {
 #[derive(Default)]
 struct Held {
     script: RefCell<Script>,
-    /// The cells of `/self/dev`, found once at `start`.
-    region: OnceCell<Region>,
-    view: Frames,
+    /// The `view` cell it serves and the cells of `/self/dev`.
+    surface: Surface,
 }
 
 /// A Plugin of scripted calls. The state is shared, so a test writes
@@ -125,7 +123,7 @@ impl Stub {
 
     /// The cells of `/self/dev` it holds.
     fn region(&self) -> &Region {
-        self.0.region.get().unwrap()
+        self.0.surface.region().unwrap()
     }
 
     /// That View over the Buffer the stub shows: a Plugin names the rd
@@ -200,14 +198,11 @@ impl Stub {
 
 impl Module for Stub {
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = ctx.register(DriverId(0), home, Some("view"))?;
-        ctx.report(view, Flags::READ, &[])?;
-        let region = Region::of(ctx)?;
-        let ask = region.ask(ctx)?;
+        self.0.surface.start(ctx, home)?;
+        let ask = self.region().ask(ctx)?;
         let source = (ask.target != NONE).then_some(ask.target);
         let buffer = buffer_over(ctx, source)?;
         let h = ctx.open(buffer, Rights::READ.union(Rights::WRITE))?;
-        let _ = self.0.region.set(region);
         let script = &mut *self.0.script.borrow_mut();
         script.ask = Some(ask);
         (script.buffer, script.shows) = (Some(buffer), Some(buffer));
@@ -228,7 +223,7 @@ impl Driver for Stub {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.0.view.read(at, len, || self.framed(ctx))
+        self.0.surface.read(at, len, || self.framed(ctx))
     }
 }
 

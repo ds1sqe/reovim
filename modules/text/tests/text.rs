@@ -1,7 +1,6 @@
 //! Both Drivers in one Kernel: walkthrough 1 of 03-walkthroughs.md, a
 //! text Buffer over a fs file.
 
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use reovim_host::clock;
@@ -12,23 +11,8 @@ use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 use reovim_module_text::{Text, history, open, publish, text};
 use reovim_sdk::{decode, encode};
 
-/// A directory of its own for one test, removed on drop.
-struct Dir(PathBuf);
-
-impl Dir {
-    fn new(test: &str) -> Self {
-        let name = format!("reovim-text-{}-{test}", std::process::id());
-        let path = std::env::temp_dir().join(name);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+mod common;
+use common::Dir;
 
 struct Rig {
     dir: Dir,

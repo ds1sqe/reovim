@@ -11,9 +11,5 @@ publish = false
 [dependencies]
 reovim-kernel-interface = { path = "../interface" }
 
-[features]
-default = []
-std = []
-
 [lints]
 workspace = true

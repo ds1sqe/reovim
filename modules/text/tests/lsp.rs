@@ -3,7 +3,6 @@
 //! someone typed; the coordinator reports what applied.
 
 use std::cell::{Cell, RefCell};
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use reovim_host::clock;
@@ -15,22 +14,8 @@ use reovim_kernel_runtime::{Heap, Kernel, Limits, ROOT};
 use reovim_module_text::{history, open, text};
 use reovim_sdk::{declare, decode, encode};
 
-struct Dir(PathBuf);
-
-impl Dir {
-    fn new() -> Self {
-        let name = format!("reovim-lsp-{}", std::process::id());
-        let path = std::env::temp_dir().join(name);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+mod common;
+use common::Dir;
 
 declare! {
     api lsp ver 1 {
@@ -213,7 +198,7 @@ impl Rig {
 
 #[test]
 fn rename_across_five_buffers_reports_the_stale_one() {
-    let dir = Dir::new();
+    let dir = Dir::new("lsp");
     let kernel = Kernel::new(clock::now, Heap::default, Limits::default());
     let load = |name: &str, booted: Booted| {
         kernel.load(name, booted.module, booted.drivers).unwrap();

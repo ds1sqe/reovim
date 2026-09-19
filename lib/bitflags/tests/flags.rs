@@ -14,22 +14,16 @@ fn flags_preserve_grant_relations() {
     assert_eq!(Access::READ | Access::WRITE, Access::EDIT);
     assert!(Access::EDIT.contains(Access::READ));
     assert!(!Access::READ.contains(Access::EDIT));
-    assert!(!Access::EDIT.intersects(Access::WATCH));
-    assert_eq!(Access::EDIT & Access::READ, Access::READ);
-    assert_eq!(Access::EDIT.difference(Access::READ), Access::WRITE);
-    assert_eq!(!Access::EDIT, Access::WATCH);
     assert_eq!(Access::empty() | Access::READ, Access::READ);
     assert!(Access::empty().is_empty());
-    let mut grants = Access::READ;
-    grants |= Access::WRITE;
-    grants &= Access::WRITE;
-    assert_eq!(grants, Access::WRITE);
 }
 
 #[test]
 fn raw_bits_must_belong_to_the_declared_domain() {
     assert_eq!(Access::from_bits(Access::EDIT.bits()), Some(Access::EDIT));
     assert_eq!(Access::from_bits(0), Some(Access::empty()));
+    // The declared bits need not run on: 8 belongs, 4 does not.
+    assert_eq!(Access::from_bits(Access::WATCH.bits()), Some(Access::WATCH));
     assert_eq!(Access::from_bits(4), None);
     assert_eq!(Access::from_bits(Access::READ.bits() | 4), None);
 }

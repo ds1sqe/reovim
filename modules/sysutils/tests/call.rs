@@ -57,7 +57,7 @@ fn a_run_answers_what_the_method_answered() {
     let cell = run(&mut client, "call", &new).unwrap();
     let other = drain(&mut client, cell);
     assert_ne!(made, other);
-    assert!(other.trim_end().parse::<u64>().is_ok(), "an rd: {other}");
+    assert!(other.trim_end().parse::<u64>().unwrap() > 0, "an rd: {other}");
 
     // An argument the declaration takes, and a relative target walked
     // from the `cwd` the run was given.
@@ -66,7 +66,7 @@ fn a_run_answers_what_the_method_answered() {
         Args { cwd: root, arg: "made".to_string(), ..args(".", "create") };
     let cell = run(&mut client, "call", &create).unwrap();
     let rd = drain(&mut client, cell);
-    assert!(rd.trim_end().parse::<u64>().is_ok(), "an rd: {rd}");
+    assert!(rd.trim_end().parse::<u64>().unwrap() > 0, "an rd: {rd}");
     assert!(rig.dir().join("made").exists());
 }
 

@@ -14,7 +14,6 @@
 /// let access = Access::READ | Access::WRITE;
 /// assert!(access.contains(Access::READ));
 /// assert_eq!(Access::from_bits(4), None);
-/// assert_eq!(!Access::READ, Access::WRITE);
 /// ```
 /// Distinct flag domains cannot be combined:
 /// ```compile_fail
@@ -43,14 +42,12 @@ macro_rules! rv_bitflags {
             pub const fn empty() -> Self { Self(0) }
 
             #[must_use]
-            pub const fn all() -> Self { Self(0 $(| Self::$flag.0)+) }
-
-            #[must_use]
             pub const fn bits(self) -> $repr { self.0 }
 
             #[must_use]
             pub const fn from_bits(bits: $repr) -> Option<Self> {
-                if bits & !Self::all().0 == 0 { Some(Self(bits)) } else { None }
+                let known = 0 $(| Self::$flag.0)+;
+                if bits & !known == 0 { Some(Self(bits)) } else { None }
             }
 
             #[must_use]
@@ -62,51 +59,14 @@ macro_rules! rv_bitflags {
             }
 
             #[must_use]
-            pub const fn intersects(self, other: Self) -> bool {
-                self.0 & other.0 != 0
-            }
-
-            #[must_use]
             pub const fn union(self, other: Self) -> Self {
                 Self(self.0 | other.0)
-            }
-
-            #[must_use]
-            pub const fn intersection(self, other: Self) -> Self {
-                Self(self.0 & other.0)
-            }
-
-            #[must_use]
-            pub const fn difference(self, other: Self) -> Self {
-                Self(self.0 & !other.0)
             }
         }
 
         impl core::ops::BitOr for $name {
             type Output = Self;
             fn bitor(self, other: Self) -> Self { self.union(other) }
-        }
-
-        impl core::ops::BitAnd for $name {
-            type Output = Self;
-            fn bitand(self, other: Self) -> Self { self.intersection(other) }
-        }
-
-        impl core::ops::BitOrAssign for $name {
-            fn bitor_assign(&mut self, other: Self) {
-                *self = self.union(other);
-            }
-        }
-
-        impl core::ops::BitAndAssign for $name {
-            fn bitand_assign(&mut self, other: Self) {
-                *self = self.intersection(other);
-            }
-        }
-
-        impl core::ops::Not for $name {
-            type Output = Self;
-            fn not(self) -> Self { Self::all().difference(self) }
         }
     };
 }

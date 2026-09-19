@@ -3,20 +3,14 @@
 //! `load` and `unload` are runs now, Drivers of the Client's own under
 //! `/self/bin`, so they are here as any name under PATH is.
 
-use reovim_client_sh::{Shell, run};
+use reovim_client_sh::Shell;
 use reovim_kernel_interface::Calls;
 use reovim_rig::Rig;
 use reovim_sdk::cell;
 use reovim_sdk::walk::ROOT;
 
-/// One typed line from where `shell` stands; its output, or the line a
-/// Miss would print. `cd` moves `shell`, as it does for a host.
-fn typed(ctx: &dyn Calls, shell: &mut Shell, line: &str) -> String {
-    match run(ctx, shell, line) {
-        Ok(ran) => String::from_utf8(ran.out).unwrap(),
-        Err(miss) => miss.to_string(),
-    }
-}
+mod common;
+use common::typed;
 
 #[test]
 fn cd_moves_the_line_and_pwd_says_where_it_stands() {

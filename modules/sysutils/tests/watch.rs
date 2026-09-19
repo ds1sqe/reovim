@@ -38,7 +38,7 @@ fn a_run_says_what_happened_under_a_container() {
     let line = said.lines().find(|line| line.contains("Create")).unwrap();
     let words: Vec<&str> = line.split(' ').collect();
     assert_eq!((words[1], words[2]), ("Create", "made"), "{said}");
-    assert!(words[0].parse::<u64>().is_ok(), "{said}");
+    assert!(words[0].parse::<u64>().unwrap() > 0, "a seq: {said}");
     assert!(!said.contains("Attrib"), "the backlog is not ours: {said}");
 }
 

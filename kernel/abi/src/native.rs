@@ -303,7 +303,11 @@ impl Module for Native {
         let k = table_of(&h);
         // SAFETY: `k` lives for this call, as reovim.h says.
         let r = unsafe { start(table.ctx, &raw const k, home.0) };
-        reply(r, |_| Ok(())).into_result()
+        // A start cannot wait: there is no token for the loader to ask.
+        match reply(r, |_| Ok(())) {
+            Reply::Ready(result) => result,
+            Reply::Pending(_) => Err(Error::Invalid),
+        }
     }
 
     fn stop(&self) {
@@ -312,19 +316,6 @@ impl Module for Native {
         if let Some(stop) = table.stop {
             // SAFETY: as `start`.
             unsafe { stop(table.ctx) };
-        }
-    }
-}
-
-trait IntoResult<T> {
-    fn into_result(self) -> Result<T, Error>;
-}
-
-impl<T> IntoResult<T> for Reply<T> {
-    fn into_result(self) -> Result<T, Error> {
-        match self {
-            Self::Ready(result) => result,
-            Self::Pending(_) => Err(Error::Invalid),
         }
     }
 }
