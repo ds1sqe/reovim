@@ -1,6 +1,11 @@
 //! The two sides of the contract: what a Driver answers and what a
 //! Module may ask the Kernel. Seven slots, seven calls, never more.
+//!
+//! With them the checks a tree makes before a slot and the two cuts a
+//! cell's bytes take, which the Kernel and a Client's Host spell one
+//! way and not two.
 
+use alloc::collections::BTreeMap;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 
@@ -10,6 +15,7 @@ use crate::types::{
     DriverId, Error, Flags, Handle, Hash, Kind, Outcome, Rd, Reply, Rights,
     Token,
 };
+use crate::value;
 
 /// The fixed ops one Driver serves. Every slot defaults to `Unsupported`,
 /// so a Driver leaves a slot empty by not writing it.
@@ -96,6 +102,76 @@ pub trait Driver {
     fn close(&self, ctx: &dyn Calls, h: u64) -> Reply<()> {
         Reply::err(Error::Unsupported)
     }
+}
+
+/// The rd's flags cap the asked rights; asking nothing is `Denied` too.
+#[must_use]
+pub fn allows(flags: Flags, rights: Rights) -> bool {
+    !rights.is_empty()
+        && Flags::from_bits(rights.bits())
+            .is_some_and(|asked| flags.contains(asked))
+}
+
+/// What a tree checks before [`Driver::call`], which is written
+/// trusting it: the rd offers the api, the declaration has the method,
+/// the handle holds its right, the input fits.
+///
+/// # Errors
+/// `Unsupported` for an api the rd does not offer or a method the
+/// declaration has not, `Denied` for a right the handle lacks,
+/// `Invalid` for an input that is not one value of the method's type.
+pub fn check_call(
+    rights: Rights,
+    offered: &[Hash],
+    decls: &BTreeMap<Hash, Decl>,
+    api: Hash,
+    method: u16,
+    input: &[u8],
+) -> Result<(), Error> {
+    if !offered.contains(&api) {
+        return Err(Error::Unsupported);
+    }
+    let decl = decls.get(&api).ok_or(Error::Unsupported)?;
+    let method = decl.method(method).ok_or(Error::Unsupported)?;
+    if !rights.contains(method.right) {
+        return Err(Error::Denied);
+    }
+    if !value::fits(input, &method.input) {
+        return Err(Error::Invalid);
+    }
+    Ok(())
+}
+
+/// Up to `len` bytes of `bytes` from `at`, or as many as there are:
+/// what a cell answers a read at an offset with.
+#[must_use]
+pub fn part(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
+    let start = usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
+    let end = start.saturating_add(len).min(bytes.len());
+    bytes[start..end].to_vec()
+}
+
+/// `draft` with its `len` bytes from `at` replaced by `text`: what a
+/// cell takes a write at an offset as.
+///
+/// # Errors
+/// `Invalid` when that range is not inside `draft`.
+pub fn spliced(
+    draft: &[u8],
+    at: u64,
+    len: u64,
+    text: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let at = usize::try_from(at).map_err(|_| Error::Invalid)?;
+    let len = usize::try_from(len).map_err(|_| Error::Invalid)?;
+    let end = at.checked_add(len).ok_or(Error::Invalid)?;
+    if end > draft.len() {
+        return Err(Error::Invalid);
+    }
+    let mut out = draft[..at].to_vec();
+    out.extend_from_slice(text);
+    out.extend_from_slice(&draft[end..]);
+    Ok(out)
 }
 
 /// What a Module may ask the Kernel. The Kernel builds one per Module,

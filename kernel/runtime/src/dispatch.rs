@@ -4,8 +4,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Caller, Error, Flags, Handle, Hash, ModuleId, Op, Out, Rd, Reply, Rights,
-    Token, value,
+    Caller, Error, Handle, Hash, ModuleId, Op, Out, Rd, Reply, Rights, Token,
+    allows, check_call, part,
 };
 
 use reovim_kernel_interface::Kind;
@@ -329,7 +329,11 @@ fn call(
     input: &[u8],
 ) -> Answer {
     let slot = k.slot(caller, h, Rights::empty())?;
-    check_call(&k.state.borrow(), &slot, api, method, input)?;
+    {
+        let s = k.state.borrow();
+        let offered = &s.table.get(slot.rd)?.apis;
+        check_call(slot.rights, offered, &s.decls, api, method, input)?;
+    }
     room(k, &slot)?;
     let (module, index) = slot.served.ok_or(Error::Unsupported)?;
     let measure = k.logs(DEBUG).then(|| (k.now(), k.heap().live));
@@ -428,13 +432,6 @@ fn children(k: &Kernel, rd: Rd) -> Answer {
     Ok(Reply::ok(Out::Rds(children)))
 }
 
-/// The rd's flags cap the asked rights; asking nothing is `Denied` too.
-fn allows(flags: Flags, rights: Rights) -> bool {
-    !rights.is_empty()
-        && Flags::from_bits(rights.bits())
-            .is_some_and(|asked| flags.contains(asked))
-}
-
 /// `Busy` when the handle is at its Pending cap.
 fn room(k: &Kernel, slot: &Slot) -> Result<(), Error> {
     if slot.pending >= k.limits().pending_per_handle {
@@ -442,28 +439,6 @@ fn room(k: &Kernel, slot: &Slot) -> Result<(), Error> {
     } else {
         Ok(())
     }
-}
-
-fn check_call(
-    s: &State,
-    slot: &Slot,
-    api: Hash,
-    method: u16,
-    input: &[u8],
-) -> Result<(), Error> {
-    let entry = s.table.get(slot.rd)?;
-    if !entry.apis.contains(&api) {
-        return Err(Error::Unsupported);
-    }
-    let decl = s.decls.get(&api).ok_or(Error::Unsupported)?;
-    let method = decl.method(method).ok_or(Error::Unsupported)?;
-    if !slot.rights.contains(method.right) {
-        return Err(Error::Denied);
-    }
-    if !value::fits(input, &method.input) {
-        return Err(Error::Invalid);
-    }
-    Ok(())
 }
 
 /// Turn a slot's answer into the caller's: a Pending token is scoped by
@@ -559,13 +534,6 @@ fn kernel_read(
         }
         Node::Container | Node::Home(_) => Err(Error::Unsupported),
     }
-}
-
-/// Up to `len` bytes from `at`, or as many as there are.
-fn part(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
-    let start = usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
-    let end = start.saturating_add(len).min(bytes.len());
-    bytes[start..end].to_vec()
 }
 
 /// The Kernel-served writes: a log entry, marked by the caller, a

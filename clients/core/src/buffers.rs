@@ -28,7 +28,7 @@ use core::cell::RefCell;
 use reovim_client_api::{buffers, draft, part};
 use reovim_kernel_interface::{
     Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind, Rd, Reply,
-    Rights,
+    Rights, spliced,
 };
 use reovim_sdk::{cell, encode, ops};
 use reovim_text_api::{history, open as text_open, publish, text};
@@ -598,24 +598,4 @@ fn sent(
 ) -> Result<(), Error> {
     let many = text::Many { expected, edits: edits.to_vec() };
     text::Call(&mut ctx, h).replace_many(many)
-}
-
-/// `draft` with its `len` bytes from `at` replaced by `text`, as
-/// modules/text splices a Buffer.
-fn spliced(
-    draft: &[u8],
-    at: u64,
-    len: u64,
-    text: &[u8],
-) -> Result<Vec<u8>, Error> {
-    let at = usize::try_from(at).map_err(|_| Error::Invalid)?;
-    let len = usize::try_from(len).map_err(|_| Error::Invalid)?;
-    let end = at.checked_add(len).ok_or(Error::Invalid)?;
-    if end > draft.len() {
-        return Err(Error::Invalid);
-    }
-    let mut out = draft[..at].to_vec();
-    out.extend_from_slice(text);
-    out.extend_from_slice(&draft[end..]);
-    Ok(out)
 }

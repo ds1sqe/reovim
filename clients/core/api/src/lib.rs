@@ -525,14 +525,9 @@ pub fn drafted(mut ctx: &dyn Calls, source: Option<Rd>) -> Result<Rd, Error> {
     draft
 }
 
-/// Up to `len` bytes of `bytes` from `at`, or as many as there are:
-/// what a cell answers a read at an offset with.
-#[must_use]
-pub fn part(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
-    let start = usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
-    let end = start.saturating_add(len).min(bytes.len());
-    bytes[start..end].to_vec()
-}
+/// Up to `len` bytes of `bytes` from `at`, which is how a Plugin's own
+/// cell answers a read; the Kernel's, so it is one and not two.
+pub use reovim_kernel_interface::part;
 
 /// A count the Client gave, as far as this machine counts.
 #[must_use]

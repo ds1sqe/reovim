@@ -19,7 +19,7 @@ use core::cell::RefCell;
 
 use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind,
-    Module, Op, Out, Rd, Reply, Rights,
+    Module, Op, Out, Rd, Reply, Rights, part, spliced,
 };
 pub use reovim_text_api::{history, open, publish, text};
 
@@ -109,32 +109,6 @@ fn store(ctx: &dyn Calls, source: Rd, draft: &[u8]) -> Result<(), Error> {
         Out::Len(n) if usize::try_from(n) == Ok(draft.len()) => Ok(()),
         _ => Err(Error::Busy),
     }
-}
-
-/// `len` bytes of `bytes` from `at`; none past the end.
-fn slice(bytes: &[u8], at: u64, len: usize) -> Vec<u8> {
-    let start = usize::try_from(at).unwrap_or(usize::MAX).min(bytes.len());
-    let end = start.saturating_add(len).min(bytes.len());
-    bytes[start..end].to_vec()
-}
-
-/// `draft` with its `len` bytes from `at` replaced by `text`.
-fn spliced(
-    draft: &[u8],
-    at: u64,
-    len: u64,
-    text: &[u8],
-) -> Result<Vec<u8>, Error> {
-    let at = usize::try_from(at).map_err(|_| Error::Invalid)?;
-    let len = usize::try_from(len).map_err(|_| Error::Invalid)?;
-    let end = at.checked_add(len).ok_or(Error::Invalid)?;
-    if end > draft.len() {
-        return Err(Error::Invalid);
-    }
-    let mut out = draft[..at].to_vec();
-    out.extend_from_slice(text);
-    out.extend_from_slice(&draft[end..]);
-    Ok(out)
 }
 
 /// `many`'s edits on one copy of the draft as one state, once the head
@@ -258,10 +232,10 @@ impl Text {
         let state = self.state.borrow();
         match state.nodes.get(&rd) {
             Some(Node::Buffer { history, .. }) => {
-                Ok(slice(history.draft(), at, len))
+                Ok(part(history.draft(), at, len))
             }
             Some(Node::Pointer(source)) => {
-                Ok(slice(&reovim_sdk::encode(source), at, len))
+                Ok(part(&reovim_sdk::encode(source), at, len))
             }
             _ => Err(Error::Unsupported),
         }

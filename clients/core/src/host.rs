@@ -23,10 +23,9 @@ use core::cell::{Cell, RefCell, RefMut};
 
 use reovim_kernel_interface::{
     Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash, Info,
-    Kind, Module, ModuleId, Op, Out, Outcome, Rd, Reply, Rights, Token, value,
+    Kind, Module, ModuleId, Op, Out, Outcome, Rd, Reply, Rights, Token, allows,
+    check_call, part,
 };
-
-use reovim_client_api::part;
 
 use crate::client::{Client, ROOT};
 use crate::fault::Fault;
@@ -985,7 +984,11 @@ fn call(
         return host.sent(Op::Call { h, api, method, input });
     }
     let (slot, owner) = held(host, h, Rights::empty())?;
-    check_call(&host.state.borrow(), &slot, api, method, &input)?;
+    {
+        let s = host.state.borrow();
+        let node = s.nodes.get(&slot.rd).ok_or(Error::Gone)?;
+        check_call(slot.rights, &node.apis, &s.decls, api, method, &input)?;
+    }
     let Owner::Driver { module, driver } = owner else {
         return Err(Error::Unsupported);
     };
@@ -993,28 +996,6 @@ fn call(
     let calls = host.calls(module);
     let out = ready(d.call(&calls, slot.cookie, api, method, &input))?;
     Ok(Out::Bytes(out))
-}
-
-fn check_call(
-    s: &State,
-    slot: &Slot,
-    api: Hash,
-    method: u16,
-    input: &[u8],
-) -> Result<(), Error> {
-    let node = s.nodes.get(&slot.rd).ok_or(Error::Gone)?;
-    if !node.apis.contains(&api) {
-        return Err(Error::Unsupported);
-    }
-    let decl = s.decls.get(&api).ok_or(Error::Unsupported)?;
-    let method = decl.method(method).ok_or(Error::Unsupported)?;
-    if !slot.rights.contains(method.right) {
-        return Err(Error::Denied);
-    }
-    if !value::fits(input, &method.input) {
-        return Err(Error::Invalid);
-    }
-    Ok(())
 }
 
 fn watch(host: &Host, h: Handle, on: bool) -> Answer {
@@ -1078,13 +1059,6 @@ fn held(host: &Host, h: Handle, need: Rights) -> Result<(Slot, Owner), Error> {
         return Err(Error::Denied);
     }
     Ok((slot, owner))
-}
-
-/// The rd's flags cap the asked rights; asking nothing is `Denied` too.
-fn allows(flags: Flags, rights: Rights) -> bool {
-    !rights.is_empty()
-        && Flags::from_bits(rights.bits())
-            .is_some_and(|asked| flags.contains(asked))
 }
 
 /// A local Driver's answer. `Pending` is `Invalid`: nothing is pending
