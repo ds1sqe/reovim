@@ -15,10 +15,10 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Clip, Table};
-use reovim_client::{Client, ROOT};
+use reovim_client::{Client, Host, ROOT};
 use reovim_client_api::{
     BAR, BLOCK, BLUE, Frames, GREEN, Key, MATCH, NONE, RED, Region, SELECTION,
-    open, window,
+    count, display, open, window,
 };
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::{
@@ -26,7 +26,7 @@ use reovim_kernel_interface::{
     Rights,
 };
 use reovim_rig::{Limits, Rig, buffer_over, shown};
-use reovim_sdk::{cell, encode, ops};
+use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
 
 /// What a scripted Plugin does with the next key.
@@ -244,15 +244,22 @@ const fn span(from: u64, to: u64, style: u64) -> window::Span {
 }
 
 /// The tui over `rig` with one stub Plugin for whatever the region is
-/// asked to show, opened over `file`: the tui and the stub.
-fn over(rig: &Rig, file: Option<&str>) -> (Tui, Stub) {
+/// asked to show, opened over `file`: the tui, the stub and the Host
+/// they stand on, which is what reads the cells the tui writes.
+fn hosted(rig: &Rig, file: Option<&str>) -> (Tui, Stub, Rc<Host>) {
     let stub = Stub::default();
     let one = stub.clone();
     let table: Table =
         Box::new(move |_| Some((String::from("stub"), one.booted())));
     let host = rig.host();
     let dev = dev::boot(&host, table, Clip::none(), "", file, None).unwrap();
-    (Tui::open(host, dev).unwrap(), stub)
+    (Tui::open(host.clone(), dev).unwrap(), stub, host)
+}
+
+/// As [`hosted`], for the cases that need no Host of their own.
+fn over(rig: &Rig, file: Option<&str>) -> (Tui, Stub) {
+    let (tui, stub, _) = hosted(rig, file);
+    (tui, stub)
 }
 
 /// One key, `act` what the stub does for it. The key itself is the
@@ -626,4 +633,57 @@ fn every_key_the_tui_writes_reaches_the_plugin_once_in_order() {
     }
     assert_eq!(stub.pressed(), keys, "every key, and nothing else");
     assert_eq!(tui.key(Key::Char('x')), Ok(Step::Same), "no show, no draw");
+}
+
+/// The rows of a `Screen`, each with its trailing spaces cut, as a
+/// person reading a terminal sees them.
+fn rows(screen: &display::Screen) -> Vec<String> {
+    let cols = count(screen.cols);
+    // A 0 is the second half of the wide char before it, which draws
+    // no cell of its own.
+    let drawn = |c: &u64| char::from_u32(u32::try_from(*c).ok()?);
+    let row = |cells: &[u64]| {
+        let chars = cells.iter().filter(|c| **c != 0).filter_map(drawn);
+        String::from_iter(chars).trim_end().to_string()
+    };
+    screen.cells.chunks(cols).map(row).collect()
+}
+
+#[test]
+fn the_frame_the_tui_answers_is_what_display_holds() {
+    let rig = Rig::new("display");
+    rig.file("note", "한글x\n".as_bytes());
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let ctx = host.own();
+    let at = cell::resolve(&ctx, ROOT, "/self/dev/display").unwrap();
+    let held = || -> display::Screen {
+        decode(&ops::bytes(&ctx, at).unwrap()).unwrap()
+    };
+
+    // Nothing is drawn until the app asks for a frame.
+    assert_eq!(ops::bytes(&ctx, at), Ok(Vec::new()));
+    press(&mut tui, &stub, Act::Show(view(0, "-- INSERT --"))).unwrap();
+    let frame = tui.frame(80, 24).unwrap();
+    let screen = held();
+
+    // What the terminal was asked for, and the frame it was answered.
+    assert_eq!(screen.kind, "tty");
+    assert_eq!((screen.cols, screen.rows), (80, 24));
+    let mut drawn = rows(&screen);
+    assert_eq!(drawn.pop().as_deref(), Some(frame.status.as_str()));
+    assert_eq!(drawn[..1], frame.lines, "the rows the Plugin showed");
+    assert!(drawn[1..].iter().all(String::is_empty), "{drawn:?}");
+    assert_eq!(screen.cells.len(), 80 * 24);
+    assert_eq!(screen.cells[1], 0, "the second half of a wide char");
+
+    // The cursor is the frame's own, and the count rises by a frame.
+    assert_eq!((screen.row, screen.col), (0, 0));
+    assert_eq!((screen.shape, frame.shape), (BLOCK, BLOCK));
+    let before = screen.count;
+    press(&mut tui, &stub, Act::Show(view(6, ""))).unwrap();
+    let screen = held();
+    assert_eq!(screen.count, before, "a frame nobody asked for");
+    tui.frame(80, 24).unwrap();
+    assert_eq!(held().count, before + 1);
+    assert_eq!(held().col, 4, "the x, two wide chars along");
 }

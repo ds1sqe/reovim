@@ -3,8 +3,8 @@
 //!
 //! What stays beside the case is the record its own Driver takes.
 
-use reovim_client::{Client, Error, Fault, Handle, Rd, Rights};
-use reovim_sdk::{Encode, decode, encode};
+use reovim_client::{Calls, Client, Error, Fault, Handle, Rd, Rights};
+use reovim_sdk::{Encode, decode, encode, ops};
 
 /// `call /bin/<name> run {..}`: the rd of the output cell.
 ///
@@ -76,6 +76,35 @@ pub fn so_far(client: &mut Client, h: Handle, at: u64) -> String {
         assert!(!chunk.is_empty(), "a follower is never over");
         bytes.extend(chunk);
     }
+}
+
+/// `run` of the name `rd` with `args`: the rd of the output cell.
+///
+/// Over whatever `Calls` the caller holds, which is what a Driver
+/// loaded at a Client is run through; the union is what lets a target
+/// name the other side.
+///
+/// # Errors
+/// What the call answered with.
+pub fn ran<A: Encode>(ctx: &dyn Calls, rd: Rd, args: &A) -> Result<Rd, Error> {
+    let out = ops::call_by_name(ctx, rd, "run", encode(args))?;
+    decode(&out)
+}
+
+/// That run's output cell read whole, as text.
+///
+/// # Errors
+/// As [`ran`], and what the read says.
+///
+/// # Panics
+/// When the cell holds bytes that are no text.
+pub fn said<A: Encode>(
+    ctx: &dyn Calls,
+    rd: Rd,
+    args: &A,
+) -> Result<String, Error> {
+    let held = ops::bytes(ctx, ran(ctx, rd, args)?)?;
+    Ok(String::from_utf8(held).unwrap())
 }
 
 /// The handles `/sys/core` says are watching `rd`.

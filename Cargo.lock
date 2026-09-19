@@ -161,6 +161,7 @@ dependencies = [
  "reovim-kernel-runtime",
  "reovim-module-coreutils",
  "reovim-module-fs",
+ "reovim-module-sysutils",
  "reovim-module-text",
  "reovim-rig",
  "reovim-sdk",
@@ -254,6 +255,7 @@ name = "reovim-module-sysutils"
 version = "0.16.0-dev"
 dependencies = [
  "reovim-client",
+ "reovim-client-api",
  "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
@@ -332,7 +334,6 @@ dependencies = [
  "reovim-module-fs",
  "reovim-module-sysutils",
  "reovim-module-text",
- "reovim-plugin-vim",
  "reovim-sdk",
  "reovim-text-api",
 ]

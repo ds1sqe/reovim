@@ -22,7 +22,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client::{Host, HostCalls};
-use reovim_client_api::{BAR, Key, MATCH, NONE, SELECTION, open, window};
+use reovim_client_api::{
+    BAR, Key, MATCH, NONE, SELECTION, TTY, display, open, window,
+};
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd, Rights};
 use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::history;
@@ -82,6 +84,7 @@ struct Cells {
     exit: Handle,
     ask: Handle,
     view: Handle,
+    display: Handle,
 }
 
 impl Cells {
@@ -94,6 +97,7 @@ impl Cells {
             exit: ctx.open(at("exit")?, Rights::READ)?,
             ask: ctx.open(at("windows/0/ask")?, Rights::READ)?,
             view: ctx.open(at("windows/0/view")?, Rights::READ)?,
+            display: ctx.open(at("display")?, Rights::WRITE)?,
         })
     }
 }
@@ -128,6 +132,8 @@ pub struct Tui {
     size: (u16, u16),
     /// The View, the text or the revisions moved since the last step.
     moved: bool,
+    /// How many frames it has drawn, which is what `display` counts.
+    drawn: u64,
     /// Where this Client stands in the one stream of events, which the
     /// Host numbers for both sides.
     cursor: u64,
@@ -160,6 +166,7 @@ impl Tui {
             name: String::from(UNNAMED),
             size: FIRST,
             moved: false,
+            drawn: 0,
             cursor: 0,
         };
         tui.stepped()?;
@@ -218,7 +225,47 @@ impl Tui {
             ops::write(&self.ctx(), self.cells.size, 0, encode(&size))?;
             self.stepped()?;
         }
-        Ok(self.laid_out(cols, rows))
+        let frame = self.laid_out(cols, rows);
+        self.drew(&frame, cols, rows)?;
+        Ok(frame)
+    }
+
+    /// The frame it is about to answer into `/self/dev/display`, so
+    /// that whoever reads that cell — another Client above all — sees
+    /// what this terminal shows. One write a drawn frame.
+    ///
+    /// The rows are already in the terminal's own cells, a tab its
+    /// spaces and a wide char two of them, so a cell is one char's
+    /// scalar value and the half-cell after a wide char is 0.
+    fn drew(
+        &mut self,
+        frame: &Frame,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), Error> {
+        self.drawn += 1;
+        // The status row is the last of them, so there is one row at
+        // the least however small the terminal says it is.
+        let rows = rows.max(1);
+        let (width, height) = (usize::from(cols), usize::from(rows));
+        let mut cells = Vec::with_capacity(width * height);
+        let text = frame.lines.iter().map(String::as_str);
+        for line in text.chain(core::iter::repeat("")).take(height - 1) {
+            fill(&mut cells, line, width);
+        }
+        fill(&mut cells, &frame.status, width);
+        let screen = display::Screen {
+            kind: String::from(TTY),
+            cols: u64::from(cols),
+            rows: u64::from(rows),
+            row: u64::from(frame.cursor.0),
+            col: u64::from(frame.cursor.1),
+            shape: frame.shape,
+            count: self.drawn,
+            cells,
+        };
+        ops::write(&self.ctx(), self.cells.display, 0, encode(&screen))?;
+        Ok(())
     }
 
     /// One step: the region's view read, which is the frame of the
@@ -590,6 +637,23 @@ fn shown(line: &str, width: usize) -> String {
         cell = next;
     }
     out
+}
+
+/// One row of `cells`: each char of `line` as its scalar value, a wide
+/// char followed by the 0 that is its second half, cut and padded with
+/// spaces to `cols`.
+fn fill(cells: &mut Vec<u64>, line: &str, cols: usize) {
+    let end = cells.len() + cols;
+    for c in line.chars() {
+        if cells.len() + width(c) > end {
+            break;
+        }
+        cells.push(u64::from(c));
+        if width(c) == 2 {
+            cells.push(0);
+        }
+    }
+    cells.resize(end, u64::from(' '));
 }
 
 /// The screen cell after `c` drawn at `cell`: a tab reaches the next

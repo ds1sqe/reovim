@@ -7,11 +7,39 @@ use std::rc::Rc;
 
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client::{Error, Host};
-use reovim_client_api::Key;
+use reovim_client_api::notation::keys;
+use reovim_client_api::{BLOCK, Key, display};
 use reovim_client_tui::{Frame, Step, Tui};
-use reovim_plugin_vim::notation::keys;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
+
+/// A `Screen` of `cols` by `rows` saying `lines`, each row padded
+/// with spaces to `cols` and cut there.
+///
+/// What a tui writes into `/self/dev/display` in the step it draws,
+/// for a case that has no tui. Its cursor is a block at the origin and
+/// its count is 1; a case that means another says so over this one.
+#[must_use]
+pub fn screen(cols: u64, rows: u64, lines: &[&str]) -> display::Screen {
+    let width = usize::try_from(cols).unwrap_or(usize::MAX);
+    let mut cells = Vec::new();
+    for row in 0..usize::try_from(rows).unwrap_or(usize::MAX) {
+        let end = cells.len() + width;
+        let said = lines.get(row).unwrap_or(&"");
+        cells.extend(said.chars().take(width).map(u64::from));
+        cells.resize(end, u64::from(' '));
+    }
+    display::Screen {
+        kind: String::from("tty"),
+        cols,
+        rows,
+        row: 0,
+        col: 0,
+        shape: BLOCK,
+        count: 1,
+        cells,
+    }
+}
 
 /// The tui over `host`, started in `dir` over `file` at `line`, the
 /// Plugins it opens being what `table` gives and its machine `clip`.

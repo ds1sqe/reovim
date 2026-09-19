@@ -4,7 +4,6 @@ mod common;
 
 use common::{edit, on, typed};
 use reovim_client_api::{BAR, BLOCK};
-use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit};
 
 /// The `:` line `keys` left for the Client to run: the range it read
@@ -125,26 +124,6 @@ fn a_view_keeps_the_cursor_in_the_region() {
     assert_eq!(view.shape, BAR, "insert stands between chars");
     typed(&mut vim, "<Esc>");
     assert_eq!(vim.view(2).shape, BLOCK, "every other mode is on one");
-}
-
-#[test]
-fn notation_names_the_keys_vim_names() {
-    let parsed = keys("a<Esc>:wq<CR><C-r><BS><lt>é").unwrap();
-    let expected = [
-        Key::Char('a'),
-        Key::Esc,
-        Key::Char(':'),
-        Key::Char('w'),
-        Key::Char('q'),
-        Key::Enter,
-        Key::Ctrl('r'),
-        Key::Backspace,
-        Key::Char('<'),
-        Key::Char('é'),
-    ];
-    assert_eq!(parsed, expected);
-    assert_eq!(keys("<Nope>"), None);
-    assert_eq!(keys("<C-"), None);
 }
 
 #[test]

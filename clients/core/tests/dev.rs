@@ -22,7 +22,7 @@ use reovim_kernel_interface::{
     Booted, Calls, Driver, DriverId, Error, Flags, Handle, Module, Rd, Reply,
     Rights,
 };
-use reovim_rig::{Rig, shown};
+use reovim_rig::{Rig, screen, shown};
 use reovim_sdk::{cell, decode, encode, ops};
 
 /// Bytes asked for per read of a cell of `dev`.
@@ -358,7 +358,16 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
 
     assert_eq!(
         it.names(it.rd),
-        ["buffers", "clipboard", "cwd", "exit", "input", "open", "windows"]
+        [
+            "buffers",
+            "clipboard",
+            "cwd",
+            "display",
+            "exit",
+            "input",
+            "open",
+            "windows"
+        ]
     );
     assert_eq!(it.names(it.at("windows/0")), ["ask", "size", "view"]);
     let size = it.at("windows/0/size");
@@ -658,4 +667,73 @@ fn the_exit_code_a_plugin_wrote_is_what_the_cell_holds() {
     assert_eq!(it.exit(), b"3");
     it.frame();
     assert_eq!(it.exit(), b"3", "it stays");
+}
+
+#[test]
+fn a_whole_read_of_display_is_one_frame_per_handle() {
+    let rig = Rig::new("dev-display");
+    let it = Dev::boot(&rig, none(), "", None, None);
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let display = it.at("display");
+
+    // The tui writes it whole, at 0 only, and a read gives it back.
+    let first = encode(&screen(4, 2, &["one", "two"]));
+    it.put(display, first.clone());
+    assert_eq!(it.bytes(display), first);
+    let w = ctx.open(display, Rights::WRITE).unwrap();
+    let off = ops::write(ctx, w, 1, first.clone());
+    assert_eq!(off, Err(Error::Invalid), "a frame is whole or not at all");
+    ops::shut(ctx, &[w]);
+
+    // Two handles read it at once and each sees one frame: the read at
+    // 0 is the snapshot, and the write between the chunks of the
+    // second is not in what it is still reading.
+    let reader = || ctx.open(display, Rights::READ).unwrap();
+    let (a, b) = (reader(), reader());
+    let head = ops::read(ctx, a, 0, 8).unwrap();
+    assert_eq!(ops::read(ctx, b, 0, CHUNK), Ok(first.clone()));
+    let second = encode(&screen(4, 2, &["two", "one"]));
+    it.put(display, second.clone());
+    let mut whole = head;
+    whole.extend(ops::read(ctx, a, 8, CHUNK).unwrap());
+    assert_eq!(whole, first, "the frame a began on");
+    let past = ops::read(ctx, a, first.len() as u64, CHUNK);
+    assert_eq!(past, Ok(Vec::new()), "past the bytes ends the read");
+
+    // And the read after it is the frame that stands now.
+    assert_eq!(ops::read(ctx, a, 0, CHUNK), Ok(second));
+    ops::shut(ctx, &[a, b]);
+}
+
+#[test]
+fn a_write_of_the_keyboard_is_as_many_keys_as_it_holds() {
+    let rig = Rig::new("dev-typed");
+    let it = Dev::boot(&rig, none(), "", None, None);
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let keyboard = it.at("input/keyboard");
+    let h = ctx.open(keyboard, Rights::READ).unwrap();
+
+    // Three codes in one op are three presses, in the order written.
+    let typed = [Key::Char('i'), Key::Char('x'), Key::Esc];
+    let mut codes = Vec::new();
+    for key in typed {
+        codes.extend(key.code().to_le_bytes());
+    }
+    assert_eq!(ops::put(ctx, keyboard, codes), Ok(24));
+    let taken: Vec<Key> = core::iter::from_fn(|| took(ctx, h).unwrap())
+        .filter_map(|press| Key::of(press.key))
+        .collect();
+    assert_eq!(taken, typed);
+
+    // Whole codes or none: nine bytes are no run of them and the
+    // stream is left where it was.
+    assert_eq!(
+        ops::put(ctx, keyboard, vec![0; 9]),
+        Err(Error::Invalid),
+        "half a key is no key"
+    );
+    assert_eq!(took(ctx, h).unwrap(), None, "nothing was pushed");
+    ops::shut(ctx, &[h]);
 }

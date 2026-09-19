@@ -9,6 +9,7 @@
 //!   buffers          call: the Client's own Buffers, crate::buffers
 //!   clipboard        read/write: the machine's clipboard, whole
 //!   cwd              read: where the Client stands, text
+//!   display          read/write: the Screen the Client last drew
 //!   exit             read/write: the code in decimal; empty for none
 //!   input/keyboard   read/write: the stream of presses
 //!   open             call: open(Ask), back()
@@ -34,8 +35,8 @@ use core::cell::RefCell;
 
 use reovim_client_api::{NONE, keyboard, open, part, window};
 use reovim_kernel_interface::{
-    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,
-    Rd, Reply, Rights,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind,
+    Module, Rd, Reply, Rights,
 };
 use reovim_sdk::{cell, decode, encode, ops};
 
@@ -49,6 +50,10 @@ const RING: usize = 1024;
 
 /// The size the region is taken for until something writes one.
 const FIRST: window::Size = window::Size { cols: 80, rows: 23 };
+
+/// The bytes of one key code, which a write of the keyboard is a run
+/// of.
+const KEY: usize = 8;
 
 /// The level an entry `dev` writes to `/sys/log` goes in at.
 const WARN: &str = "<4>";
@@ -113,6 +118,7 @@ impl Clip {
 enum Held {
     Clipboard,
     Cwd,
+    Display,
     Exit,
     Keyboard,
     Open,
@@ -128,6 +134,9 @@ enum Held {
 struct Slot {
     rd: Rd,
     at: u64,
+    /// For `display`, the frame this handle read at 0, which every
+    /// read past it is served from; empty for every other cell.
+    snap: Vec<u8>,
 }
 
 /// The stream of presses, and how many have fallen off its front.
@@ -178,6 +187,9 @@ struct State {
     client: Rd,
     dir: String,
     size: window::Size,
+    /// The last frame the Client drew, as `display` holds it: the
+    /// bytes of a `Screen`, whole, or none before the first one.
+    display: Vec<u8>,
     /// What the region was opened with, as `windows/0/ask` holds it.
     ask: open::Ask,
     exit: Option<u8>,
@@ -267,6 +279,7 @@ impl Dev {
             client: Rd(0),
             dir: String::from(dir),
             size: FIRST,
+            display: Vec::new(),
             ask,
             exit: None,
             asked: None,
@@ -453,16 +466,40 @@ impl Dev {
         Ok((self.table)(Want::Named(&ask.plugin)))
     }
 
-    /// One key code appended to the stream, stamped here: `when` is the
-    /// Host's clock and `source` the rd of whoever wrote it, neither of
-    /// them the writer's to say.
+    /// The key codes of one write appended to the stream, stamped
+    /// here: `when` is the Host's clock and `source` the rd of whoever
+    /// wrote it, neither of them the writer's to say. A write is any
+    /// number of codes, so a line typed from another Client is one op.
     fn typed(&self, buf: &[u8]) -> Result<usize, Error> {
-        let key: u64 = decode(buf)?;
+        // Whole codes or none: half a key is no key, so a write that
+        // is no run of them leaves the stream where it was.
+        let (codes, rest) = buf.as_chunks::<KEY>();
+        if !rest.is_empty() {
+            return Err(Error::Invalid);
+        }
         let host = self.host.upgrade().ok_or(Error::Gone)?;
+        let when = host.now();
         let mut s = self.state.borrow_mut();
         let source = s.client;
-        s.keys.push(keyboard::Press { key, when: host.now(), source });
+        for code in codes {
+            let key = u64::from_le_bytes(*code);
+            s.keys.push(keyboard::Press { key, when, source });
+        }
         Ok(buf.len())
+    }
+
+    /// One frame per handle: the read at 0 keeps what the cell holds
+    /// for this handle and every read past it is served from that, so
+    /// a whole read is one frame however many chunks it takes and
+    /// whatever was drawn between them.
+    fn framed(&self, h: u64, at: u64, len: usize) -> Result<Vec<u8>, Error> {
+        let mut s = self.state.borrow_mut();
+        if at == 0 {
+            let frame = s.display.clone();
+            s.handles.get_mut(&h).ok_or(Error::Invalid)?.snap = frame;
+        }
+        let slot = s.handles.get(&h).ok_or(Error::Invalid)?;
+        Ok(part(&slot.snap, at, len))
     }
 
     /// The code the Client leaves with, in decimal; an empty write is
@@ -492,6 +529,7 @@ impl Module for Dev {
         self.buffers.start(ctx, home)?;
         self.add(ctx, home, "clipboard", rw, Held::Clipboard)?;
         self.add(ctx, home, "cwd", read, Held::Cwd)?;
+        self.add(ctx, home, "display", rw, Held::Display)?;
         self.add(ctx, home, "exit", rw, Held::Exit)?;
         let input = self.add(ctx, home, "input", dir, Held::Dir)?;
         self.add(ctx, input, "keyboard", rw, Held::Keyboard)?;
@@ -528,7 +566,7 @@ impl Driver for Dev {
         s.next += 1;
         // A handle on the keyboard starts at the end of the stream.
         let at = s.keys.end();
-        s.handles.insert(h, Slot { rd, at });
+        s.handles.insert(h, Slot { rd, at, snap: Vec::new() });
         Reply::ok(h)
     }
 
@@ -544,12 +582,12 @@ impl Driver for Dev {
 
     fn write(
         &self,
-        _: &dyn Calls,
+        ctx: &dyn Calls,
         h: u64,
         at: u64,
         buf: &[u8],
     ) -> Reply<usize> {
-        self.writing(h, at, buf).into()
+        self.writing(ctx, h, at, buf).into()
     }
 
     fn call(
@@ -602,6 +640,7 @@ impl Dev {
             Held::View => {
                 self.viewed(ctx, at, u32::try_from(len).unwrap_or(u32::MAX))
             }
+            Held::Display => self.framed(h, at, len),
             // Each read asks the machine: the cell holds nothing.
             Held::Clipboard => Ok(part(&(self.clip.read)()?, at, len)),
             Held::Open | Held::Dir => Err(Error::Unsupported),
@@ -609,8 +648,14 @@ impl Dev {
         }
     }
 
-    fn writing(&self, h: u64, at: u64, buf: &[u8]) -> Result<usize, Error> {
-        let (held, _, _) = self.slot(h)?;
+    fn writing(
+        &self,
+        ctx: &dyn Calls,
+        h: u64,
+        at: u64,
+        buf: &[u8],
+    ) -> Result<usize, Error> {
+        let (held, rd, _) = self.slot(h)?;
         match held {
             Held::Keyboard => self.typed(buf),
             Held::Exit => self.ending(buf),
@@ -618,11 +663,20 @@ impl Dev {
                 self.state.borrow_mut().size = decode(buf)?;
                 Ok(buf.len())
             }
+            // The frame whole, at 0 only. The announcement is what a
+            // remote follower wakes on; with no handle watching, the
+            // Host keeps nothing, so a frame nobody reads costs the
+            // write and no more.
+            Held::Display if at == 0 => {
+                self.state.borrow_mut().display = buf.to_vec();
+                ctx.changed(rd, Kind::Modify)?;
+                Ok(buf.len())
+            }
             // The bytes whole, at 0 only: the machine takes no offset.
             Held::Clipboard if at == 0 => {
                 (self.clip.write)(buf).map(|()| buf.len())
             }
-            Held::Clipboard => Err(Error::Invalid),
+            Held::Clipboard | Held::Display => Err(Error::Invalid),
             _ => Err(Error::Unsupported),
         }
     }

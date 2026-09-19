@@ -3,11 +3,12 @@
 //! sysutils: the Module that provides the Drivers under `/bin` that
 //! face the Kernel itself.
 //!
-//! coreutils has the tree and its bytes; these six have what only the
-//! Kernel holds: `log` and `dmesg` read `/sys/log`, `call` runs a
+//! coreutils has the tree and its bytes; these eight have what only
+//! the Kernel holds: `log` and `dmesg` read `/sys/log`, `call` runs a
 //! method of whatever api an rd offers, `watch` says what happens to an
-//! rd, and `date` and `uptime` spell two of the facts under
-//! `/sys/info`. The shape is coreutils' own and is the sdk's
+//! rd, `date` and `uptime` spell two of the facts under `/sys/info`,
+//! and `capture` and `keys` are a person's hands on another Client's
+//! screen and keyboard. The shape is coreutils' own and is the sdk's
 //! `drivers!`.
 //!
 //! Each api is a file of `bins`. Beside them the two things more than
@@ -30,9 +31,11 @@ pub mod bins;
 mod entries;
 mod names;
 
-use bins::{call, date, dmesg, log, uptime, watch};
+use bins::{call, capture, date, dmesg, keys, log, uptime, watch};
 
-reovim_sdk::drivers!(Sysutils: log, dmesg, call, watch, date, uptime);
+reovim_sdk::drivers!(
+    Sysutils: log, dmesg, call, watch, date, uptime, capture, keys
+);
 
 /// The number the fact at `path` holds, which is the whole of what a
 /// reader under `/bin` is a wording of. The path is absolute and the

@@ -20,7 +20,6 @@ extern crate alloc;
 pub mod bins;
 mod command;
 mod motion;
-pub mod notation;
 mod object;
 mod operator;
 mod plugin;
@@ -34,7 +33,7 @@ use alloc::vec::Vec;
 
 pub use operator::Motion;
 pub use plugin::{Editor, boot};
-pub use reovim_client_api::Key;
+pub use reovim_client_api::{Key, notation};
 pub use visual::Visual;
 
 use operator::{Find, Operator};

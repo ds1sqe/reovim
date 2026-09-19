@@ -17,7 +17,9 @@ mod rig;
 mod stub;
 
 #[cfg(feature = "std")]
-pub use editor::{frame, lines, listed, opened, pressed, said, status, typed};
+pub use editor::{
+    frame, lines, listed, opened, pressed, said, screen, status, typed,
+};
 pub use reovim_kernel_runtime::Limits;
 #[cfg(feature = "std")]
 pub use rig::Rig;

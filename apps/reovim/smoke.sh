@@ -291,6 +291,34 @@ pkill -INT -f "^$BIN cli watch $watched\$"
 [[ "$(ended told)" == 0 ]] || fail "the watcher did not end on SIGINT"
 counted "$watchers"
 
+# --- a screen read and a keyboard typed from another terminal -------
+# The tui writes what it drew into `display`, so a cli in another
+# terminal prints that Client's screen: the pane itself, less the
+# cursor line the capture ends with. `keys` types a whole notation into
+# that Client's keyboard in one write, which is one tick and not seven.
+screen=/session/1/client/1/self/dev/display
+board=/session/1/client/1/self/dev/input/keyboard
+captured() {
+    "$BIN" cli capture "$screen" | head -n -1
+}
+[[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
+    || fail "the capture is not the pane: $(captured)"
+"$BIN" cli keys "$board" 'ihello<Esc>'
+shown new hello
+[[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
+    || fail "the capture after keys is not the pane: $(captured)"
+# One `u` takes the whole insert back, an insert being one revision, so
+# the file this editor writes below is what it was.
+"$BIN" cli keys "$board" u
+for ((i = 0; i < 200; i++)); do
+    [[ "$(captured)" == *hello* ]] || break
+    sleep 0.01
+done
+[[ "$(captured)" != *hello* ]] || fail "the undo did not reach the tui"
+"$BIN" cli stat /bin/keys \
+    | grep -q '0 run({cwd: Rd, target: utf8(256), notation: utf8(1024)})' \
+    || fail "keys' run takes: $("$BIN" cli stat /bin/keys)"
+
 # --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each
 # settable; a file per fact under /sys/info, each made at the read and
@@ -338,7 +366,7 @@ grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' \
 said="$("$BIN" cli uptime)"
 grep -qE '^up ([0-9]+d )?[0-9]+h [0-9]+m [0-9]+s$' <<< "$said" \
     || fail "uptime says $said"
-[[ "$("$BIN" cli ls /bin | wc -w)" == 11 ]] \
+[[ "$("$BIN" cli ls /bin | wc -w)" == 13 ]] \
     || fail "/bin holds $("$BIN" cli ls /bin)"
 "$BIN" cli stat /bin/uptime | grep -q '0 run({}) -> Rd READ' \
     || fail "uptime's run takes a field: $("$BIN" cli stat /bin/uptime)"

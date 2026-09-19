@@ -1,4 +1,8 @@
-//! Keys as Vim writes them: `ihello<Esc>:wq<CR>`.
+//! Keys as text: `ihello<Esc>:wq<CR>`.
+//!
+//! It is a spelling of [`crate::Key`] and not of any one Plugin,
+//! so it stands beside `Key`: the Vim Plugin's cases are driven with
+//! it and so is `keys`, the name that types into another Client.
 
 use alloc::vec::Vec;
 

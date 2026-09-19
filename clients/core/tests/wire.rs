@@ -8,10 +8,13 @@
 use std::rc::Rc;
 
 use reovim_client::{Calls, Clip, Host, ROOT, SELF, Table, dev};
+use reovim_client_api::{Key, keyboard};
 use reovim_kernel_interface::{
     Driver, DriverId, Error, Event, Flags, Kind, Module, Rd, Reply, Rights,
 };
-use reovim_rig::Rig;
+use reovim_module_sysutils::bins::{capture, keys};
+use reovim_rig::bins::said;
+use reovim_rig::{Rig, screen};
 use reovim_sdk::{cell, ops};
 
 /// A Client with no Plugin at all: what a region is asked to show is
@@ -192,4 +195,57 @@ fn a_change_on_a_client_reaches_a_remote_watcher_and_nobody_else() {
     assert_eq!(rig.sent(), after, "nothing crosses while nobody reads");
     let (events, _) = ops::since(&theirs, cursor).unwrap();
     assert_eq!(heard(&events), Vec::new());
+}
+
+#[test]
+fn a_client_captures_another_clients_screen_and_types_into_it() {
+    let rig = Rig::new("wire-hands");
+    let a = editor(&rig, "");
+    let b = rig.host();
+    let booted = reovim_module_sysutils::boot("");
+    b.load("sysutils", booted.module, booted.drivers).unwrap();
+    let (mine, theirs) = (a.own(), b.own());
+    let at =
+        |ctx: &dyn Calls, path: &str| cell::resolve(ctx, ROOT, path).unwrap();
+    let there = "/session/1/client/1/self/dev";
+
+    // a draws a frame of its own, as its tui would.
+    let drawn = reovim_sdk::encode(&screen(2, 1, &["hi"]));
+    ops::put(&mine, at(&mine, "/self/dev/display"), drawn).unwrap();
+
+    // b's own `capture` reads it through the mirror: one file, and a
+    // mirrored rd is a target like any other.
+    let args = capture::Args {
+        f: false,
+        cwd: ROOT,
+        target: format!("{there}/display"),
+    };
+    let run = at(&theirs, "/self/bin/capture");
+    let seen = said(&theirs, run, &args);
+    assert_eq!(seen.as_deref(), Ok("hi\ncursor 0 0 block\n"));
+
+    // And b's `keys` types into a's keyboard: one write of every code,
+    // so the line costs a one tick and not seven.
+    let keyboard = at(&mine, "/self/dev/input/keyboard");
+    let h = mine.open(keyboard, Rights::READ).unwrap();
+    let typing = keys::Args {
+        cwd: ROOT,
+        target: format!("{there}/input/keyboard"),
+        notation: String::from("ihello<Esc>"),
+    };
+    let run = at(&theirs, "/self/bin/keys");
+    assert_eq!(said(&theirs, run, &typing).as_deref(), Ok(""));
+
+    // What a reads of its own keyboard is what b typed, stamped with
+    // a's own rd: a slot does not name its caller.
+    let mut taken = Vec::new();
+    while let Ok(bytes) = ops::read(&mine, h, 0, 4096) {
+        let press: keyboard::Press = reovim_sdk::decode(&bytes).unwrap();
+        assert_eq!(press.source, a.wire().cid(), "the Client's own rd");
+        taken.extend(Key::of(press.key));
+    }
+    let typed: Vec<Key> =
+        "ihello".chars().map(Key::Char).chain([Key::Esc]).collect();
+    assert_eq!(taken, typed);
+    ops::close(&mine, h).unwrap();
 }

@@ -42,13 +42,15 @@ fn help_is_the_builtins_and_then_one_line_per_name_under_path() {
     // among them now, Drivers of the Client's own under `/self/bin`,
     // and `-l` is the `local` field a token never matches.
     assert_eq!(
-        lines[3..16],
+        lines[3..18],
         [
             "call [target] [method] [arg]",
+            "capture [-f] [target]",
             "cat [-f] [-n N] [targets..]",
             "date",
             "dmesg [-t] [-T] [-H] [-d] [-r] [-x] [-k] [-w] [-W] [-f F] [-l L]",
             "grep [pattern] [targets..]",
+            "keys [target] [notation]",
             "load [-l] [path]",
             "log [from]",
             "ls [-l] [-a] [-w] [targets..]",
@@ -95,7 +97,7 @@ fn tab_offers_the_names_the_flags_of_one_and_the_paths_under_the_cwd() {
     // offer first what the line would run.
     assert_eq!(offer(ctx, &shell, "l"), ["load", "ls", "log"]);
     assert_eq!(offer(ctx, &shell, "p"), ["pwd"]);
-    assert_eq!(offer(ctx, &shell, "c"), ["cat", "call", "cd"]);
+    assert_eq!(offer(ctx, &shell, "c"), ["cat", "call", "capture", "cd"]);
 
     // A token under a dash: the flag fields of the Driver the line
     // names, each as a token under a dash spells it.

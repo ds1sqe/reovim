@@ -24,7 +24,6 @@ reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-module-fs = { path = "../../modules/fs" }
 reovim-module-sysutils = { path = "../../modules/sysutils" }
 reovim-module-text = { path = "../../modules/text" }
-reovim-plugin-vim = { path = "../../plugins/vim" }
 reovim-sdk = { path = "../../sdk/rust" }
 reovim-text-api = { path = "../../modules/text/api" }
 

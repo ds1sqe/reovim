@@ -14,7 +14,8 @@ use reovim_client::{Calls, Error, Host, ROOT, Rd, Rvm, SELF, bin};
 use reovim_host::clock;
 use reovim_module_coreutils::bins::{grep, ls};
 use reovim_rig::Rig;
-use reovim_sdk::{Encode, cell, encode, ops};
+use reovim_rig::bins::said as run;
+use reovim_sdk::{cell, encode, ops};
 
 /// A Host of its own over `rig`, `/self/bin` served and `rvm` behind
 /// `-l`. The rig's own Host is one that was given no files.
@@ -28,15 +29,6 @@ fn over(rig: &Rig, rvm: Rvm) -> Rc<Host> {
 fn names(ctx: &dyn Calls, rd: Rd) -> Vec<String> {
     let under = |rd| ops::info(ctx, rd).ok()?.name;
     ops::children(ctx, rd).unwrap().into_iter().filter_map(under).collect()
-}
-
-/// One run of the name `rd` with `args`, its output cell read to the
-/// empty read that ends it and closed, as a shell reads one.
-fn run<A: Encode>(ctx: &dyn Calls, rd: Rd, args: &A) -> Result<String, Error> {
-    let out = ops::call_by_name(ctx, rd, "run", encode(args))?;
-    let cell: Rd = reovim_sdk::decode(&out)?;
-    let held = ops::bytes(ctx, cell)?;
-    Ok(String::from_utf8(held).unwrap())
 }
 
 /// A listing of `cwd` itself, as a shell fills the record: no flag, no
@@ -104,7 +96,7 @@ fn a_module_registers_under_the_bin_above_its_home() {
     assert_eq!(names(ctx, at(ctx, "/self/coreutils")), Vec::<String>::new());
 
     // The server's own `/bin` gained nothing and lost nothing.
-    assert_eq!(names(ctx, at(ctx, "/bin")).len(), 11);
+    assert_eq!(names(ctx, at(ctx, "/bin")).len(), 13);
 
     // A Client that was given no files loads nothing of its own.
     let load = at(ctx, "/self/bin/load");

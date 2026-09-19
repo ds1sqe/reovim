@@ -12,6 +12,8 @@
 
 extern crate alloc;
 
+pub mod notation;
+
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -33,8 +35,9 @@ pub const NONE: Rd = Rd(u64::MAX);
 declare! {
     /// `/self/dev/input/keyboard`: what was typed, a stream.
     ///
-    /// A write of the cell is one key code, eight bytes little endian;
-    /// a read gives one `Press` and takes it for that handle alone.
+    /// A write of the cell is key codes, eight bytes little endian
+    /// each, so a line typed from another Client is one op; a read
+    /// gives one `Press` and takes it for that handle alone.
     /// `when` and `source` are the Client's and not the writer's, as
     /// `/sys/log`'s `time` and `mark` are the Kernel's: `when` is the
     /// clock the Host was made with, and `source` the rd of whoever
@@ -59,6 +62,26 @@ declare! {
     record View { over: Rd, top: u64, cursor: u64, shape: u64,
                   spans: [Span; 4096], status: utf8(4096) }
     record Span { from: u64, to: u64, style: u64 }
+}
+
+declare! {
+    /// `/self/dev/display`: the Client's screen as it was last drawn.
+    ///
+    /// `kind` is what the cells mean — `tty` and nothing else so far,
+    /// text cells with a cursor, what a tui draws. `row`, `col` and
+    /// `shape` are that cursor, in cells and as [`BLOCK`] or [`BAR`].
+    /// `count` rises by one a frame, for a reader that wants to know
+    /// whether it has seen this one; it need not look, a whole read
+    /// being one frame.
+    ///
+    /// A cell is a char's scalar value, as a [`Key`] is one number;
+    /// `0` is the second half of the wide char before it and draws
+    /// nothing. There is `cols * rows` of them, row by row, the last
+    /// row being the status row a tui shows.
+    api display ver 1 {}
+    record Screen { kind: utf8(16), cols: u64, rows: u64,
+                    row: u64, col: u64, shape: u64,
+                    count: u64, cells: [u64; 65536] }
 }
 
 declare! {
@@ -141,6 +164,10 @@ pub const BOLD: u64 = 7;
 pub const YELLOW: u64 = 8;
 /// A span drawn dim.
 pub const DIM: u64 = 9;
+
+/// The `kind` of a [`display::Screen`] of text cells with a cursor,
+/// which is what a tui draws and the only one there is so far.
+pub const TTY: &str = "tty";
 
 /// A cursor drawn over the cell it is on.
 pub const BLOCK: u64 = 0;
@@ -256,6 +283,7 @@ impl Key {
 #[cfg(test)]
 mod tests {
     use super::Key;
+    use super::notation::keys;
 
     /// Every key there is, in the order `Key` declares them.
     fn every() -> alloc::vec::Vec<Key> {
@@ -287,6 +315,26 @@ mod tests {
         assert_eq!(Key::of(0x11_000a), None, "no such named key");
         assert_eq!(Key::of(0xd800), None, "not a char");
         assert_eq!(Key::of(u64::MAX), None, "not a char either");
+    }
+
+    #[test]
+    fn notation_names_the_keys_vim_names() {
+        let parsed = keys("a<Esc>:wq<CR><C-r><BS><lt>é").unwrap();
+        let expected = [
+            Key::Char('a'),
+            Key::Esc,
+            Key::Char(':'),
+            Key::Char('w'),
+            Key::Char('q'),
+            Key::Enter,
+            Key::Ctrl('r'),
+            Key::Backspace,
+            Key::Char('<'),
+            Key::Char('é'),
+        ];
+        assert_eq!(parsed, expected);
+        assert_eq!(keys("<Nope>"), None);
+        assert_eq!(keys("<C-"), None);
     }
 }
 
