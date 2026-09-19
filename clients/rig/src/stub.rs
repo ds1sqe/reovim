@@ -6,12 +6,12 @@
 //! so they are this one Module. What a region becomes is then judged
 //! by what the stub was started over.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use reovim_client_api::{BLOCK, Frames, NONE, Region, window};
+use reovim_client_api::{BLOCK, NONE, Region, Surface, window};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Flags, Module, Rd, Reply, Rights,
+    Booted, Calls, Driver, Error, Flags, Module, Rd, Reply, Rights,
 };
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, encode, ops};
@@ -42,9 +42,7 @@ pub struct Stub {
     word: String,
     typed: Option<Typed>,
     state: RefCell<Held>,
-    /// The cells of `/self/dev`, found once at `start`.
-    region: OnceCell<Region>,
-    view: Frames,
+    surface: Surface,
 }
 
 impl Stub {
@@ -66,44 +64,35 @@ impl Stub {
             word: String::from(word),
             typed,
             state: RefCell::default(),
-            region: OnceCell::new(),
-            view: Frames::default(),
+            surface: Surface::default(),
         });
         Booted { module: stub.clone(), drivers: vec![stub] }
-    }
-
-    /// The cells of `/self/dev` it holds; `Closed` before `start`.
-    fn region(&self) -> Result<&Region, Error> {
-        self.region.get().ok_or(Error::Closed)
     }
 
     /// One frame: the keys it has not taken, what they were scripted
     /// to do, and the one View it shows.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
         let over = self.state.borrow().over;
-        let typed = !self.region()?.keys(ctx)?.is_empty();
+        let typed = !self.surface.region()?.keys(ctx)?.is_empty();
         let shown = self.state.borrow().shown.clone();
         let Some(act) = self.typed.as_ref().filter(|_| typed) else {
             return Ok(shown);
         };
-        act(ctx, self.region()?, over)?;
+        act(ctx, self.surface.region()?, over)?;
         Ok(shown)
     }
 }
 
 impl Module for Stub {
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = ctx.register(DriverId(0), home, Some("view"))?;
-        ctx.report(view, Flags::READ, &[])?;
-        let region = Region::of(ctx)?;
-        let ask = region.ask(ctx)?;
+        self.surface.start(ctx, home)?;
+        let ask = self.surface.region()?.ask(ctx)?;
         let over = (ask.target != NONE).then_some(ask.target);
         self.seen.borrow_mut().push(over);
         // A Container holds no text of its own, so the stub shows a
         // scratch Buffer there, as a listing would.
         let source = over.filter(|rd| !container(ctx, *rd));
         let buffer = buffer_over(ctx, source)?;
-        let _ = self.region.set(region);
         let mut held = self.state.borrow_mut();
         held.over = over;
         held.shown = encode(&shown(buffer, &self.word));
@@ -123,7 +112,7 @@ impl Driver for Stub {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.view.read(at, len, || self.framed(ctx))
+        self.surface.read(at, len, || self.framed(ctx))
     }
 }
 

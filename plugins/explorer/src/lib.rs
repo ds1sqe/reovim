@@ -26,14 +26,12 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::{OnceCell, RefCell};
+use core::cell::RefCell;
 
-use reovim_client_api::{
-    BLOCK, Frames, Key, NONE, Region, count, drafted, window,
-};
+use reovim_client_api::{BLOCK, Key, NONE, Surface, count, drafted, window};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Event, Flags, Handle, Kind, Module,
-    Rd, Reply, Rights,
+    Booted, Calls, Driver, Error, Event, Flags, Handle, Kind, Module, Rd,
+    Reply, Rights,
 };
 use reovim_sdk::{encode, ops};
 use reovim_text_api::text;
@@ -110,10 +108,7 @@ struct Explorer {
 #[derive(Default)]
 struct Loaded {
     state: RefCell<Explorer>,
-    /// The cells of `/self/dev`, found once at `start`: they never
-    /// change, so no borrow of the state is held over an op.
-    region: OnceCell<Region>,
-    view: Frames,
+    surface: Surface,
 }
 
 impl Module for Loaded {
@@ -121,10 +116,8 @@ impl Module for Loaded {
     /// Buffer of its own, a watch on the Container, and the one cell a
     /// Plugin serves, `view`.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = ctx.register(DriverId(0), home, Some("view"))?;
-        ctx.report(view, Flags::READ, &[])?;
-        let region = Region::of(ctx)?;
-        let dir = container(ctx, region.ask(ctx)?.target)?;
+        self.surface.start(ctx, home)?;
+        let dir = container(ctx, self.surface.region()?.ask(ctx)?.target)?;
         let buffer = drafted(ctx, None)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
@@ -134,7 +127,6 @@ impl Module for Loaded {
         it.buffer = Some(buffer);
         it.h = Some(h);
         drop(it);
-        let _ = self.region.set(region);
         self.sized(ctx)?;
         self.fill(ctx)?;
         // Where the stream stands once the first listing is in: a
@@ -159,7 +151,7 @@ impl Driver for Loaded {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.view.read(at, len, || self.framed(ctx))
+        self.surface.read(at, len, || self.framed(ctx))
     }
 }
 
@@ -168,7 +160,7 @@ impl Loaded {
     /// under the Container since the last one, the rows it has now,
     /// and the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
-        let keys = self.region()?.keys(ctx)?;
+        let keys = self.surface.region()?.keys(ctx)?;
         for key in keys {
             // What the last key had to say stood until this one.
             self.state.borrow_mut().message = String::new();
@@ -196,15 +188,9 @@ impl Loaded {
 
     /// The rows the region has now, as `windows/0/size` says.
     fn sized(&self, ctx: &dyn Calls) -> Result<(), Error> {
-        let rows = self.region()?.size(ctx)?.rows;
+        let rows = self.surface.region()?.size(ctx)?.rows;
         self.state.borrow_mut().rows = count(rows);
         Ok(())
-    }
-
-    /// The cells of `/self/dev` this Plugin holds; `Closed` before
-    /// `start` has found them.
-    fn region(&self) -> Result<&Region, Error> {
-        self.region.get().ok_or(Error::Closed)
     }
 
     /// One key: the prompt's while one is open, the second half of a
@@ -253,7 +239,7 @@ impl Loaded {
             self.state.borrow_mut().message = format!("{E492}{line}");
             return Ok(());
         }
-        self.region()?.ends(ctx, 0)
+        self.surface.region()?.ends(ctx, 0)
     }
 
     /// `-`: the Container above this one, which the tree's root has
@@ -267,7 +253,7 @@ impl Loaded {
     /// `open` naming no Plugin: which one `target` is shown in is the
     /// Client's table's, and the region is swapped at the next frame.
     fn asks(&self, ctx: &dyn Calls, target: Rd) -> Result<(), Error> {
-        self.region()?.opens(ctx, target, "")
+        self.surface.region()?.opens(ctx, target, "")
     }
 
     /// The listing read again and written whole, so that a refill is

@@ -31,15 +31,12 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::{OnceCell, RefCell};
+use core::cell::RefCell;
 
-use reovim_client_api::{
-    BAR, Frames, Key, NONE, Region, count, drafted, window,
-};
+use reovim_client_api::{BAR, Key, NONE, Surface, count, drafted, window};
 use reovim_client_sh::{Act, Line, Open, Ran, Shell, complete, run};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Flags, Handle, Module, Rd, Reply,
-    Rights,
+    Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,
 };
 use reovim_sdk::{encode, sgr};
 use reovim_text_api::text;
@@ -93,10 +90,7 @@ struct Cli {
 #[derive(Default)]
 struct Loaded {
     state: RefCell<Cli>,
-    /// The cells of `/self/dev`, found once at `start`: they never
-    /// change, so no borrow of the state is held over an op.
-    region: OnceCell<Region>,
-    view: Frames,
+    surface: Surface,
 }
 
 impl Module for Loaded {
@@ -104,10 +98,8 @@ impl Module for Loaded {
     /// was opened, the first prompt shown, and the one cell a Plugin
     /// serves, `view`.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let view = ctx.register(DriverId(0), home, Some("view"))?;
-        ctx.report(view, Flags::READ, &[])?;
-        let region = Region::of(ctx)?;
-        let over = region.ask(ctx)?.target;
+        self.surface.start(ctx, home)?;
+        let over = self.surface.region()?.ask(ctx)?.target;
         let buffer = drafted(ctx, None)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
@@ -116,7 +108,6 @@ impl Module for Loaded {
             cli.buffer = Some(buffer);
             cli.h = Some(h);
         }
-        let _ = self.region.set(region);
         self.sized(ctx)?;
         self.stand(ctx, over);
         self.fill(ctx)
@@ -135,21 +126,15 @@ impl Driver for Loaded {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        self.view.read(at, len, || self.framed(ctx))
+        self.surface.read(at, len, || self.framed(ctx))
     }
 }
 
 impl Loaded {
-    /// The cells of `/self/dev` this Plugin holds; `Closed` before
-    /// `start` has found them.
-    fn region(&self) -> Result<&Region, Error> {
-        self.region.get().ok_or(Error::Closed)
-    }
-
     /// One frame: every key it has not taken, what the run it left
     /// open has printed since, the rows it has now, and the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
-        let keys = self.region()?.keys(ctx)?;
+        let keys = self.surface.region()?.keys(ctx)?;
         let mut moved = false;
         for key in keys {
             moved = true;
@@ -197,7 +182,7 @@ impl Loaded {
     /// for them: the columns a listing lays its names across, and
     /// color, which [`read`] takes back out of the text.
     fn sized(&self, ctx: &dyn Calls) -> Result<(), Error> {
-        let held: window::Size = self.region()?.size(ctx)?;
+        let held: window::Size = self.surface.region()?.size(ctx)?;
         let mut cli = self.state.borrow_mut();
         cli.cols = held.cols;
         cli.rows = count(held.rows);
@@ -244,7 +229,7 @@ impl Loaded {
             // Ctrl-C, and Ctrl-D on an empty line.
             Act::Quit => {
                 self.state.borrow_mut().leaving = true;
-                return self.region()?.backs(ctx);
+                return self.surface.region()?.backs(ctx);
             }
         }
         Ok(())

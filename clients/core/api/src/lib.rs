@@ -17,9 +17,11 @@ pub mod notation;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::{OnceCell, RefCell};
 
-use reovim_kernel_interface::{Calls, Error, Handle, Rd, Reply, Rights};
+use reovim_kernel_interface::{
+    Calls, DriverId, Error, Flags, Handle, Rd, Reply, Rights,
+};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, declare, decode, ops};
 
@@ -501,6 +503,46 @@ impl Frames {
             *self.0.borrow_mut() = shown;
         }
         Ok(part(&self.0.borrow(), at, len))
+    }
+}
+
+/// The `view` cell a Plugin serves and the region it holds: the head
+/// of every Plugin over a region of `/self/dev`, whose own state then
+/// holds none of the Client's and is free at every op.
+#[derive(Debug, Default)]
+pub struct Surface {
+    region: OnceCell<Region>,
+    frames: Frames,
+}
+
+impl Surface {
+    /// `view` registered under `home` and reported READ, and the cells
+    /// of `/self/dev` found; the answer is that cell's rd.
+    ///
+    /// # Errors
+    /// What the Client says; `Invalid` where there is no `/self/dev`,
+    /// which is a Client this Plugin is not for.
+    pub fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<Rd, Error> {
+        let view = ctx.register(DriverId(0), home, Some("view"))?;
+        ctx.report(view, Flags::READ, &[])?;
+        let _ = self.region.set(Region::of(ctx)?);
+        Ok(view)
+    }
+
+    /// The cells of `/self/dev` this Plugin holds.
+    ///
+    /// # Errors
+    /// `Closed` before [`Self::start`] has found them.
+    pub fn region(&self) -> Result<&Region, Error> {
+        self.region.get().ok_or(Error::Closed)
+    }
+
+    /// The `view` cell read, as [`Frames::read`].
+    pub fn read<F>(&self, at: u64, len: usize, frame: F) -> Reply<Vec<u8>>
+    where
+        F: FnOnce() -> Result<Vec<u8>, Error>,
+    {
+        self.frames.read(at, len, frame)
     }
 }
 

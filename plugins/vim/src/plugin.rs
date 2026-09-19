@@ -31,7 +31,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, Ref, RefCell};
 
-use reovim_client_api::{Frames, NONE, Region, count, draft, drafted, part};
+use reovim_client_api::{NONE, Surface, count, draft, drafted, part};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,
@@ -74,12 +74,9 @@ const DRIVER: DriverId = DriverId(0);
 #[derive(Default)]
 pub struct Editor {
     vim: RefCell<Vim>,
-    /// The cells of `/self/dev`, found once at `start`: they never
-    /// change, so no borrow of the engine is held over an op.
-    region: OnceCell<Region>,
+    surface: Surface,
     /// The rds under Vim's home, as `start` was answered with them.
     cells: OnceCell<Cells>,
-    view: Frames,
     /// What the runs of Vim's own names printed, until each is read
     /// and closed.
     outputs: cell::Cells,
@@ -135,10 +132,10 @@ impl Module for Editor {
     /// there is one, and the text shown from the line it was told to
     /// begin at.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        let cells = registered(ctx, home)?;
-        let region = Region::of(ctx)?;
-        let ask = region.ask(ctx)?;
-        let dir = region.cwd(ctx)?;
+        let view = self.surface.start(ctx, home)?;
+        let cells = registered(ctx, home, view)?;
+        let ask = self.surface.region()?.ask(ctx)?;
+        let dir = self.surface.region()?.cwd(ctx)?;
         let source = (ask.target != NONE).then_some(ask.target);
         let buffer = drafted(ctx, source)?;
         let rights = Rights::READ.union(Rights::WRITE);
@@ -165,7 +162,6 @@ impl Module for Editor {
             vim.clip = clip;
         }
         let _ = self.cells.set(cells);
-        let _ = self.region.set(region);
         self.sized(ctx)?;
         let bytes = ops::whole(ctx, h)?;
         self.vim.borrow_mut().opened(&bytes, ask.line);
@@ -193,7 +189,7 @@ impl Driver for Editor {
         };
         let rd = Rd(h);
         if rd == cells.view {
-            return self.view.read(at, len, || self.framed(ctx));
+            return self.surface.read(at, len, || self.framed(ctx));
         }
         let output = || self.outputs.read(ctx, rd, at, len).into();
         self.held(cells, rd)
@@ -239,17 +235,11 @@ impl Editor {
         self.cells.get().ok_or(Error::Closed)
     }
 
-    /// The cells of `/self/dev` this Plugin holds; `Closed` before
-    /// `start` has found them.
-    fn region(&self) -> Result<&Region, Error> {
-        self.region.get().ok_or(Error::Closed)
-    }
-
     /// One frame: every key it has not taken, run; the revision they
     /// made ended where the mode says it is over; the rows the region
     /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
-        let keys = self.region()?.keys(ctx)?;
+        let keys = self.surface.region()?.keys(ctx)?;
         for key in keys {
             let effect = self.vim.borrow_mut().key(key);
             self.act(ctx, effect)?;
@@ -288,7 +278,7 @@ impl Editor {
 
     /// The rows the region has now, as `windows/0/size` says.
     fn sized(&self, ctx: &dyn Calls) -> Result<usize, Error> {
-        let rows = count(self.region()?.size(ctx)?.rows);
+        let rows = count(self.surface.region()?.size(ctx)?.rows);
         self.vim.borrow_mut().rows = rows;
         Ok(rows)
     }
@@ -591,7 +581,7 @@ impl Editor {
         };
         // The write said why it did not happen; the editor stays.
         let Some(code) = code else { return Ok(()) };
-        self.region()?.ends(ctx, code)
+        self.surface.region()?.ends(ctx, code)
     }
 
     /// What `:wq`, `:x` and `ZZ` write before they leave: the source
@@ -679,7 +669,7 @@ impl Editor {
             self.says(E37);
             return Ok(());
         }
-        self.region()?.opens(ctx, target, plugin)
+        self.surface.region()?.opens(ctx, target, plugin)
     }
 
     /// One `:` line past its range: the name its first token stands
@@ -889,9 +879,9 @@ fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
         .unwrap_or(name)
 }
 
-/// What Vim registers under its home, in the order `ls` shows them:
-/// its frame, the state it holds read out of the engine, and `bin`,
-/// whose eleven names are the `:` line's own.
+/// What Vim registers under its home, in the order `ls` shows them,
+/// after the `view` it is handed: the state it holds read out of the
+/// engine, and `bin`, whose eleven names are the `:` line's own.
 ///
 /// Every register that can exist is registered here, filled or not,
 /// because the Host asks a Container to list itself once and answers
@@ -900,7 +890,7 @@ fn as_given<'a>(dir: &str, name: &'a str) -> &'a str {
 ///
 /// A name under `bin` is a Container, so a run's output cell goes under
 /// it, and READ, so whoever runs it may hold the right `run` asks for.
-fn registered(ctx: &dyn Calls, home: Rd) -> Result<Cells, Error> {
+fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     let node = |at, name: &str, flags, decls: &[Decl]| {
         let rd = ctx.register(DRIVER, at, Some(name))?;
         ctx.report(rd, flags, decls)?;
@@ -909,7 +899,6 @@ fn registered(ctx: &dyn Calls, home: Rd) -> Result<Cells, Error> {
     let read = |at, name: &str, flags| node(at, name, flags, &[]);
     let one = Flags::READ;
     let held = one.union(Flags::CONTAINER);
-    let view = read(home, "view", one)?;
     let mode = read(home, "mode", one)?;
     let pending = read(home, "pending", one)?;
     let under = read(home, "registers", held)?;
