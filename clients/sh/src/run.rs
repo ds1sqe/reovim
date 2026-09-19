@@ -39,8 +39,8 @@ pub const NO_NAME: &str = "no name; help lists them";
 /// One stage of a line: the name it runs, and the tokens after it.
 pub type Stage<'a> = (&'a str, &'a [&'a str]);
 
-/// Where a redirect writes: the target, and the offset the run's bytes
-/// begin at.
+/// Where a redirect writes: the target, and the offset the bytes still
+/// to come go at.
 type Pour = (Rd, u64);
 
 /// One typed line: what it printed, and the run it left open.
@@ -57,8 +57,13 @@ pub struct Ran {
 #[derive(Debug)]
 pub struct Open {
     name: String,
+    /// The tokens after the name, as a Miss of this run says them.
+    typed: String,
     h: Handle,
     at: u64,
+    /// Where a redirect puts the bytes, and what it has taken: a run
+    /// that follows goes on writing where its first batch went.
+    into: Option<Pour>,
 }
 
 /// Where a redirect puts a run's output: the target as typed, and `>>`,
@@ -70,17 +75,36 @@ pub struct Sink<'a> {
 
 impl Open {
     /// What the cell holds past the last read, and whether the empty
-    /// read that ends a cell came with it, which closes the cell.
-    /// Nothing and not ended is a follower with nothing new yet.
+    /// read that ends a cell came with it. Nothing and not ended is a
+    /// follower with nothing new yet; a redirect takes the bytes here
+    /// as it took the first, and the holder is handed none.
+    ///
+    /// The cell closes with the run: at the empty read, and at a
+    /// failure, which leaves nobody to come back to it.
     ///
     /// # Errors
-    /// Whatever the read says.
+    /// Whatever the read, the write or the close says.
     pub fn more(&mut self, ctx: &dyn Calls) -> Result<(Vec<u8>, bool), Miss> {
-        let (bytes, ended) = reading(ctx, &self.name, self.h, &mut self.at)?;
-        if ended {
-            self.close(ctx)?;
+        match self.read(ctx) {
+            Ok((bytes, false)) => Ok((bytes, false)),
+            Ok((bytes, true)) => self.close(ctx).map(|()| (bytes, true)),
+            Err(stopped) => {
+                let _ = self.close(ctx);
+                Err(stopped)
+            }
         }
-        Ok((bytes, ended))
+    }
+
+    /// One reading, into the redirect's target where the run has one,
+    /// which the holder then sees nothing of.
+    fn read(&mut self, ctx: &dyn Calls) -> Result<(Vec<u8>, bool), Miss> {
+        let (bytes, ended) = reading(ctx, &self.name, self.h, &mut self.at)?;
+        let Some((rd, at)) = self.into else { return Ok((bytes, ended)) };
+        let refused = |e: Error| miss(&self.name, &self.typed, Step::Op, e, "");
+        let wrote = bytes.len() as u64;
+        written(ctx, rd, at, bytes).map_err(refused)?;
+        self.into = Some((rd, at + wrote));
+        Ok((Vec::new(), ended))
     }
 
     /// The cell closed, which takes it out of the tree and ends what the
@@ -152,14 +176,15 @@ fn dirs(ctx: &dyn Calls) -> impl Iterator<Item = Rd> + '_ {
 }
 
 /// The fields the run of `name` takes; `None` for a name PATH does not
-/// hold or a declaration that cannot be read, which Tab offers nothing
-/// for and never faults over.
+/// hold, which is the one thing the shell says its own sentence for. A
+/// name PATH holds whose declaration cannot be read, or whose run takes
+/// no record, takes no field: it is there, and it fills from nothing.
 pub fn fields(ctx: &dyn Calls, name: &str) -> Option<Vec<Field>> {
     let rd = lookup(ctx, name)?;
-    let (_, method) = ops::method(ctx, rd, "run").ok()?;
-    match method.input {
-        Ty::Record(fields) => Some(fields),
-        _ => None,
+    let read = ops::method(ctx, rd, "run").ok();
+    match read.map(|(_, method)| method.input) {
+        Some(Ty::Record(fields)) => Some(fields),
+        _ => Some(Vec::new()),
     }
 }
 
@@ -254,32 +279,13 @@ pub fn under_path(
     sink: Option<Sink<'_>>,
 ) -> Result<Ran, Miss> {
     let (cell, into) = called(ctx, shell, name, args, sink)?;
-    let refused = |e: Error| miss(name, &args.join(" "), Step::Op, e, "");
+    let typed = args.join(" ");
+    let refused = |e: Error| miss(name, &typed, Step::Op, e, "");
     let h = ctx.open(cell, Rights::READ).map_err(refused)?;
-    let mut open = Open { name: name.to_string(), h, at: 0 };
-    let read = reading(ctx, name, h, &mut open.at);
-    let (bytes, ended) = match read {
-        Ok(got) => got,
-        Err(stopped) => {
-            let _ = open.close(ctx);
-            return Err(stopped);
-        }
-    };
-    let out = match into {
-        Some((rd, at)) => {
-            if let Err(error) = written(ctx, rd, at, bytes) {
-                let _ = open.close(ctx);
-                return Err(refused(error));
-            }
-            Vec::new()
-        }
-        None => bytes,
-    };
-    if !ended {
-        return Ok(Ran { out, open: Some(open) });
-    }
-    open.close(ctx)?;
-    Ok(Ran { out, open: None })
+    let name = name.to_string();
+    let mut open = Open { name, typed, h, at: 0, into };
+    let (out, ended) = open.more(ctx)?;
+    Ok(Ran { out, open: (!ended).then_some(open) })
 }
 
 /// The rd of `name` under the first directory of PATH that holds it;

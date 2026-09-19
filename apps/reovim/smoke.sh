@@ -122,6 +122,17 @@ poured() {
     "$BIN" cli cat "$VALUE" '>' "$target"
 }
 
+# Wait up to two seconds for `file` to hold `want`, which is how a
+# redirect's target is read while the run that writes it is still going.
+holds() {
+    local file="$1" want="$2" i
+    for ((i = 0; i < 200; i++)); do
+        [[ "$(cat "$file")" == "$want" ]] && return
+        sleep 0.01
+    done
+    fail "$file holds $(cat "$file"), not $want"
+}
+
 # What `/session` holds, once it holds `wanted` Sessions or two seconds
 # have gone. A link's end reaches the editor a moment after the cli
 # process that held it is done, so the listing is asked for again.
@@ -208,6 +219,20 @@ shown follow 'smoke-follows'
 pkill -INT -f "^$BIN cli dmesg -w\$"
 ended follow
 [[ "$ENDED" == 0 ]] || fail "dmesg -w did not end on SIGINT"
+
+# A redirect belongs to the run and not to its first batch: a follower
+# under `>` goes on writing into the target for as long as it runs, so
+# the file holds what came after the first read too.
+printf 'first\n' > "$DIR/tail"
+: > "$DIR/poured"
+tailed="/module/fs/root$DIR/tail"
+start pours "$DIR" "$BIN cli cat -f $tailed '>' /module/fs/root$DIR/poured"
+holds "$DIR/poured" first
+poured "$tailed" second >/dev/null
+holds "$DIR/poured" $'first\nsecond'
+pkill -INT -f "^$BIN cli cat -f $tailed > /module/fs/root$DIR/poured\$"
+ended pours
+[[ "$ENDED" == 0 ]] || fail "the follower did not end on SIGINT"
 
 # The cli as a shell in a terminal of its own: the prompt says where
 # the line stands, `cd` moves it, a listing comes from there, and

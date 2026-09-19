@@ -166,3 +166,30 @@ fn a_name_two_directories_of_path_hold_resolves_at_the_earlier_one() {
     assert!(said.contains("\nls\n"), "{said}");
     assert!(!said.contains(server), "{said}");
 }
+
+#[test]
+fn a_name_whose_declaration_cannot_be_read_is_under_path_all_the_same() {
+    let rig = Rig::new("sh-undeclared");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+
+    // `/self/bin` gains a name whose declaration holds no `run`: it is
+    // under PATH, and what it takes cannot be read.
+    let decl = Decl { api: "zz".to_string(), ver: 1, methods: Vec::new() };
+    let at = cell::resolve(ctx, ROOT, "/self/bin").unwrap();
+    let rd = ctx.register(DriverId(0), at, Some("zz")).unwrap();
+    ctx.report(rd, Flags::READ, &[decl]).unwrap();
+
+    // `help` says the names it can read and is not refused by the one
+    // it cannot: that name takes nothing, as a run with no field does.
+    let said = typed(ctx, &mut shell, "help");
+    assert!(said.contains("\nzz\n"), "{said}");
+    assert!(said.contains("\nuptime\n"), "the rest of the listing stands");
+    assert_eq!(typed(ctx, &mut shell, "help zz"), "zz\n");
+
+    // And a stage after a `|` is filled through a declared `input: Rd`,
+    // so one that declares nothing readable is refused where a name
+    // that declares no input is, before the stage before it is run.
+    assert_eq!(typed(ctx, &mut shell, "ls /module | zz"), "zz: takes no input");
+}

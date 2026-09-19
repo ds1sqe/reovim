@@ -472,6 +472,64 @@ fn a_following_run_comes_back_open_at_its_offset_and_closes_whole() {
 }
 
 #[test]
+fn a_following_run_that_redirects_pours_every_batch_where_the_first_went() {
+    let rig = Rig::new("sh-following-redirect");
+    rig.file("note", b"first\n");
+    rig.file("out", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut other = rig.client();
+    let mut shell = Shell::default();
+    let root = "/module/fs/root";
+    let target = format!("{root}/note");
+    let rd = cell::resolve(ctx, ROOT, &target).unwrap();
+    let out = cell::resolve(ctx, ROOT, &format!("{root}/out")).unwrap();
+
+    // The run comes back open with nothing to print, the first batch
+    // being in the target.
+    let ran = run(ctx, &mut shell, &format!("cat -f {target} > {root}/out"));
+    let ran = ran.unwrap();
+    assert_eq!(ran.out, Vec::new());
+    assert_eq!(ops::bytes(ctx, out), Ok(b"first\n".to_vec()));
+    let mut open = ran.open.expect("a follower comes back open");
+
+    // And the batches after it go where that one went, after it: the
+    // redirect is the run's and not the first read's.
+    other.write_all(rd, b"second\n".to_vec()).unwrap();
+    assert_eq!(open.more(ctx), Ok((Vec::new(), false)), "none of it printed");
+    assert_eq!(ops::bytes(ctx, out), Ok(b"first\nsecond\n".to_vec()));
+    assert_eq!(open.close(ctx), Ok(()));
+}
+
+#[test]
+fn a_following_run_that_cannot_pour_says_so_and_leaves_no_cell_behind() {
+    let rig = Rig::new("sh-following-refused");
+    rig.file("note", b"first\n");
+    rig.file("out", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut other = rig.client();
+    let mut shell = Shell::default();
+    let root = "/module/fs/root";
+    let target = format!("{root}/note");
+    let rd = cell::resolve(ctx, ROOT, &target).unwrap();
+    let cat = cell::resolve(ctx, ROOT, "/bin/cat").unwrap();
+
+    let ran = run(ctx, &mut shell, &format!("cat -f {target} > {root}/out"));
+    let mut open = ran.unwrap().open.expect("a follower comes back open");
+    assert_eq!(cells(ctx, "cat").len(), 1, "the cell it follows");
+
+    // The target is gone from under the run: the Miss says so as the
+    // first batch's would have, and the cell goes with it, nobody
+    // being left to come back to it.
+    std::fs::remove_file(rig.dir().join("out")).unwrap();
+    other.write_all(rd, b"second\n".to_vec()).unwrap();
+    let stopped = open.more(ctx).expect_err("the write is refused");
+    assert_eq!(stopped.to_string(), format!("cat -f {target}: gone"));
+    assert_eq!(ops::children(ctx, cat), Ok(Vec::new()));
+}
+
+#[test]
 fn a_run_that_counts_its_answers_ends_at_the_empty_read() {
     let rig = Rig::new("sh-counted");
     rig.file("note", b"first\n");

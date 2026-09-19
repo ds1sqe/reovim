@@ -8,7 +8,7 @@
 //! line, and the way out.
 
 use reovim_client::dev::{Clip, Table, Want};
-use reovim_client_api::{BLUE, Key, Region};
+use reovim_client_api::{BLUE, GREEN, Key, Region};
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_rig::{Rig, Seen, Stub, frame, opened, pressed};
@@ -175,6 +175,30 @@ fn a_following_line_goes_on_printing_with_no_key_pressed() {
         at,
     ];
     assert_eq!(frame(&mut tui).lines, shown, "what the target holds now");
+}
+
+#[test]
+fn an_escape_a_batch_ends_inside_waits_for_the_batch_after_it() {
+    let rig = work("split");
+    // A target whose bytes end in the middle of an escape, which is
+    // what a Driver writing one across two batches looks like.
+    rig.file("work/esc", b"one\x1b");
+    let seen = Seen::default();
+    let mut tui = buffer(&rig, &seen);
+    assert_eq!(line(&mut tui, "cat -f esc"), Step::Changed);
+    let at = prompt("work");
+    let shown = [format!("{at}cat -f esc"), "one".into(), at];
+    assert_eq!(frame(&mut tui).lines, shown, "no half of an escape is text");
+
+    // The batch after it begins with what was held back, so the escape
+    // is read whole and what it paints is a span.
+    let mut other = rig.client();
+    let esc = other.resolve("/module/fs/root/work/esc").unwrap();
+    other.write_all(esc, b"one\x1b[32mtwo\x1b[0m\n".to_vec()).unwrap();
+    assert_eq!(tui.tick(), Ok(Step::Changed), "no key was pressed");
+    let frame = frame(&mut tui);
+    assert_eq!(frame.lines[2], "onetwo", "the escapes are out of the text");
+    assert_eq!(frame.styled, [(2, 3, 6, GREEN)], "where the run stood");
 }
 
 #[test]
