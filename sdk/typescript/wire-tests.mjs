@@ -140,6 +140,19 @@ test('the endpoint knows what went unanswered', () => {
   assert.equal(sent[8], 1, 'a request');
 });
 
+test('an Invalid reply to a frame that never decoded retires it all the same', () => {
+  // kernel/runtime/src/connection.rs answers a frame it cannot decode
+  // with `Reply::err(Invalid)` at the sequence it can still read,
+  // rather than nothing: this is what an `Endpoint` does with that
+  // answer, the same as any other reply.
+  const endpoint = new Endpoint();
+  const [seq] = endpoint.send({ kind: 'request', op: { kind: 'info', rd: 0n } });
+  assert.equal(endpoint.unanswered().length, 1);
+  const invalid = encode(seq, { kind: 'reply', reply: { kind: 'err', cause: 'invalid' } });
+  assert.deepEqual(endpoint.receive(invalid), [seq, { kind: 'reply', reply: { kind: 'err', cause: 'invalid' } }]);
+  assert.equal(endpoint.unanswered().length, 0);
+});
+
 test('a declaration parses and a value shows by it', () => {
   // history: 0 tree() -> Tree, as modules/text declares it (one method).
   const canonical = [];

@@ -5,12 +5,13 @@
 use alloc::rc::Rc;
 use alloc::vec::Vec;
 
-use reovim_kernel_interface::wire::{Message, decode, encode};
+use reovim_kernel_interface::wire::{Message, REPLY, decode, encode, sequence};
 use reovim_kernel_interface::{
     Caller, Error, Kind, ModuleId, Op, Out, Outcome, Rd, Reply, Token,
 };
 
 use crate::kernel::Kernel;
+use crate::log::WARN;
 use crate::proxy::Proxy;
 
 /// What `load <path>` and `unload <name>` do: the connection-level
@@ -72,10 +73,10 @@ impl Connection {
         self.connected.map(|(_, _, client)| client)
     }
 
-    /// One message in, its reply out. Bytes that are not a message, and a
-    /// `Reply` sent this way, answer nothing; anything before `Connect`
-    /// is `Invalid`. `load` and `unload` go to `loader` under the same
-    /// reply window as a request.
+    /// One message in, its reply out. A `Reply` sent this way answers
+    /// nothing; anything before `Connect` is `Invalid`. `load` and
+    /// `unload` go to `loader` under the same reply window as a
+    /// request. A frame `decode` refuses is `undecodable`'s.
     ///
     /// Three ops are the link's own and never reach dispatch:
     /// `Op::Done`, which finishes what this Client was asked to serve,
@@ -89,7 +90,9 @@ impl Connection {
         bytes: &[u8],
         loader: &mut dyn Loader,
     ) -> Option<Vec<u8>> {
-        let (seq, message) = decode(bytes)?;
+        let Some((seq, message)) = decode(bytes) else {
+            return self.undecodable(kernel, bytes);
+        };
         let unit = |r: Result<(), Error>| r.map(|()| Out::Unit).into();
         let reply = match (message, self.caller) {
             (Message::Connect { credential, session }, _) => {
@@ -121,6 +124,31 @@ impl Connection {
                 kernel.once(caller, seq, || unit(loader.unload(kernel, &name)))
             }
         };
+        Some(encode(seq, &Message::Reply(reply)))
+    }
+
+    /// A frame `decode` refused: an `Endpoint` would offer it again
+    /// for ever otherwise, no sequence ever retiring it.
+    ///
+    /// A sequence and a tag that is not `Reply`'s answers `Invalid`
+    /// there, the same path as any call once connected. A torn
+    /// `Reply` answers nothing — two ends answering replies would
+    /// echo — nor does a frame with no sequence to address the
+    /// answer at.
+    fn undecodable(&self, kernel: &Kernel, bytes: &[u8]) -> Option<Vec<u8>> {
+        let Some((seq, tag)) = sequence(bytes) else {
+            return unanswered(
+                kernel,
+                format_args!("no sequence, len={}", bytes.len()),
+            );
+        };
+        if tag == REPLY {
+            return unanswered(kernel, format_args!("torn Reply, seq={seq}"));
+        }
+        let reply = self.caller.map_or_else(
+            || Reply::err(Error::Invalid),
+            |caller| kernel.once(caller, seq, || Reply::err(Error::Invalid)),
+        );
         Some(encode(seq, &Message::Reply(reply)))
     }
 
@@ -208,4 +236,13 @@ impl Connection {
             Err(error) => Reply::err(error),
         }
     }
+}
+
+/// One `warn` line for a frame `undecodable` answers nothing to.
+fn unanswered(
+    kernel: &Kernel,
+    why: core::fmt::Arguments<'_>,
+) -> Option<Vec<u8>> {
+    kernel.say(WARN, || alloc::format!("undecodable frame, {why}"));
+    None
 }

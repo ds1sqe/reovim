@@ -164,10 +164,57 @@ fn a_repeated_sequence_is_answered_without_running() {
     assert_eq!(rig.send_at(rig.seq - 1, &read), first);
     assert_eq!(rig.atime(log), stamped, "the read ran twice");
 
-    // Not a message, or a Reply: nothing comes back.
+    // Not a message, or a well-formed `Reply` sent to us: nothing
+    // comes back.
     assert!(rig.link.handle(&rig.kernel, b"junk", &mut NoLoader).is_none());
     let reply = encode(9, &Message::Reply(Reply::ok(Out::Unit)));
     assert!(rig.link.handle(&rig.kernel, &reply, &mut NoLoader).is_none());
+}
+
+/// A frame `decode` refuses is not silently dropped: with a sequence
+/// and a tag that is not `Reply`'s it answers `Invalid` there, same as
+/// any other call, so an `Endpoint` offering it forever retires it;
+/// with no readable sequence, or a torn `Reply`, nothing answers and
+/// `/sys/log` says why.
+#[test]
+fn a_frame_that_does_not_decode_is_answered_invalid_at_its_sequence() {
+    let mut rig = Rig::new();
+    rig.connect(None);
+
+    // A good sequence, an unknown message tag (9): `Invalid` there,
+    // twice alike, as a repeat sent after a lost reply would be.
+    rig.seq += 1;
+    let seq = rig.seq;
+    let mut unknown = encode(seq, &Message::Request(Op::Since { cursor: 0 }));
+    unknown[8] = 9;
+    assert_eq!(decode(&unknown), None, "the fixture is truly undecodable");
+    let first = rig
+        .link
+        .handle(&rig.kernel, &unknown, &mut NoLoader)
+        .expect("answered");
+    assert_eq!(
+        decode(&first),
+        Some((seq, Message::Reply(Reply::err(Error::Invalid))))
+    );
+    let second = rig
+        .link
+        .handle(&rig.kernel, &unknown, &mut NoLoader)
+        .expect("answered again");
+    assert_eq!(first, second, "from the same reply window");
+
+    // Seven bytes: too few to read even the sequence. Nothing answers.
+    assert!(rig.link.handle(&rig.kernel, &[0u8; 7], &mut NoLoader).is_none());
+
+    // A `Reply` whose body is torn: the tag reads back as `Reply`'s,
+    // but the rest does not decode. Nothing answers.
+    let whole =
+        encode(seq + 1, &Message::Reply(Reply::ok(Out::Bytes(b"hi".to_vec()))));
+    let torn = &whole[..whole.len() - 1];
+    assert_eq!(decode(torn), None, "the fixture is truly torn");
+    assert!(rig.link.handle(&rig.kernel, torn, &mut NoLoader).is_none());
+
+    let log = rig.log();
+    assert!(log.contains("undecodable"), "no warning for either case: {log}");
 }
 
 /// A loader that counts; `unload` is refused.

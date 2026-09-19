@@ -34,6 +34,11 @@ pub enum Message {
     Unload { name: String },
 }
 
+/// `Message::Reply`'s tag: the one message a Client also sends, so
+/// `undecodable` (kernel/runtime/src/connection.rs) must tell it
+/// apart from the rest without decoding the frame's body.
+pub const REPLY: u8 = 2;
+
 /// `seq` then the message.
 #[must_use]
 pub fn encode(seq: u64, message: &Message) -> Vec<u8> {
@@ -50,7 +55,7 @@ pub fn encode(seq: u64, message: &Message) -> Vec<u8> {
             put_op(&mut out, op);
         }
         Message::Reply(reply) => {
-            put_u8(&mut out, 2);
+            put_u8(&mut out, REPLY);
             put_reply(&mut out, reply);
         }
         Message::Load { path } => {
@@ -65,6 +70,19 @@ pub fn encode(seq: u64, message: &Message) -> Vec<u8> {
     out
 }
 
+/// The sequence and the message tag alone, the first 8 bytes and the
+/// ninth, read without decoding what follows.
+///
+/// What a frame `decode` refuses still needs, to answer at the right
+/// sequence rather than dropping it. `None` for fewer than 9 bytes.
+#[must_use]
+pub fn sequence(bytes: &[u8]) -> Option<(u64, u8)> {
+    let mut r = Reader::new(bytes);
+    let seq = r.u64()?;
+    let tag = r.u8()?;
+    Some((seq, tag))
+}
+
 /// The inverse of `encode`; `None` unless `bytes` is exactly one message.
 #[must_use]
 pub fn decode(bytes: &[u8]) -> Option<(u64, Message)> {
@@ -77,7 +95,7 @@ pub fn decode(bytes: &[u8]) -> Option<(u64, Message)> {
             Message::Connect { credential, session }
         }
         1 => Message::Request(get_op(&mut r)?),
-        2 => Message::Reply(get_reply(&mut r)?),
+        REPLY => Message::Reply(get_reply(&mut r)?),
         3 => Message::Load { path: r.str()? },
         4 => Message::Unload { name: r.str()? },
         _ => return None,
