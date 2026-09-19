@@ -195,6 +195,9 @@ struct State {
     /// else. A served `Op::Close` takes one out, as the Host's own
     /// `close` takes the slot.
     remote: BTreeMap<Handle, Rd>,
+    /// The names [`Host::unload`] refuses: the Host's own row and the
+    /// Modules a Client is nothing without.
+    kept: Vec<String>,
 }
 
 impl State {
@@ -366,12 +369,35 @@ impl State {
             && self.remote.values().any(|rd| *rd == event.rd)
     }
 
+    /// What a remote is owed since `cursor`, and where the next sweep
+    /// begins: one change of the two kinds per rd a remote watches.
+    fn owed(&self, cursor: u64) -> (Vec<(Rd, Kind)>, u64) {
+        let (events, head) = self.since(cursor);
+        if events.iter().any(|event| event.kind == Kind::Overflow) {
+            return (self.missed(), head);
+        }
+        let told = |event: &&Event| self.announces(event);
+        let of = |event: &Event| (event.rd, event.kind);
+        (events.iter().filter(told).map(of).collect(), head)
+    }
+
+    /// Every rd a remote watches, once, as a `Modify`: what an
+    /// overflow is owed, there being no change left to name.
+    fn missed(&self) -> Vec<(Rd, Kind)> {
+        let mut rds: Vec<Rd> = self.remote.values().copied().collect();
+        rds.sort_unstable();
+        rds.dedup();
+        rds.into_iter().map(|rd| (rd, Kind::Modify)).collect()
+    }
+
     /// Events after `cursor` and the cursor for the next ask. A cursor
-    /// the ring no longer covers yields one `Overflow` on `ROOT`.
+    /// the ring no longer covers yields one `Overflow` on `ROOT`; the
+    /// one number no event can stand past is the head of the ring and
+    /// has missed nothing.
     fn since(&self, cursor: u64) -> (Vec<Event>, u64) {
         let head = self.next_seq - 1;
         let oldest = self.events.front().map_or(self.next_seq, |e| e.seq);
-        if cursor + 1 < oldest {
+        if cursor.saturating_add(1) < oldest {
             let kind = Kind::Overflow;
             let event = Event { seq: head, rd: ROOT, kind, child: None };
             return (alloc::vec![event], head);
@@ -430,6 +456,10 @@ impl Host {
             events: VecDeque::new(),
             next_seq: 1,
             remote: BTreeMap::new(),
+            // The row below stands under no Module, so `unload` finds
+            // none to take out: the name is refused and not mistaken
+            // for one nobody loaded.
+            kept: alloc::vec![String::from("bin")],
         };
         // A Container of the Host's own, as `/bin` is a fixed row of
         // the Kernel's table: a Module the Client loads registers its
@@ -510,15 +540,22 @@ impl Host {
     /// One `Op::Changed` per change on an rd a remote watches, from
     /// this Host's own place in its own ring. Everything else the ring
     /// holds is somebody's local business and is passed over.
+    ///
+    /// A ring that ran past this place is one `Overflow`, which
+    /// `Op::Changed` cannot carry: it holds `Modify` and `Attrib` and
+    /// no third kind. So every rd a remote watches is told `Modify`
+    /// instead and reads the cell again, which is what a watcher told
+    /// of a change does anyway; being told nothing is the one thing a
+    /// remote that missed something may not be.
     fn announce(&self) {
-        let said: Vec<Event> = {
+        let said: Vec<(Rd, Kind)> = {
             let s = self.state.borrow();
-            let (events, cursor) = s.since(self.said.get());
+            let (said, cursor) = s.owed(self.said.get());
             self.said.set(cursor);
-            events.into_iter().filter(|event| s.announces(event)).collect()
+            said
         };
-        for event in said {
-            let told = Op::Changed { rd: event.rd, kind: event.kind };
+        for (rd, kind) in said {
+            let told = Op::Changed { rd, kind };
             let _ = self.wire.borrow_mut().request(told);
         }
     }
@@ -528,8 +565,9 @@ impl Host {
     ///
     /// # Errors
     /// `Invalid` for a malformed or taken name; whatever `start`
-    /// returns. A failed `start` leaves the Module loaded with what it
-    /// registered, and [`Self::unload`] takes it out.
+    /// returns. A Module that will not start is not loaded: what it
+    /// registered before it failed goes out with its home, so the name
+    /// is free and the load may be made again.
     pub fn load(
         &self,
         name: &str,
@@ -552,20 +590,50 @@ impl Host {
             s.emit(SELF, Kind::Create, Some(home));
             (id, home)
         };
-        starter.start(&self.calls(id), home)?;
+        if let Err(error) = starter.start(&self.calls(id), home) {
+            let _ = self.shed(name);
+            return Err(error);
+        }
         Ok(id)
     }
 
-    /// Unload the Module named `name`: every handle it opened and every
-    /// handle on what it serves closed, then `stop`, then every rd it
-    /// serves gone.
+    /// The Module loaded under `name` is the Client's own: `unload`
+    /// refuses it, whoever asks, until [`Self::shed`] takes it out.
+    /// `/self/dev` is one, and so is the Plugin holding the region,
+    /// which `/self/dev` gives away and nobody else does.
+    pub(crate) fn keeps(&self, name: &str) {
+        let mut s = self.state.borrow_mut();
+        if !s.kept.iter().any(|kept| kept == name) {
+            s.kept.push(name.to_string());
+        }
+    }
+
+    /// Unload the Module named `name`, asked for by name: what
+    /// `/self/bin/unload` runs and what anything above the Client may
+    /// ask for.
+    ///
+    /// # Errors
+    /// `Denied` for a name the Client is nothing without, which its
+    /// own devices, the row the Host serves itself and the Plugin
+    /// holding the region are; `Invalid` when no such Module is
+    /// loaded.
+    pub fn unload(&self, name: &str) -> Result<(), Error> {
+        if self.state.borrow().kept.iter().any(|kept| kept == name) {
+            return Err(Error::Denied);
+        }
+        self.shed(name)
+    }
+
+    /// The Module named `name` out, kept or not: every handle it opened
+    /// and every handle on what it serves closed, then `stop`, then
+    /// every rd it serves gone.
     ///
     /// Where the Kernel refuses an open handle a Client must not: the
     /// Module is going and nobody is left to close for it.
     ///
     /// # Errors
     /// `Invalid` when no such Module is loaded.
-    pub fn unload(&self, name: &str) -> Result<(), Error> {
+    pub(crate) fn shed(&self, name: &str) -> Result<(), Error> {
         let (id, loaded) = self.state.borrow_mut().take_module(name)?;
         let mine = self.state.borrow().served_by(id);
         // The borrow is gone before a handle closes: a Driver's own
@@ -580,6 +648,9 @@ impl Host {
             s.unregister(root, parent);
         }
         s.drivers[id.0 as usize] = Vec::new();
+        // The Module that name stood for is gone, so nothing is kept
+        // under it and a later one may be unloaded by anybody.
+        s.kept.retain(|kept| kept != name);
         Ok(())
     }
 

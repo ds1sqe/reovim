@@ -15,13 +15,14 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::dev::{self, Table, Want};
-use reovim_client::{Client, Clip, Host, HostCalls, ROOT, SELF, log};
+use reovim_client::{Client, Clip, Host, HostCalls, ROOT, SELF, bin, log};
 use reovim_client_api::{Frames, Key, NONE, Region, keyboard, open, window};
 use reovim_host::clock;
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, DriverId, Error, Flags, Handle, Module, Rd, Reply,
-    Rights,
+    Booted, Calls, Driver, DriverId, Error, Flags, Handle, Kind, Module, Rd,
+    Reply, Rights,
 };
+use reovim_rig::bins::said;
 use reovim_rig::{Rig, screen, shown};
 use reovim_sdk::{cell, decode, encode, ops};
 
@@ -174,12 +175,31 @@ impl Driver for Stub {
     }
 }
 
+/// A Plugin that will not start: `start` is the one fallible step of a
+/// load, and a swap to this is a swap that fails.
+struct Wont;
+
+impl Module for Wont {
+    fn start(&self, _: &dyn Calls, _: Rd) -> Result<(), Error> {
+        Err(Error::Invalid)
+    }
+}
+
+impl Driver for Wont {}
+
+/// It, as the table answers for the name `bad`.
+fn wont() -> Booted {
+    let wont = Rc::new(Wont);
+    Booted { module: wont.clone(), drivers: vec![wont] }
+}
+
 /// The stubs a table gave, in the order it was asked for them.
 type Kept = Rc<RefCell<Vec<Stub>>>;
 
 /// The table these cases give: a fresh stub saying `word`, for a cell
-/// under the name `stub` and for the name `cli` under `cli`. Every
-/// other Want has no Plugin, which is what an unserved ask is.
+/// under the name `stub` and for the name `cli` under `cli`; the name
+/// `bad` stands for a Plugin that will not start. Every other Want has
+/// no Plugin, which is what an unserved ask is.
 fn stubs(word: &str) -> (Table, Kept) {
     let kept = Kept::default();
     let (word, keeps) = (String::from(word), kept.clone());
@@ -187,6 +207,7 @@ fn stubs(word: &str) -> (Table, Kept) {
         let name = match want {
             Want::Cell => "stub",
             Want::Named("cli") => "cli",
+            Want::Named("bad") => return Some((String::from("bad"), wont())),
             _ => return None,
         };
         let (stub, booted) = Stub::booted(&word);
@@ -759,6 +780,98 @@ fn a_whole_read_of_display_is_one_frame_per_handle() {
     // And the read after it is the frame that stands now.
     assert_eq!(ops::read(ctx, a, 0, CHUNK), Ok(second));
     ops::shut(ctx, &[a, b]);
+}
+
+#[test]
+fn a_swap_to_a_plugin_that_will_not_start_leaves_the_region_shown() {
+    let rig = Rig::new("dev-open-refused");
+    rig.file("note", b"first\n");
+    let (table, kept) = stubs("-- STUB --");
+    let it = Dev::boot(&rig, table, "", Some("note"), None);
+    it.frame();
+    let mut other = rig.client();
+    let note = other.resolve("/module/fs/root/note").unwrap();
+
+    // The Plugin the ask names will not start, so the region cannot be
+    // given away: it stands on the ask it stood on, in a Plugin of
+    // that ask's own, and the frame is a frame like any other.
+    kept.borrow()[0].will(Act::Open(note, String::from("bad")));
+    let held = it.frame();
+    assert_eq!(held.status, "-- STUB --", "the region is where it was");
+    let ask: open::Ask = decode(&it.bytes(it.at("windows/0/ask"))).unwrap();
+    assert_eq!(ask.target, note, "over the file it was over");
+
+    // Nothing of the Plugin that would not start is left, so its name
+    // is free and the Client is not wedged: what the table serves is
+    // served, and the ask that failed fails the same way as before.
+    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+    kept.borrow()[1].will(Act::Open(note, String::from("bad")));
+    it.frame();
+    assert_eq!(it.names(SELF), ["bin", "dev", "stub"], "and again");
+    kept.borrow()[2].will(Act::Open(note, String::from("cli")));
+    it.frame();
+    assert_eq!(it.names(SELF), ["bin", "cli", "dev"], "the region moves");
+
+    // Nothing carries the answer back to the Plugin that asked, so the
+    // log has it, as an ask no Plugin serves does.
+    let said: Vec<(String, String)> = log::tail(&mut other, 0)
+        .unwrap()
+        .iter()
+        .filter(|entry| entry.text().starts_with("open rd="))
+        .map(|entry| (entry.level_name().into(), entry.text()))
+        .collect();
+    let line = format!("open rd={} plugin=bad invalid", note.0);
+    assert_eq!(said, [("warn".into(), line.clone()), ("warn".into(), line)]);
+}
+
+#[test]
+fn the_names_the_client_is_nothing_without_are_not_unloaded() {
+    let rig = Rig::new("dev-unload");
+    rig.file("note", b"first\n");
+    let (table, _) = stubs("");
+    let it = Dev::boot(&rig, table, "", Some("note"), None);
+    it.frame();
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let unload = cell::resolve(ctx, SELF, "bin/unload").unwrap();
+    let taking = |name: &str| {
+        let args = bin::unload::Args { local: true, name: String::from(name) };
+        said(ctx, unload, &args)
+    };
+
+    // The devices the Client speaks through, the row the Host serves
+    // itself, and the Plugin holding the region, which is `/self/dev`'s
+    // to give away and nobody else's to take.
+    assert_eq!(taking("dev"), Err(Error::Denied), "its own devices");
+    assert_eq!(taking("bin"), Err(Error::Denied), "the Host's own row");
+    assert_eq!(taking("stub"), Err(Error::Denied), "the region's Plugin");
+    assert_eq!(it.names(SELF), ["bin", "dev", "stub"], "and none of it went");
+    assert_eq!(it.frame().status, "", "the region reads as it read");
+
+    // What this Client loaded of its own userland still goes.
+    let coreutils = reovim_module_coreutils::boot("");
+    it.host.load("coreutils", coreutils.module, coreutils.drivers).unwrap();
+    assert_eq!(taking("coreutils").as_deref(), Ok(""));
+    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+}
+
+#[test]
+fn a_write_of_the_size_is_a_change_a_watcher_of_it_hears() {
+    let rig = Rig::new("dev-size-changed");
+    let it = Dev::boot(&rig, none(), "", None, None);
+    let own = it.calls();
+    let ctx: &dyn Calls = &own;
+    let size = it.at("windows/0/size");
+    let h = ops::watch(ctx, size).unwrap();
+    let (_, cursor) = ops::since(ctx, 0).unwrap();
+
+    // The tui writes the size the region is drawn for, so a Plugin
+    // following the cell is told, as one following `display` is.
+    it.put(size, encode(&window::Size { cols: 40, rows: 9 }));
+    let (events, _) = ops::since(ctx, cursor).unwrap();
+    let seen: Vec<(Rd, Kind)> = events.iter().map(|e| (e.rd, e.kind)).collect();
+    assert_eq!(seen, [(size, Kind::Modify)]);
+    ops::shut(ctx, &[h]);
 }
 
 #[test]

@@ -163,7 +163,10 @@ impl load::Api for Bin {
 
 impl unload::Api for Bin {
     /// `unload -l NAME` out of this Client, `unload NAME` out of the
-    /// server. An empty name is `Invalid`, as an empty path is.
+    /// server. An empty name is `Invalid`, as an empty path is, and a
+    /// name the Client is nothing without is `Denied`: the Host keeps
+    /// its own devices, its own row and the Plugin holding the region
+    /// from every door, this one and the swap alike.
     fn run(
         &self,
         ctx: &dyn Calls,

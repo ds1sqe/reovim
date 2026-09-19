@@ -26,7 +26,7 @@ impl fmt::Display for Fault {
 
 /// The Kernel's error as a word, not its `Debug` name; whoever prints
 /// it puts the context around it.
-const fn word(error: Error) -> &'static str {
+pub const fn word(error: Error) -> &'static str {
     match error {
         Error::Denied => "denied",
         Error::Unsupported => "unsupported",

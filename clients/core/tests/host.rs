@@ -469,6 +469,22 @@ fn one_cursor_and_one_sys_decls_over_both_sides() {
 }
 
 #[test]
+fn a_cursor_at_the_head_of_the_ring_has_missed_nothing() {
+    let rig = Rig::new();
+    let (host, _) = over(&rig);
+    let calls = host.own();
+    let ctx: &dyn Calls = &calls;
+
+    // A cursor the ring no longer covers is one `Overflow`, and the
+    // one number no event can stand past is no such cursor: it is the
+    // head of the ring, and what it has missed is nothing. The wire
+    // carries a u64, so the number arrives as any other would.
+    let (events, cursor) = ops::since(ctx, u64::MAX).unwrap();
+    assert_eq!(events, Vec::new());
+    assert!(cursor < u64::MAX, "the head is a seq the ring gave out");
+}
+
+#[test]
 fn a_wire_reply_that_is_not_ready_comes_back_ready() {
     let rig = Rig::new();
     let (host, _) = over(&rig);

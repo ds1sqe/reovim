@@ -43,6 +43,7 @@ use reovim_sdk::{cell, decode, encode, ops};
 
 use crate::buffers::Buffers;
 use crate::client::ROOT;
+use crate::fault::word;
 use crate::host::{Host, SELF};
 
 /// Presses the stream keeps: a burst nobody reads cannot grow it, and
@@ -254,6 +255,9 @@ pub fn boot(
     let drivers: Vec<Rc<dyn Driver>> =
         alloc::vec![dev.clone(), dev.buffers.clone()];
     host.load("dev", dev.clone(), drivers)?;
+    // A Client with no devices reads no key and draws no frame, so the
+    // name is nobody's to unload.
+    host.keeps("dev");
     dev.state.borrow().home.ok_or(Error::Invalid)
 }
 
@@ -412,7 +416,7 @@ impl Dev {
             return self.stepped_back(ctx);
         }
         let Some(ask) = asked else { return Ok(()) };
-        self.shows(ctx, ask, true)
+        self.shows(ctx, &ask, true)
     }
 
     /// `back`: what the region was opened with before the last swap,
@@ -425,32 +429,79 @@ impl Dev {
             self.state.borrow_mut().exit = Some(0);
             return Ok(());
         };
-        self.shows(ctx, ask, false)
+        self.shows(ctx, &ask, false)
     }
 
-    /// The region given to the Plugin `ask` asks for: the old one
-    /// unloaded, which closes what it held, and the new one loaded
-    /// under its own name with the ask already in `windows/0/ask`.
+    /// The region given to the Plugin `ask` asks for, and what stands
+    /// there if it cannot be given: the ask the region stood on, shown
+    /// again, and a line in the log, as an ask no Plugin serves has.
+    ///
+    /// A name is one Module's, so the old Plugin goes before the new
+    /// one comes and a swap that fails past that point has no old
+    /// region left to keep. A region no Plugin holds takes no key and
+    /// answers no frame, so leaving one empty is the one thing a
+    /// failure here may not do; a swap that failed before the old
+    /// Plugin let go has left everything where it was.
     ///
     /// `step` is a swap forward, which `back` then has a step to take;
     /// the step back takes none of its own.
     fn shows(
         &self,
         ctx: &dyn Calls,
-        ask: open::Ask,
+        ask: &open::Ask,
         step: bool,
     ) -> Result<(), Error> {
-        let Some((name, booted)) = self.served(ctx, &ask)? else {
-            return unserved(ctx, &ask);
+        let stood = {
+            let s = self.state.borrow();
+            (s.ask.clone(), s.before.clone())
+        };
+        let Err(error) = self.given(ctx, ask, step) else { return Ok(()) };
+        if self.state.borrow().region.is_some() {
+            return Err(error);
+        }
+        // The region comes back before anything else is done about it,
+        // and the step `back` would have taken with it.
+        let _ = self.given(ctx, &stood.0, false);
+        self.state.borrow_mut().before = stood.1;
+        warned(ctx, ask, error)?;
+        if self.state.borrow().region.is_none() {
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// The swap itself: the old Plugin unloaded, which closes what it
+    /// held, and the new one loaded under its own name with the ask
+    /// already in `windows/0/ask`, where it reads it at `start`.
+    ///
+    /// Nothing half-loaded is left behind: a Plugin that will not
+    /// start is not loaded, and one that serves no view goes back out
+    /// with its name.
+    fn given(
+        &self,
+        ctx: &dyn Calls,
+        ask: &open::Ask,
+        step: bool,
+    ) -> Result<(), Error> {
+        let Some((name, booted)) = self.served(ctx, ask)? else {
+            return unserved(ctx, ask);
         };
         let host = self.host.upgrade().ok_or(Error::Gone)?;
-        let old = self.state.borrow_mut().asking(ask, step);
+        let old = self.state.borrow_mut().asking(ask.clone(), step);
         if let Some(old) = old {
-            host.unload(&old.name)?;
+            // The region is this Module's to give away, so the Plugin
+            // holding it is unloaded here and by nothing else.
+            host.shed(&old.name)?;
         }
         host.load(&name, booted.module, booted.drivers)?;
-        let home = ops::lookup(ctx, SELF, &name)?;
-        let view = ctx.open(ops::lookup(ctx, home, "view")?, Rights::READ)?;
+        let view = match opened(ctx, &name) {
+            Ok(view) => view,
+            Err(error) => {
+                let _ = host.shed(&name);
+                return Err(error);
+            }
+        };
+        host.keeps(&name);
         self.state.borrow_mut().region = Some(Region { name, view });
         Ok(())
     }
@@ -695,8 +746,12 @@ impl Dev {
         match held {
             Held::Keyboard => self.typed(buf),
             Held::Exit => self.ending(buf),
+            // The size the region is drawn for, which the tui writes
+            // and a Plugin following the cell is told of, as it is
+            // told of a frame.
             Held::Size => {
                 self.state.borrow_mut().size = decode(buf)?;
+                ctx.changed(rd, Kind::Modify)?;
                 Ok(buf.len())
             }
             // The frame whole, at 0 only. The announcement is what a
@@ -718,13 +773,28 @@ impl Dev {
     }
 }
 
+/// The handle the region is read through: the `view` of the Plugin
+/// loaded under `name`.
+fn opened(ctx: &dyn Calls, name: &str) -> Result<Handle, Error> {
+    let home = ops::lookup(ctx, SELF, name)?;
+    ctx.open(ops::lookup(ctx, home, "view")?, Rights::READ)
+}
+
 /// An ask the table has no Plugin for: the region stays as it is and
 /// the log says so, `open` carrying no answer back to the Plugin that
 /// asked.
 fn unserved(ctx: &dyn Calls, ask: &open::Ask) -> Result<(), Error> {
+    warned(ctx, ask, Error::Unsupported)
+}
+
+/// An ask the region was not given to, and why, in the log: the one
+/// place it is said, `open` carrying no answer back.
+fn warned(ctx: &dyn Calls, ask: &open::Ask, error: Error) -> Result<(), Error> {
     let said = format!(
-        "{WARN}open rd={} plugin={} unsupported",
-        ask.target.0, ask.plugin
+        "{WARN}open rd={} plugin={} {}",
+        ask.target.0,
+        ask.plugin,
+        word(error)
     );
     let entry = cell::resolve(ctx, ROOT, "/sys/log")?;
     ops::put(ctx, entry, said.into_bytes()).map(|_| ())

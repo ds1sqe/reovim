@@ -233,6 +233,50 @@ fn a_change_on_a_client_reaches_a_remote_watcher_and_nobody_else() {
     assert_eq!(heard(&events), Vec::new());
 }
 
+/// Changes made with nobody serving: more than the Host's ring holds
+/// (`RING`, clients/core/src/host.rs), so the sweep's own cursor falls
+/// off the front of it.
+const PAST: usize = 1025;
+
+#[test]
+fn a_watcher_that_missed_the_ring_is_told_to_read_the_cell_again() {
+    let rig = Rig::new("wire-overflow");
+    let a = rig.host();
+    let cells = Rc::new(Cells);
+    a.load("cells", cells.clone(), vec![cells]).unwrap();
+    let b = rig.host();
+    let (mine, theirs) = (a.own(), b.own());
+    let path = "/session/1/client/1/self/cells/one";
+    let one = cell::resolve(&theirs, ROOT, path).unwrap();
+    let here = cell::resolve(&mine, ROOT, "/self/cells/one").unwrap();
+
+    let h = ops::watch(&theirs, one).unwrap();
+    assert_eq!(turn(&a), 1, "the open of the proxy's own handle");
+    assert_eq!(turn(&a), 1, "the watch behind it");
+    let (_, cursor) = ops::since(&theirs, 0).unwrap();
+
+    // a edits that cell more times than its own ring holds and serves
+    // nobody while it does: where the sweep stood is off the front of
+    // the ring, and what was missed cannot be told one change at a
+    // time. `Op::Changed` carries `Modify` and `Attrib` and no third
+    // kind, so every rd a remote watches is told `Modify` and the
+    // watcher reads the cell again, which is what it would do anyway.
+    for _ in 0..PAST {
+        ops::put(&mine, here, b"x".to_vec()).unwrap();
+    }
+    let before = rig.sent();
+    a.serve();
+    assert_eq!(rig.sent(), before + 1, "one message, and the ring is deep");
+    let (events, _) = ops::since(&theirs, cursor).unwrap();
+    let heard: Vec<(Rd, Kind)> = events
+        .iter()
+        .filter(|event| event.rd == one)
+        .map(|event| (event.rd, event.kind))
+        .collect();
+    assert_eq!(heard, [(one, Kind::Modify)]);
+    ops::close(&theirs, h).unwrap();
+}
+
 #[test]
 fn a_client_captures_another_clients_screen_and_types_into_it() {
     let rig = Rig::new("wire-hands");
