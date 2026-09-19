@@ -4,7 +4,7 @@ mod common;
 
 use common::{edit, on, typed};
 use reovim_client_api::{BAR, BLOCK};
-use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit};
+use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit, Visual};
 
 /// The `:` line `keys` left for the Client to run: the range it read
 /// off the front, and the rest of it as it was typed.
@@ -56,6 +56,34 @@ fn the_entry_keys_put_the_cursor_where_vim_does() {
     let mut empty = on("\n");
     assert_eq!(typed(&mut empty, "ax<Esc>"), Effect::Moved);
     assert_eq!(empty.text(), "x\n", "an empty line appends in place");
+}
+
+#[test]
+fn alt_changes_nothing_in_any_mode() {
+    let mut vim = on("abc\n");
+    let text = vim.text().to_string();
+    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
+    assert_eq!(vim.mode(), Mode::Normal);
+    assert_eq!(vim.text(), text);
+    assert_eq!(vim.showcmd(), "");
+
+    assert_eq!(typed(&mut vim, "i"), Effect::Moved);
+    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
+    assert_eq!(vim.mode(), Mode::Insert);
+    assert_eq!(vim.text(), text);
+    assert_eq!(vim.showcmd(), "");
+
+    assert_eq!(typed(&mut vim, "<Esc>v"), Effect::Moved);
+    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
+    assert_eq!(vim.mode(), Mode::Visual(Visual::Char));
+    assert_eq!(vim.text(), text);
+    assert_eq!(vim.showcmd(), "");
+
+    assert_eq!(typed(&mut vim, "<Esc>:"), Effect::Moved);
+    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
+    assert_eq!(vim.mode(), Mode::Command);
+    assert_eq!(vim.text(), text);
+    assert_eq!(vim.showcmd(), "");
 }
 
 #[test]

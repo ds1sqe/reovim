@@ -278,5 +278,6 @@ const fn map(key: term::Key) -> Key {
         term::Key::End => Key::End,
         term::Key::Ctrl(c) => Key::Ctrl(c),
         term::Key::Esc => Key::Esc,
+        term::Key::Alt(c) => Key::Alt(c),
     }
 }

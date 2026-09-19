@@ -51,6 +51,14 @@ fn keys_edit_submit_and_recall() {
 }
 
 #[test]
+fn alt_is_nothing_to_the_line() {
+    let mut line = Line::default();
+    typed(&mut line, "cat");
+    assert_eq!(line.key(Key::Alt('x')), Act::Nothing);
+    assert_eq!(line.text(), "cat");
+}
+
+#[test]
 fn a_completion_replaces_the_token() {
     let mut line = Line::default();
     typed(&mut line, "l");

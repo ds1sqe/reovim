@@ -226,6 +226,10 @@ pub fn column(screen: &display::Screen) -> usize {
 const NAMED: u64 = 0x11_0000;
 /// Where Control and a char start, past the named keys.
 const CTRL: u64 = 0x12_0000;
+/// Where Alt and a char start, past Control and a char: the first
+/// code past `CTRL + 0x10_ffff`. No code a build before this one
+/// wrote changes meaning.
+const ALT: u64 = 0x23_0000;
 
 /// One key as the terminal gave it, already decoded by the host.
 ///
@@ -246,6 +250,9 @@ pub enum Key {
     /// Control and a letter, lower case.
     Ctrl(char),
     Esc,
+    /// Alt and a char, as typed: a terminal tells `<M-x>` from
+    /// `<M-X>` as it cannot for Control.
+    Alt(char),
 }
 
 impl Key {
@@ -268,6 +275,7 @@ impl Key {
             Self::End => NAMED + 8,
             Self::Esc => NAMED + 9,
             Self::Ctrl(c) => CTRL + u64::from(c),
+            Self::Alt(c) => ALT + u64::from(c),
         }
     }
 
@@ -277,6 +285,9 @@ impl Key {
         let scalar = |base: u64| {
             u32::try_from(code - base).ok().and_then(char::from_u32)
         };
+        if code >= ALT {
+            return scalar(ALT).map(Self::Alt);
+        }
         if code >= CTRL {
             return scalar(CTRL).map(Self::Ctrl);
         }
@@ -329,6 +340,7 @@ mod tests {
         let mut keys: alloc::vec::Vec<Key> = named.into();
         keys.extend(chars.map(Key::Char));
         keys.extend(chars.map(Key::Ctrl));
+        keys.extend(chars.map(Key::Alt));
         keys
     }
 
@@ -345,7 +357,8 @@ mod tests {
 
     #[test]
     fn notation_names_the_keys_vim_names() {
-        let parsed = keys("a<Esc>:wq<CR><C-r><BS><lt>é").unwrap();
+        let parsed =
+            keys("a<Esc>:wq<CR><C-r><BS><lt>é<M-x><M-X><Space>").unwrap();
         let expected = [
             Key::Char('a'),
             Key::Esc,
@@ -357,10 +370,16 @@ mod tests {
             Key::Backspace,
             Key::Char('<'),
             Key::Char('é'),
+            Key::Alt('x'),
+            Key::Alt('X'),
+            Key::Char(' '),
         ];
         assert_eq!(parsed, expected);
         assert_eq!(keys("<Nope>"), None);
         assert_eq!(keys("<C-"), None);
+        assert_eq!(keys("<M->"), None);
+        assert_eq!(keys("<M-xy>"), None);
+        assert_eq!(keys("<A-x>"), None);
     }
 
     /// A `col` inside a multi-byte char (a byte no drawer ever named,

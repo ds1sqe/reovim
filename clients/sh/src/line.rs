@@ -65,7 +65,7 @@ impl Line {
             // line, the character under the cursor on any other.
             Key::Ctrl('d') if self.text.is_empty() => Act::Quit,
             Key::Ctrl('d') => self.delete(),
-            Key::Ctrl(_) | Key::Esc => Act::Nothing,
+            Key::Ctrl(_) | Key::Esc | Key::Alt(_) => Act::Nothing,
         }
     }
 

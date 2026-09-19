@@ -750,7 +750,7 @@ impl Vim {
             Key::Home => self.arrow(|v| v.go(v.line_start(v.cursor))),
             Key::End => self.arrow(|v| v.go(v.line_end(v.cursor))),
             Key::Esc => self.leave_insert(),
-            Key::Ctrl(_) => Effect::Nothing,
+            Key::Ctrl(_) | Key::Alt(_) => Effect::Nothing,
         }
     }
 

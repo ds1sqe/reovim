@@ -405,6 +405,21 @@ rows_match
 shown new hello
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
     || fail "the capture after keys is not the pane: $(captured)"
+# `<Space>` in the notation is a space, and `M-x` sent by tmux (not
+# `keys`, since it is the terminal that must give ALT and the char in
+# one read) reaches the Plugin as one key: nothing is bound to it
+# before 01.9, so it changes nothing at all.
+"$BIN" cli keys "$board" 'ia<Space>b<Esc>'
+shown new 'a b'
+before="$(captured)"
+"${TMUX[@]}" send-keys -t new M-x
+sleep 0.05
+[[ "$("$BIN" cli cat /session/1/client/1/self/vim/pending)" == "" ]] \
+    || fail "M-x left something pending"
+[[ "$("$BIN" cli cat /session/1/client/1/self/vim/mode)" == normal ]] \
+    || fail "M-x changed the mode"
+[[ "$(captured)" == "$before" ]] || fail "M-x changed the pane: $(captured)"
+"$BIN" cli keys "$board" u
 # One `u` takes the whole insert back, an insert being one revision, so
 # the file this editor writes below is what it was.
 "$BIN" cli keys "$board" u

@@ -477,8 +477,10 @@ fn decode(key: KeyEvent) -> Option<Key> {
         return None;
     }
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
     let decoded = match key.code {
         KeyCode::Char(c) if ctrl => Key::Ctrl(c.to_ascii_lowercase()),
+        KeyCode::Char(c) if alt => Key::Alt(c),
         KeyCode::Char(c) => Key::Char(c),
         KeyCode::Enter => Key::Enter,
         KeyCode::Tab => Key::Tab,
@@ -493,4 +495,34 @@ fn decode(key: KeyEvent) -> Option<Key> {
         _ => return None,
     };
     Some(decoded)
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use super::decode;
+    use crate::term::Key;
+
+    /// crossterm gives ESC and a char arriving in one read as the char
+    /// with `ALT`; Control wins where both are set, and Alt with a key
+    /// that is no char stays that key.
+    #[test]
+    fn decode_reads_alt() {
+        assert_eq!(
+            decode(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT)),
+            Some(Key::Alt('x')),
+        );
+        assert_eq!(
+            decode(KeyEvent::new(
+                KeyCode::Char('x'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            )),
+            Some(Key::Ctrl('x')),
+        );
+        assert_eq!(
+            decode(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)),
+            Some(Key::Enter),
+        );
+    }
 }

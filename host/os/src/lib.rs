@@ -253,6 +253,8 @@ pub mod term {
         End,
         Ctrl(char),
         Esc,
+        /// Alt and a char, as typed.
+        Alt(char),
     }
 
     /// What the terminal gave: a key, or the terminal having taken a

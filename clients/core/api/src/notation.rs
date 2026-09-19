@@ -11,8 +11,10 @@ use crate::Key;
 /// The keys of `text`, as Vim writes them.
 ///
 /// `<Esc>`, `<CR>`, `<BS>`, `<Tab>`, `<Left>`, `<Right>`, `<Up>`,
-/// `<Down>`, `<Home>`, `<End>`, `<C-x>` and `<lt>` are named; any
-/// other char is itself. `None` for a `<` that names nothing.
+/// `<Down>`, `<Home>`, `<End>`, `<C-x>`, `<M-x>`, `<Space>` and `<lt>`
+/// are named; any other char is itself. `None` for a `<` that names
+/// nothing: `<M->` and `<M-xy>` name no char, and `<A-x>` is not a
+/// spelling this notation reads.
 #[must_use]
 pub fn keys(text: &str) -> Option<Vec<Key>> {
     let mut keys = Vec::new();
@@ -42,8 +44,16 @@ fn named(name: &str) -> Option<Key> {
         "Down" => Key::Down,
         "Home" => Key::Home,
         "End" => Key::End,
+        "Space" => Key::Char(' '),
         "lt" => Key::Char('<'),
         _ => {
+            if let Some(letter) = name.strip_prefix("M-") {
+                let mut chars = letter.chars();
+                return match (chars.next(), chars.next()) {
+                    (Some(c), None) => Some(Key::Alt(c)),
+                    _ => None,
+                };
+            }
             let letter = name.strip_prefix("C-")?;
             let mut chars = letter.chars();
             match (chars.next(), chars.next()) {
