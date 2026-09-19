@@ -255,6 +255,14 @@ pub mod term {
         Esc,
     }
 
+    /// What the terminal gave: a key, or the terminal having taken a
+    /// new shape, which [`size`] then says.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum Event {
+        Key(Key),
+        Resize,
+    }
+
     /// Whether stdin is a terminal. The empty backend says no.
     #[must_use]
     pub fn is_tty() -> bool {
@@ -312,12 +320,13 @@ pub mod term {
         backend::interrupted()
     }
 
-    /// The next key within `ms` milliseconds, or `None`. An event that
-    /// is not a key, or a signal, ends the wait early with `None`.
+    /// The next event within `ms` milliseconds, or `None`. Anything
+    /// that is neither a key nor a resize, or a signal, ends the wait
+    /// early with `None`.
     ///
     /// # Errors
     /// As [`enter`].
-    pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
+    pub fn poll(ms: u64) -> Result<Option<Event>, Error> {
         backend::poll(ms)
     }
 

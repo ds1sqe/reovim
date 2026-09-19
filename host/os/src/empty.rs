@@ -3,7 +3,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::term::Key;
+use crate::term::Event;
 use crate::{Entry, Error, Heap, Stat};
 
 pub fn list(_: &str) -> Result<Vec<Entry>, Error> {
@@ -124,7 +124,7 @@ pub const fn stopped() -> bool {
     false
 }
 
-pub fn poll(_: u64) -> Result<Option<Key>, Error> {
+pub fn poll(_: u64) -> Result<Option<Event>, Error> {
     Err(Error::Unsupported)
 }
 

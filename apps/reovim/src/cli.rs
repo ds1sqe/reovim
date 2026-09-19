@@ -83,8 +83,9 @@ impl Mode {
             sleep(Duration::from_millis(TICK));
             return Ok(!term::interrupted() && !term::stopped());
         }
-        let key = term::poll(TICK)?;
-        Ok(!term::stopped() && key != Some(term::Key::Ctrl('c')))
+        let event = term::poll(TICK)?;
+        let quit = term::Event::Key(term::Key::Ctrl('c'));
+        Ok(!term::stopped() && event != Some(quit))
     }
 }
 
@@ -187,7 +188,9 @@ fn edit(ctx: &dyn Calls, host: &Host, color: bool) -> Result<(), Fail> {
             return Err(Fail::Signal);
         }
         serve(host);
-        let Some(key) = term::poll(1000)? else { continue };
+        // A resize is nothing to a line: it is one row, which the
+        // terminal itself lays out again at the new width.
+        let Some(term::Event::Key(key)) = term::poll(1000)? else { continue };
         match line.key(map(key)) {
             Act::Nothing => continue,
             Act::Redraw => {}

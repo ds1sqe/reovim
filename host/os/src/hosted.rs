@@ -14,12 +14,10 @@ use std::process::{Command, Stdio};
 use std::sync::Once;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crossterm::event::{
-    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
-};
+use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal;
 
-use crate::term::Key;
+use crate::term::{Event, Key};
 use crate::{Entry, Error, Kind, Stat};
 
 impl From<io::Error> for Error {
@@ -446,12 +444,12 @@ mod tty {
     }
 }
 
-/// One event within `ms`; a key is decoded, anything else is `None`,
-/// and nothing is waited for after a signal. The wait is on stdin
-/// here: crossterm's own spins forever on a terminal that has gone
-/// away, and it is asked only for what has already arrived. A hangup
-/// stops the editor the way SIGHUP does.
-pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
+/// One event within `ms`; a key is decoded, a resize is handed on as
+/// it is, anything else is `None`, and nothing is waited for after a
+/// signal. The wait is on stdin here: crossterm's own spins forever on
+/// a terminal that has gone away, and it is asked only for what has
+/// already arrived. A hangup stops the editor the way SIGHUP does.
+pub fn poll(ms: u64) -> Result<Option<Event>, Error> {
     if stopped() {
         return Ok(None);
     }
@@ -462,7 +460,10 @@ pub fn poll(ms: u64) -> Result<Option<Key>, Error> {
         return Ok(None);
     }
     match event::read()? {
-        Event::Key(key) => Ok(decode(key)),
+        event::Event::Key(key) => Ok(decode(key).map(Event::Key)),
+        // The shape the event carries is not handed on: several may
+        // stand in the queue, and `size` is the one that is current.
+        event::Event::Resize(..) => Ok(Some(Event::Resize)),
         _ => Ok(None),
     }
 }

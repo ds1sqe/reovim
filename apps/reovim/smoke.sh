@@ -400,6 +400,29 @@ done
     | grep -q '0 run({cwd: Rd, target: utf8(256), notation: utf8(1024)})' \
     || fail "keys' run takes: $("$BIN" cli stat /bin/keys)"
 
+# --- the window resized, with no key typed ---------------------------
+# A resize is a reason to draw: nothing is typed here, and the frame
+# that follows is the new shape's, so the status row is on the pane's
+# last row again and `display` is the pane again. Smaller, then back.
+resized() {
+    local rows="$1" i last
+    "${TMUX[@]}" resize-window -t new -x 80 -y "$rows"
+    for ((i = 0; i < 200; i++)); do
+        last="$("${TMUX[@]}" capture-pane -p -t new | tail -n 1)"
+        if grep -q 'note  [0-9][0-9]*:[0-9][0-9]*  r[0-9][0-9]*' \
+            <<< "$last"
+        then
+            return
+        fi
+        sleep 0.01
+    done
+    fail "at $rows rows the pane's last row is '$last', not the status"
+}
+resized 12
+[[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
+    || fail "the capture after the resize is not the pane: $(captured)"
+resized 24
+
 # --- /sys as sysfs: the parameters, the facts, the core -------------
 # A file per parameter under /sys/limit, each in decimal and each
 # settable; a file per fact under /sys/info, each made at the read and

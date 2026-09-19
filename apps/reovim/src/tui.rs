@@ -140,7 +140,10 @@ fn drive(tui: &mut Tui, serve: Serve, host: &Host) -> Result<u8, Fail> {
     loop {
         serve()?;
         let step = match term::poll(20)? {
-            Some(key) => tui.key(map(key))?,
+            Some(term::Event::Key(key)) => tui.key(map(key))?,
+            // A resize is a reason to draw: `draw` reads the terminal
+            // again, so the frame the Plugin makes is the new shape's.
+            Some(term::Event::Resize) => Step::Changed,
             None if term::stopped() => return Err(Fail::Signal),
             None => tui.tick()?,
         };
