@@ -37,7 +37,7 @@ impl Vim {
     /// E486 for the last pattern; nothing moved.
     pub(crate) fn not_found(&mut self) -> Effect {
         let pattern = &self.search.pattern;
-        self.message = alloc::format!("E486: Pattern not found: {pattern}");
+        self.error(&alloc::format!("E486: Pattern not found: {pattern}"));
         Effect::Nothing
     }
 
@@ -46,9 +46,9 @@ impl Vim {
     /// after this one pays the cost again.
     pub(crate) fn too_costly(&mut self) -> Effect {
         let pattern = &self.search.pattern;
-        self.message = alloc::format!(
+        self.error(&alloc::format!(
             "E363: pattern costs more than the matcher will spend: {pattern}"
-        );
+        ));
         self.search.stale = true;
         Effect::Nothing
     }
@@ -180,7 +180,7 @@ impl Vim {
     /// pattern, whole words only, then a search.
     pub(crate) fn star(&mut self, forward: bool, n: usize) -> Effect {
         let Some(word) = self.keyword_at_cursor() else {
-            self.message = String::from("E348: No string under cursor");
+            self.error("E348: No string under cursor");
             return Effect::Nothing;
         };
         self.search.pattern = alloc::format!("\\<{word}\\>");

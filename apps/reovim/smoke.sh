@@ -992,6 +992,26 @@ fi
 core="$(ls "$DIR"/reovim-core.* 2>/dev/null || true)"
 [[ -z "$core" ]] || fail "a hangup wrote a core: $core"
 
+# --- recorded keys replay as one undo step --------------------------
+mkdir -p "$DIR/macros"
+printf 'a\nb\nc\nd\ne\n' > "$DIR/macros/file"
+start macros "$DIR/macros" "$BIN file"
+editing macros file
+keys macros q a A ! Escape j q
+shown macros '^a!$'
+keys macros 3 @ a
+shown macros '^b!$'
+shown macros '^c!$'
+shown macros '^d!$'
+keys macros u
+shown macros '^a!$'
+shown macros '^b$'
+shown macros '^c$'
+shown macros '^d$'
+keys macros : q ! Enter
+ended macros
+[[ "$ENDED" == 0 ]] || fail "the macro editor did not quit"
+
 # --- start to first frame -------------------------------------------
 before="$EPOCHREALTIME"
 start time "$DIR" "$BIN other"

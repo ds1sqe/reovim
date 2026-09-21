@@ -26,7 +26,7 @@
 //! borrow of the engine outlives an op, so a Driver of Vim's own that
 //! a run re-enters finds the state free.
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, VecDeque};
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
@@ -47,7 +47,8 @@ use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
-use crate::{Edit, Effect, Ex, Land, Mode, Pos, Quit, Vim, bins};
+use crate::macros::BUDGET;
+use crate::{Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Vim, bins};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -89,6 +90,15 @@ const DRIVER: DriverId = DriverId(0);
 pub struct Editor {
     vim: RefCell<Vim>,
     stay: RefCell<Option<Rc<Stay>>>,
+    queue: RefCell<VecDeque<Queued>>,
+    spent: Cell<usize>,
+}
+
+/// Provenance controls recording, cancellation and the execution budget.
+#[derive(Clone, Copy)]
+enum Queued {
+    Typed(Key),
+    Fed(Key),
 }
 
 /// What one stay at the Plugin is: the region this Vim holds for it,
@@ -106,6 +116,8 @@ struct Stay {
     /// then, so W12 is one row until the next key and not every
     /// frame's. False again at the next `start`.
     stale: Cell<bool>,
+    /// A file switch leaves the queued input for the following stay.
+    leaving: Cell<bool>,
 }
 
 /// What a read of one of Vim's own rds is a read of: the rds `start`
@@ -121,6 +133,7 @@ struct Cells {
     marks: Rd,
     /// `jumps_listed`'s own rd.
     jumps: Rd,
+    recording: Rd,
     /// `/self/vim/bin`, whose listing is the order a `:` line resolves
     /// a name in.
     bin: Rd,
@@ -198,6 +211,7 @@ impl Module for Editor {
             cells,
             outputs: cell::Cells::default(),
             stale: Cell::new(false),
+            leaving: Cell::new(false),
         };
         *self.stay.borrow_mut() = Some(Rc::new(stay));
         let mut vim = self.vim.borrow_mut();
@@ -215,7 +229,11 @@ impl Module for Editor {
         vim.rows = rows;
         vim.opened(&bytes, ask.line, arrive);
         drop(vim);
-        self.announce(ctx)
+        self.announce(ctx)?;
+        if self.spent.get() >= BUDGET {
+            self.says(&format!("@: stopped after {BUDGET} keys"));
+        }
+        Ok(())
     }
 
     /// Before unload, by every door a stay ends by: what belongs to
@@ -223,7 +241,14 @@ impl Module for Editor {
     /// itself goes.
     fn stop(&self) {
         self.vim.borrow_mut().leave();
-        *self.stay.borrow_mut() = None;
+        let leaving = self
+            .stay
+            .borrow_mut()
+            .take()
+            .is_some_and(|stay| stay.leaving.get());
+        if !leaving {
+            self.queue.borrow_mut().clear();
+        }
     }
 }
 
@@ -284,6 +309,10 @@ impl Editor {
             marks_listed(ctx, &vim)
         } else if rd == cells.jumps {
             jumps_listed(ctx, &vim)
+        } else if rd == cells.recording {
+            vim.macros
+                .recording
+                .map_or_else(String::new, |name| format!("{name}\n"))
         } else {
             vim.stored(*cells.registers.get(&rd)?)
         };
@@ -294,12 +323,11 @@ impl Editor {
     /// made ended where the mode says it is over; the rows the region
     /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
-        let keys = self.stay()?.surface.region()?.keys(ctx)?;
-        for key in keys {
-            let effect = self.vim.borrow_mut().key(key);
-            self.act(ctx, effect)?;
-            self.write_clipped(ctx)?;
+        if !self.stay()?.leaving.get() {
+            let keys = self.stay()?.surface.region()?.keys(ctx)?;
+            self.queue.borrow_mut().extend(keys.into_iter().map(Queued::Typed));
         }
+        while self.step(ctx)? {}
         // The second of the two flushes: an insert session ends at its
         // Esc, and every other edit at the frame that made it. A stay
         // already stale skips it: the row already says W12, and a
@@ -311,6 +339,68 @@ impl Editor {
         }
         let rows = self.sized(ctx)?;
         Ok(encode(&self.vim.borrow_mut().view(rows)))
+    }
+
+    /// Run a key without holding a queue borrow across Driver calls.
+    fn step(&self, ctx: &dyn Calls) -> Result<bool, Error> {
+        if self.stay()?.leaving.get() {
+            return Ok(false);
+        }
+        let Some(queued) = self.queue.borrow_mut().pop_front() else {
+            return Ok(false);
+        };
+        let effect = self.key(queued);
+        let result =
+            self.act(ctx, effect).and_then(|()| self.write_clipped(ctx));
+        self.vim.borrow_mut().macros.fed = false;
+        if result.is_err() {
+            self.queue.borrow_mut().clear();
+        }
+        result?;
+        let exhausted = self.spent.get() >= BUDGET;
+        if self.vim.borrow_mut().rung() || exhausted {
+            self.queue
+                .borrow_mut()
+                .retain(|key| matches!(key, Queued::Typed(_)));
+        }
+        if exhausted {
+            self.says(&format!("@: stopped after {BUDGET} keys"));
+        }
+        Ok(true)
+    }
+
+    /// Fed context survives the engine call until its whole effect finishes.
+    fn key(&self, queued: Queued) -> Effect {
+        let mut vim = self.vim.borrow_mut();
+        vim.macros.fed = matches!(queued, Queued::Fed(_));
+        match queued {
+            Queued::Typed(key) => {
+                self.spent.set(0);
+                vim.key(key)
+            }
+            Queued::Fed(key) => {
+                self.spent.set(self.spent.get() + 1);
+                vim.fed(key, false)
+            }
+        }
+    }
+
+    /// Keep only the fed prefix the remaining budget can reach, plus a
+    /// sentinel. Typed input is never cancelled by a replay's bound.
+    fn replayed(&self, mut keys: Vec<Key>) {
+        let capacity = (BUDGET + 1).saturating_sub(self.spent.get());
+        keys.truncate(capacity);
+        let mut spare = capacity - keys.len();
+        let mut queue = self.queue.borrow_mut();
+        queue.retain(|key| {
+            let fed = matches!(key, Queued::Fed(_));
+            let keep = !fed || spare != 0;
+            spare = spare.saturating_sub(usize::from(fed));
+            keep
+        });
+        for key in keys.into_iter().rev() {
+            queue.push_front(Queued::Fed(key));
+        }
     }
 
     /// The draft flushed: what it holds goes down as one revision, or
@@ -333,7 +423,7 @@ impl Editor {
         match done(ctx) {
             Err(Error::Stale) => {
                 self.reloaded(ctx)?;
-                self.says(W12);
+                self.fails(W12);
                 self.stay()?.stale.set(true);
                 Ok(())
             }
@@ -366,11 +456,20 @@ impl Editor {
         self.vim.borrow_mut().message = String::from(message);
     }
 
+    /// A refused operation ends every pending replay.
+    fn fails(&self, message: &str) {
+        self.vim.borrow_mut().error(message);
+    }
+
     /// What `effect` asks of the Client, every `Stale` it may answer
     /// caught in [`Self::stale`].
     fn act(&self, ctx: &dyn Calls, effect: Effect) -> Result<(), Error> {
         self.stale(ctx, |ctx| match effect {
             Effect::Nothing | Effect::Moved => Ok(()),
+            Effect::Replay(keys) => {
+                self.replayed(keys);
+                Ok(())
+            }
             Effect::Edit(edit) => self.send(ctx, edit),
             Effect::Edits(edits) => self.send_each(ctx, edits),
             Effect::Undo => self.walk(ctx, true),
@@ -435,9 +534,9 @@ impl Editor {
             let mut vim = self.vim.borrow_mut();
             vim.message.clear();
             let before = vim.position();
-            let effect = made(&mut vim);
+            let mut effect = made(&mut vim);
             // `did` is `:s` and Vim's own `bin` names, never typing.
-            vim.changing(before, &effect, false);
+            vim.changing(before, &mut effect, false);
             vim.settle(&effect);
             effect
         };
@@ -502,7 +601,7 @@ impl Editor {
         match moved {
             Ok(()) => {}
             Err(Error::Invalid) => {
-                self.says(end);
+                self.fails(end);
                 return Ok(());
             }
             Err(error) => return Err(error),
@@ -543,7 +642,7 @@ impl Editor {
             return Ok(true);
         }
         let Some(name) = name else {
-            self.says(E32);
+            self.fails(E32);
             return Ok(false);
         };
         self.written_to(ctx, &rooted(&name), bang)
@@ -582,13 +681,13 @@ impl Editor {
         match self.making(ctx, path, bang) {
             Ok(Some(target)) => self.published_to(ctx, target),
             Ok(None) => {
-                self.says(E13);
+                self.fails(E13);
                 Ok(false)
             }
             // Refused, or asked of an rd that makes nothing: either
             // way there is no file to write.
             Err(_) => {
-                self.says(E212);
+                self.fails(E212);
                 Ok(false)
             }
         }
@@ -666,7 +765,7 @@ impl Editor {
     fn quit(&self, ctx: &dyn Calls, how: Quit) -> Result<(), Error> {
         let unsaved = self.unsaved(ctx)?;
         if how == Quit::Ask && unsaved {
-            self.says(E37);
+            self.fails(E37);
             return Ok(());
         }
         let code = match how {
@@ -716,7 +815,7 @@ impl Editor {
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
         let Some(target) = self.at(ctx, name)? else {
-            self.says(&format!("{E344} \"{name}\" in cdpath"));
+            self.fails(&format!("{E344} \"{name}\" in cdpath"));
             return Ok(());
         };
         self.shown(ctx, target, "", bang).map(drop)
@@ -732,7 +831,7 @@ impl Editor {
         bang: bool,
     ) -> Result<(), Error> {
         let Some(target) = self.at(ctx, name)? else {
-            self.says(&format!("{E345} \"{name}\" in path"));
+            self.fails(&format!("{E345} \"{name}\" in path"));
             return Ok(());
         };
         self.shown(ctx, target, "", bang).map(drop)
@@ -777,10 +876,16 @@ impl Editor {
         bang: bool,
     ) -> Result<bool, Error> {
         if !bang && self.unsaved(ctx)? {
-            self.says(E37);
+            self.fails(E37);
             return Ok(false);
         }
-        self.stay()?.surface.region()?.opens(ctx, target, plugin)?;
+        let file = target == NONE
+            || !ops::info(ctx, target)?.flags.contains(Flags::CONTAINER);
+        let stay = self.stay()?;
+        stay.surface.region()?.opens(ctx, target, plugin)?;
+        if file && matches!(plugin, "" | "vim") {
+            stay.leaving.set(true);
+        }
         Ok(true)
     }
 
@@ -806,7 +911,10 @@ impl Editor {
         let args = if arg.is_empty() { &one[..0] } else { &one[..] };
         let out = match sh::ran(ctx, &shell, &name, args) {
             Ok(ran) => printed(ctx, ran),
-            Err(miss) => format!("{miss}"),
+            Err(miss) => {
+                self.fails(&format!("{miss}"));
+                return Ok(());
+            }
         };
         self.says(out.lines().next().unwrap_or_default());
         Ok(())
@@ -827,14 +935,15 @@ impl Editor {
         let mut shell = core::mem::take(&mut self.vim.borrow_mut().shell);
         let was = shell.cwd();
         let outcome = sh::run(ctx, &mut shell, line);
-        let out = match outcome {
-            Ok(ran) => printed(ctx, ran),
-            Err(miss) if miss.unknown => format!("{E492} {line}"),
-            Err(miss) => format!("{miss}"),
-        };
         let moved = shell.cwd();
         self.vim.borrow_mut().shell = shell;
-        self.says(out.lines().next().unwrap_or_default());
+        match outcome {
+            Ok(ran) => {
+                self.says(printed(ctx, ran).lines().next().unwrap_or_default());
+            }
+            Err(miss) if miss.unknown => self.fails(&format!("{E492} {line}")),
+            Err(miss) => self.fails(&format!("{miss}")),
+        }
         if moved == was { Ok(()) } else { self.rebased(ctx, moved) }
     }
 
@@ -1049,11 +1158,12 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     }
     let marks = read(home, "marks", one)?;
     let jumps = read(home, "jumps", one)?;
+    let recording = read(home, "recording", one)?;
     let bin = read(home, "bin", held)?;
     for (name, decl) in bins::declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
     }
-    Ok(Cells { view, mode, pending, registers, marks, jumps, bin })
+    Ok(Cells { view, mode, pending, registers, marks, jumps, recording, bin })
 }
 
 /// `/self/vim/marks`: a line a mark, `NAME LINE COLUMN`, the line
@@ -1155,4 +1265,147 @@ fn printed(ctx: &dyn Calls, ran: Ran) -> String {
         let _ = open.close(ctx);
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+#[cfg(test)]
+mod macro_queue_tests {
+    use super::*;
+
+    #[test]
+    fn recursive_tails_are_bounded_and_keep_typed_input() {
+        let editor = Editor::default();
+        editor.spent.set(BUDGET - 3);
+        editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
+        editor.replayed(alloc::vec![Key::Char('@'); 100]);
+        editor.replayed(alloc::vec![Key::Char('a'); 100]);
+        let queue = editor.queue.borrow();
+        assert_eq!(
+            queue.iter().filter(|q| matches!(q, Queued::Fed(_))).count(),
+            4,
+            "only the remaining budget and its sentinel"
+        );
+        assert!(matches!(queue.back(), Some(Queued::Typed(Key::Char('x')))));
+    }
+
+    struct Refused<'a> {
+        calls: &'a dyn Calls,
+        info: Option<Rd>,
+        opening: Option<Rd>,
+    }
+
+    impl Calls for Refused<'_> {
+        fn register(
+            &self,
+            driver: DriverId,
+            parent: Rd,
+            name: Option<&str>,
+        ) -> Result<Rd, Error> {
+            self.calls.register(driver, parent, name)
+        }
+        fn name(&self, rd: Rd, name: Option<&str>) -> Result<(), Error> {
+            self.calls.name(rd, name)
+        }
+        fn report(
+            &self,
+            rd: Rd,
+            flags: Flags,
+            apis: &[Decl],
+        ) -> Result<(), Error> {
+            self.calls.report(rd, flags, apis)
+        }
+        fn unregister(&self, rd: Rd) -> Result<(), Error> {
+            self.calls.unregister(rd)
+        }
+        fn changed(
+            &self,
+            rd: Rd,
+            kind: reovim_kernel_interface::Kind,
+        ) -> Result<(), Error> {
+            self.calls.changed(rd, kind)
+        }
+        fn done(
+            &self,
+            token: reovim_kernel_interface::Token,
+            outcome: reovim_kernel_interface::Outcome,
+        ) -> Result<(), Error> {
+            self.calls.done(token, outcome)
+        }
+        fn open(&self, rd: Rd, rights: Rights) -> Result<Handle, Error> {
+            self.opening.filter(|bad| *bad == rd).map_or_else(
+                || self.calls.open(rd, rights),
+                |_| Err(Error::Denied),
+            )
+        }
+        fn submit(
+            &self,
+            op: reovim_kernel_interface::Op,
+        ) -> Reply<reovim_kernel_interface::Out> {
+            use reovim_kernel_interface::Op;
+            let denied = Reply::err(Error::Denied);
+            match op {
+                Op::Info { rd } if self.info == Some(rd) => denied,
+                other => self.calls.submit(other),
+            }
+        }
+    }
+
+    fn scene(
+        name: &str,
+    ) -> (
+        reovim_rig::Rig,
+        Rc<Editor>,
+        Rc<reovim_client::Host>,
+        reovim_client_tui::Tui,
+    ) {
+        let rig = reovim_rig::Rig::new(name);
+        rig.file("a", b"abc\n");
+        rig.file("b", b"def\n");
+        let host = rig.host();
+        let editor = Editor::new();
+        let held = editor.clone();
+        let table: reovim_client::dev::Table =
+            alloc::boxed::Box::new(move |_| {
+                Some((String::from("vim"), held.booted()))
+            });
+        let mut tui = reovim_rig::opened(
+            &host,
+            table,
+            reovim_client::dev::Clip::none(),
+            "",
+            Some("a"),
+            None,
+        )
+        .unwrap();
+        tui.frame(80, 24).unwrap();
+        (rig, editor, host, tui)
+    }
+
+    #[test]
+    fn metadata_failure_does_not_schedule_a_buffer_switch() {
+        let (_rig, editor, host, mut tui) = scene("macro-info-failure");
+        let ctx = host.own();
+        let b = cell::resolve(&ctx, ROOT, "/module/fs/root/b").unwrap();
+        let refused = Refused { calls: &ctx, info: Some(b), opening: None };
+        assert_eq!(editor.shown(&refused, b, "", true), Err(Error::Denied));
+        assert!(!editor.stay().unwrap().leaving.get());
+        tui.tick().unwrap();
+        assert_eq!(reovim_rig::lines(&mut tui), ["abc"]);
+    }
+
+    #[test]
+    fn clipboard_error_discards_the_remaining_run() {
+        let (_rig, editor, host, _tui) = scene("macro-clipboard-failure");
+        let ctx = host.own();
+        let clipboard = Rd(u64::MAX);
+        editor.vim.borrow_mut().clip = Some(clipboard);
+        let refused =
+            Refused { calls: &ctx, info: None, opening: Some(clipboard) };
+        editor.replayed("\"+yyx".chars().map(Key::Char).collect());
+        for _ in 0..3 {
+            assert_eq!(editor.step(&refused), Ok(true));
+        }
+        assert_eq!(editor.step(&refused), Err(Error::Denied));
+        assert!(!editor.vim.borrow().macros.fed);
+        assert!(editor.queue.borrow().is_empty(), "failed run was retained");
+        assert_eq!(editor.step(&ctx), Ok(false));
+    }
 }

@@ -140,7 +140,7 @@ impl Motion {
             Key::Char('h') | Key::Left => Self::Left,
             Key::Char('l') | Key::Right => Self::Right,
             Key::Char('k') | Key::Up => Self::Up,
-            Key::Char('j') | Key::Down => Self::Down,
+            Key::Char('j') | Key::Down | Key::Ctrl('j') => Self::Down,
             Key::Char('0') | Key::Home => Self::LineStart,
             Key::Char('^') => Self::FirstNonBlank,
             Key::Char('$') | Key::End => Self::LineEnd,
@@ -197,7 +197,8 @@ impl Motion {
 impl Vim {
     /// `motion` `n` times, for the cursor.
     pub(crate) fn move_by(&mut self, motion: Motion, n: usize) -> Effect {
-        match motion {
+        let bell = self.bell;
+        let effect = match motion {
             Motion::Left => self.repeat(n, Self::left),
             Motion::Right => self.repeat(n, Self::right),
             Motion::Up => self.repeat(n, |v| v.vertical(false)),
@@ -219,7 +220,13 @@ impl Vim {
                 self.search(self.search.forward != reversed, n)
             }
             Motion::Star { forward } => self.star(forward, n),
+        };
+        if self.pending.running
+            && matches!(motion, Motion::Left | Motion::Right)
+        {
+            self.bell = bell;
         }
+        effect
     }
 
     /// `$` with a count: `n - 1` lines down, then the last char, or
@@ -252,7 +259,10 @@ impl Vim {
     }
 
     fn find_again(&mut self, n: usize, reversed: bool) -> Effect {
-        let Some((kind, c)) = self.find else { return Effect::Nothing };
+        let Some((kind, c)) = self.find else {
+            self.ring();
+            return Effect::Nothing;
+        };
         let kind = if reversed { kind.reversed() } else { kind };
         self.repeat_find(n, kind, c)
     }
@@ -295,7 +305,10 @@ impl Vim {
     /// `%`: from the first bracket at or after the cursor on its line
     /// to the one it pairs with.
     fn percent(&mut self) -> Effect {
-        let Some(to) = self.matching_bracket() else { return Effect::Nothing };
+        let Some(to) = self.matching_bracket() else {
+            self.ring();
+            return Effect::Nothing;
+        };
         self.set_previous();
         self.go(to)
     }
@@ -389,7 +402,7 @@ impl Vim {
     /// E20.
     pub(crate) fn go_to_mark(&mut self, name: char, exact: bool) -> Effect {
         let Some((elsewhere, pos)) = self.found_mark(name) else {
-            self.message = String::from("E20: Mark not set");
+            self.error("E20: Mark not set");
             return Effect::Nothing;
         };
         let land = if exact { Land::Exact } else { Land::Line };
@@ -419,6 +432,7 @@ impl Vim {
         let here = Jump { source: self.source, pos: self.pos_at(self.cursor) };
         let newest = self.jumps.at == self.jumps.list.len();
         let Some(jump) = self.jumps.walk(back, n, here) else {
+            self.ring();
             return Effect::Nothing;
         };
         if newest {
@@ -437,7 +451,7 @@ impl Vim {
     /// no longer has, else landed as a walk lands.
     fn landed(&mut self, pos: Pos) -> Effect {
         if pos.line >= self.line_count() {
-            self.message = String::from("E19: Mark has invalid line number");
+            self.error("E19: Mark has invalid line number");
             return Effect::Nothing;
         }
         self.jump_to(pos, Land::Walked)
@@ -798,7 +812,7 @@ impl Vim {
 
     /// `taken` onto register `name`: lines on their own line, chars
     /// straight after.
-    fn append(&mut self, name: char, taken: &Register) {
+    pub(crate) fn append(&mut self, name: char, taken: &Register) {
         let entry = self.registers.entry(name).or_default();
         let lines = entry.kind != Kind::Char || taken.kind != Kind::Char;
         if !entry.text.is_empty() && lines {

@@ -71,7 +71,16 @@ fn one_editor_started_twice_serves_every_cell() {
     // nothing is left stale from the first.
     assert_eq!(
         listed(&host, "/self/vim"),
-        ["view", "mode", "pending", "registers", "marks", "jumps", "bin"]
+        [
+            "view",
+            "mode",
+            "pending",
+            "registers",
+            "marks",
+            "jumps",
+            "recording",
+            "bin"
+        ]
     );
     assert_eq!(listed(&host, "/self/vim/registers").len(), 27);
     assert_eq!(listed(&host, "/self/vim/bin").len(), 11);

@@ -20,6 +20,7 @@ extern crate alloc;
 pub mod bins;
 mod command;
 mod jumps;
+mod macros;
 mod marks;
 mod motion;
 mod object;
@@ -97,6 +98,17 @@ pub struct Edit {
 /// What a key did, before the calls it asks for are made.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
+    /// Register keys for the Client queue, never keyboard writes.
+    ///
+    /// ```
+    /// use reovim_plugin_vim::{Effect, Key, Vim, notation};
+    /// let mut vim = Vim::default();
+    /// vim.loaded(b"abc\n");
+    /// for key in notation::keys("qaxq@").unwrap() { vim.key(key); }
+    /// assert_eq!(vim.key(Key::Char('a')),
+    ///     Effect::Replay(vec![Key::Char('x')]));
+    /// ```
+    Replay(Vec<Key>),
     Nothing,
     /// The cursor or the mode moved; the text did not.
     Moved,
@@ -355,8 +367,13 @@ struct Place {
 /// by `left` and filled again by the next `start`; one Buffer, kept in
 /// a `Place` across a `left` and restored by the `opened` that finds
 /// the same draft again; and kept, which no swap touches.
+// The bell, insert joining, wanted column and visual end are independent
+// state flags; combining them into an enum would invent invalid coupling.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Default)]
 pub struct Vim {
+    macros: macros::Macros,
+    bell: bool,
     // One stay.
     mode: Mode,
     pending: Pending,
@@ -602,9 +619,12 @@ impl Vim {
     fn changing(
         &mut self,
         before: (usize, usize),
-        effect: &Effect,
+        effect: &mut Effect,
         typed: bool,
     ) {
+        if matches!(effect, Effect::Undo | Effect::Redo) {
+            self.macros.joined = false;
+        }
         match effect {
             Effect::Undo => return self.undone.walking = Some(false),
             Effect::Redo => return self.undone.walking = Some(true),
@@ -613,6 +633,8 @@ impl Vim {
         if self.repeat.replaying {
             return;
         }
+        let own = effect_edits(effect).first().is_some_and(|e| !e.join);
+        self.continued(effect);
         let edits = effect_edits(effect);
         let starting = edits.first().is_some_and(|e| !e.join);
         if starting {
@@ -621,7 +643,7 @@ impl Vim {
         for edit in edits {
             self.marked(edit);
         }
-        self.mark_batch(edits, starting, typed);
+        self.mark_batch(edits, own, typed);
     }
 
     /// The undo snapshot a revision's own first edit takes: the
@@ -752,6 +774,11 @@ impl Vim {
             Key::Char('<') => return self.operator(Operator::ShiftLeft, n),
             Key::Char(c @ ('/' | '?')) => return self.prompt(c, count),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
+            Key::Char('q') if self.macros.fed => Effect::Nothing,
+            Key::Char('q') if self.macros.recording.is_some() => {
+                return self.recorded();
+            }
+            Key::Char(first @ ('q' | '@')) => return self.wait(first, count),
             Key::Ctrl('o') => return self.jumped(true, n),
             Key::Tab => return self.jumped(false, n),
             Key::Char('~') => self.tilde(n),
@@ -822,7 +849,14 @@ impl Vim {
             ('g', Key::Char('v')) => self.reselect(),
             ('"', Key::Char(name)) => self.named(name, count),
             ('m', Key::Char(name @ ('a'..='z' | 'A'..='Z'))) => {
+                self.repeat.record.clear();
                 self.set_mark(name)
+            }
+            ('q', Key::Char(name @ ('a'..='z' | 'A'..='Z'))) => {
+                self.recording(name)
+            }
+            ('@', Key::Char(name @ ('a'..='z' | 'A'..='Z' | '@' | ':'))) => {
+                self.macro_run(name, n)
             }
             ('Z', Key::Char('Z')) => Effect::Quit(Quit::Write),
             ('Z', Key::Char('Q')) => Effect::Quit(Quit::Force),
@@ -954,13 +988,11 @@ impl Vim {
             let count = alloc::format!("{count}");
             keys.splice(0..0, count.chars().map(Key::Char));
         }
-        self.repeat.replaying = true;
         let mut edits = Vec::new();
         for key in keys {
-            let effect = self.key(key);
+            let effect = self.fed(key, true);
             collect(&mut edits, effect);
         }
-        self.repeat.replaying = false;
         if edits.is_empty() { Effect::Nothing } else { Effect::Edits(edits) }
     }
 
@@ -1098,6 +1130,9 @@ impl Vim {
     ) -> Effect {
         let count =
             (0..n).take_while(|_| motion(self) == Effect::Moved).count();
+        if n > 0 && count == 0 {
+            self.ring();
+        }
         moved(count > 0)
     }
 }
@@ -1153,6 +1188,34 @@ impl Vim {
     /// One key in the current mode; a message showing or shown goes
     /// with it, so the View is shown again.
     pub fn key(&mut self, key: Key) -> Effect {
+        self.macros.fed = false;
+        self.macros.joined = false;
+        if self.macros.recording.is_some() {
+            self.macros.record.push(key);
+        }
+        self.processed(key)
+    }
+
+    /// A replay key. Nested repeats restore their caller's context.
+    ///
+    /// ```
+    /// use reovim_plugin_vim::{Key, Vim};
+    /// let mut vim = Vim::default();
+    /// vim.loaded(b"abc\n");
+    /// vim.fed(Key::Char('x'), false);
+    /// assert_eq!(vim.text(), "bc\n");
+    /// ```
+    pub fn fed(&mut self, key: Key, repeat: bool) -> Effect {
+        let fed = core::mem::replace(&mut self.macros.fed, true);
+        let was = self.repeat.replaying;
+        self.repeat.replaying = repeat;
+        let effect = self.processed(key);
+        self.repeat.replaying = was;
+        self.macros.fed = fed;
+        effect
+    }
+
+    fn processed(&mut self, key: Key) -> Effect {
         if !self.repeat.replaying {
             self.repeat.record.push(key);
         }
@@ -1165,7 +1228,7 @@ impl Vim {
         // the way out, still read as typed; a `c` that enters Insert
         // is still Normal here, so its own delete does not.
         let typed = self.mode == Mode::Insert;
-        let effect = match self.mode {
+        let mut effect = match self.mode {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
             Mode::Command => self.command(key),
@@ -1175,7 +1238,7 @@ impl Vim {
                 effect
             }
         };
-        self.changing(before, &effect, typed);
+        self.changing(before, &mut effect, typed);
         if !core::mem::take(&mut self.keep_want) {
             self.want = self.wanted();
         }
@@ -1195,14 +1258,14 @@ impl Vim {
     pub fn pasted(&mut self, text: Option<String>) -> Effect {
         let Some(put) = self.put.take() else { return Effect::Nothing };
         let before = self.position();
-        let effect = if let Some(text) = text {
+        let mut effect = if let Some(text) = text {
             self.put_text(&text, put)
         } else {
-            self.message = String::from("E353: Nothing in register +");
+            self.error("E353: Nothing in register +");
             Effect::Moved
         };
         // A put, never typing, whatever mode asked for it.
-        self.changing(before, &effect, false);
+        self.changing(before, &mut effect, false);
         self.settle(&effect);
         effect
     }
@@ -1334,6 +1397,9 @@ impl Vim {
         self.mode = Mode::default();
         self.pending = Pending::default();
         self.joining = false;
+        self.macros.fed = false;
+        self.macros.joined = false;
+        self.bell = false;
         self.keep_want = false;
         self.indent = 0;
         self.clipboard = None;
@@ -1409,7 +1475,7 @@ impl Vim {
     /// the mode.
     #[must_use]
     pub fn status(&self) -> String {
-        match self.mode {
+        let mut status = match self.mode {
             _ if !self.message.is_empty() => self.message.clone(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
@@ -1417,7 +1483,14 @@ impl Vim {
             Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
             Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),
+        };
+        let separator = if status.is_empty() { "" } else { " " };
+        if let Some(name) = self.macros.recording {
+            status.push_str(separator);
+            status.push_str("recording @");
+            status.push(name.to_ascii_lowercase());
         }
+        status
     }
 }
 

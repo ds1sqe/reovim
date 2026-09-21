@@ -49,6 +49,7 @@ impl Vim {
         }
         // Every other key leaves the menu and is itself.
         self.wild = None;
+        let key = if key == Key::Ctrl('j') { Key::Enter } else { key };
         match self.prompt.line().key(key) {
             Act::Nothing | Act::Clear => Effect::Nothing,
             Act::Redraw => Effect::Moved,
@@ -171,6 +172,9 @@ impl Vim {
             return self.searched(line, forward, count.max(1));
         }
         self.repeat.record.clear();
+        if !self.macros.fed {
+            self.macros.last_ex.clone_from(&line);
+        }
         let effect = self.ex(&line);
         self.settle(&effect);
         effect
@@ -197,7 +201,7 @@ impl Vim {
     fn ex(&mut self, line: &str) -> Effect {
         let line = line.trim();
         let Some((range, rest)) = self.range(line) else {
-            self.message = String::from("E20: Mark not set");
+            self.error("E20: Mark not set");
             return Effect::Nothing;
         };
         let rest = rest.trim();
@@ -273,7 +277,7 @@ impl Vim {
             return true;
         }
         let Some(option) = self.option(name) else {
-            self.message = alloc::format!("E518: Unknown option: {arg}");
+            self.error(&alloc::format!("E518: Unknown option: {arg}"));
             return false;
         };
         *option = on;

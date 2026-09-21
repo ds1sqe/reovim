@@ -364,3 +364,78 @@ fn the_clipboard_registers_wait_for_their_rd() {
     }]);
     assert_eq!(typed(&mut vim, "."), again, "repeats");
 }
+
+#[test]
+fn fed_keys_do_not_record_and_repeat_preserves_the_last_change() {
+    let mut vim = on("abcdefgh\n");
+    typed(&mut vim, "qb");
+    vim.fed(Key::Char('x'), false);
+    typed(&mut vim, "q");
+    assert_eq!(vim.stored('b'), "");
+    typed(&mut vim, "x");
+    vim.fed(Key::Char('l'), true);
+    typed(&mut vim, ".");
+    assert_eq!(vim.text(), "cefgh\n");
+}
+
+#[test]
+fn a_motion_before_the_first_fed_edit_does_not_join_prior_typing() {
+    let mut vim = on("abcdef\nghijkl\n");
+    typed(&mut vim, "x");
+    vim.fed(Key::Char('j'), false);
+    assert_eq!(vim.fed(Key::Char('x'), false), edit(6, 1, "", false));
+    assert_eq!(vim.fed(Key::Char('x'), false), edit(6, 1, "", true));
+    typed(&mut vim, "'[");
+    assert_eq!(vim.position(), (1, 0));
+}
+
+#[test]
+fn errors_ring_but_permitted_stationary_commands_do_not() {
+    for input in ["h", "j", "fz", "%", "/z<CR>n", "'a"] {
+        let mut vim = on("abc\n");
+        typed(&mut vim, input);
+        assert!(vim.rung(), "{input}");
+        assert!(!vim.rung(), "the bell is taken");
+    }
+    for (text, input) in [
+        ("abc\n", "0"),
+        ("abc\n", "gg"),
+        ("abc\n", "i<Left>"),
+        ("\n", "x"),
+        ("abc\n", "X"),
+    ] {
+        let mut vim = on(text);
+        typed(&mut vim, input);
+        assert!(!vim.rung(), "{input}");
+    }
+}
+
+#[test]
+fn a_fed_line_does_not_replace_the_last_typed_ex() {
+    let mut vim = on("abc\n");
+    typed(&mut vim, ":set ic<CR>");
+    for key in reovim_plugin_vim::notation::keys(":set noic<CR>").unwrap() {
+        vim.fed(key, false);
+    }
+    let effect = typed(&mut vim, "@:");
+    assert_eq!(
+        effect,
+        Effect::Replay(
+            reovim_plugin_vim::notation::keys(":set ic<CR>").unwrap()
+        )
+    );
+}
+
+#[test]
+fn huge_counts_on_empty_registers_finish_and_nonempty_runs_are_bounded() {
+    let mut vim = on("x\n");
+    assert_eq!(
+        typed(&mut vim, "999999999999999999999999999@a"),
+        Effect::Replay(vec![])
+    );
+    typed(&mut vim, "\"ayiw");
+    let Effect::Replay(keys) = typed(&mut vim, "200000@a") else {
+        panic!("a register run must return replay keys");
+    };
+    assert_eq!(keys, vec![Key::Char('x'); 100_001]);
+}

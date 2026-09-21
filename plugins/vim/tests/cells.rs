@@ -113,7 +113,16 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
 
     assert_eq!(
         listed(&host, "/self/vim"),
-        ["view", "mode", "pending", "registers", "marks", "jumps", "bin"]
+        [
+            "view",
+            "mode",
+            "pending",
+            "registers",
+            "marks",
+            "jumps",
+            "recording",
+            "bin"
+        ]
     );
     let names = listed(&host, "/self/vim/registers");
     assert_eq!(names.len(), 27, "the unnamed one and `a` to `z`");
