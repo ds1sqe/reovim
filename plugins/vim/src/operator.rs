@@ -594,12 +594,16 @@ impl Vim {
         Some((from, to.min(self.text.len()), kind))
     }
 
-    /// `n` lines down for `dd` and the like: a span unless fewer
-    /// lines are left, when the whole command fails as Vim's does.
+    /// `n` lines down for `dd` and the like: nvim's `cursor_down`,
+    /// which fails only from the last line and otherwise stops at it,
+    /// so `3dd` on the second of three lines takes the two that are
+    /// left. `d3j`, counting a motion rather than lines, still fails
+    /// past the end.
     fn lines_down(&mut self, n: usize) -> Effect {
-        if self.position().0 + n >= self.line_count() {
+        if n > 0 && self.position().0 + 1 >= self.line_count() {
             return Effect::Nothing;
         }
+        // Each step of its own accord stops at the last line: the clamp.
         self.repeat(n, |v| v.vertical(true));
         Effect::Moved
     }
