@@ -21,6 +21,7 @@ pub mod bins;
 mod command;
 mod global;
 mod jumps;
+mod keymap;
 mod macros;
 mod marks;
 mod motion;
@@ -35,6 +36,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub use keymap::Stroke;
 pub use marks::Pos;
 pub use operator::Motion;
 pub use plugin::Editor;
@@ -42,6 +44,7 @@ pub use reovim_client_api::{Key, notation};
 pub use visual::Visual;
 
 use jumps::{Jump, Jumps};
+use keymap::{Fact, Held, Keymap};
 use marks::Marks;
 use operator::{Find, Operator};
 use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, window};
@@ -423,6 +426,9 @@ pub struct Vim {
     global: global::Global,
     mode: Mode,
     pending: Pending,
+    /// The keys a binding may still be, and the keys a failed prefix
+    /// let go for the host's queue to run again.
+    held: Held,
     /// The next insert edit joins the revision under way.
     joining: bool,
     /// The last key kept `want` rather than setting it.
@@ -469,6 +475,9 @@ pub struct Vim {
     marks: Marks,
 
     // Kept.
+    /// The bindings and the leader, which no swap of the region
+    /// touches: a binding an `init` made outlives every Buffer.
+    keymap: Keymap,
     left: Option<Rd>,
     alt: Option<Rd>,
     greeting: Option<String>,
@@ -1272,7 +1281,7 @@ impl Vim {
         if self.macros.recording.is_some() {
             self.macros.record.push(key);
         }
-        self.processed(key)
+        self.processed(key, false)
     }
 
     /// A replay key. Nested repeats restore their caller's context.
@@ -1288,18 +1297,203 @@ impl Vim {
         let fed = core::mem::replace(&mut self.macros.fed, true);
         let was = self.repeat.replaying;
         self.repeat.replaying = repeat;
-        let effect = self.processed(key);
+        let effect = self.processed(key, false);
         self.repeat.replaying = was;
         self.macros.fed = fed;
         effect
     }
 
-    fn processed(&mut self, key: Key) -> Effect {
+    /// A key a failed prefix let go, run again in the origin it was
+    /// taken with: a macro's key is still the macro's, so its edits
+    /// join that run's one revision and a bell still drops it.
+    ///
+    /// ```
+    /// use reovim_plugin_vim::{Key, Vim};
+    /// let mut vim = Vim::default();
+    /// vim.loaded(b"abc\n");
+    /// vim.bind("xy", "write");
+    /// assert_eq!(vim.key(Key::Char('x')), reovim_plugin_vim::Effect::Nothing);
+    /// vim.key(Key::Char('p'));
+    /// for stroke in vim.released() {
+    ///     vim.past(stroke);
+    /// }
+    /// assert_eq!(vim.text(), "bac\n");
+    /// ```
+    pub fn past(&mut self, stroke: Stroke) -> Effect {
+        self.macros.fed = stroke.fed;
+        self.processed(stroke.key, true)
+    }
+
+    /// The keys a failed prefix let go, for the host to put back at
+    /// the front of its queue; empty once there are none.
+    pub fn released(&mut self) -> Vec<Stroke> {
+        core::mem::take(&mut self.held.released)
+    }
+
+    /// A bell or the replay budget: what a macro fed goes, held and
+    /// released alike, and what a person typed stays. So a macro that
+    /// ends inside a prefix cannot be finished by the next typed key.
+    pub(crate) fn cancel(&mut self) {
+        self.held.keys.retain(|stroke| !stroke.fed);
+        self.held.released.retain(|stroke| !stroke.fed);
+    }
+
+    /// The keymap at `key`, before anything else this key would do:
+    /// `Some` where the map took it, `None` where the key is itself.
+    ///
+    /// `past` says the key is one a failed prefix let go, which is not
+    /// looked up again — but for an Alt the map knows alone, which
+    /// nvim runs wherever it arrives.
+    ///
+    /// Named for the key and not `bound` alone: `bound()` is already
+    /// the last byte the cursor may take (motion.rs).
+    fn bound_key(&mut self, key: Key, past: bool) -> Option<Effect> {
+        if self.repeat.replaying
+            || !matches!(self.mode, Mode::Normal | Mode::Visual(_))
+            || self.pending.key.is_some()
+            || self.pending.operator.is_some()
+        {
+            return None;
+        }
+        let alone = self.held.keys.is_empty()
+            && matches!(key, Key::Alt(_))
+            && self.keymap.fact(&[key]) != Fact::None;
+        let counted = self.pending.count > 0 || self.pending.register.is_some();
+        if !alone && (past || counted) {
+            return None;
+        }
+        if counted {
+            // nvim runs a mapped Alt behind a count and behind a
+            // register alike, and neither reaches the line.
+            self.pending = Pending::default();
+        }
+        self.hold(key)
+    }
+
+    /// `key` held with the keys before it, and what the map makes of
+    /// them all.
+    fn hold(&mut self, key: Key) -> Option<Effect> {
+        self.held.keys.push(Stroke { key, fed: self.macros.fed });
+        let keys: Vec<Key> =
+            self.held.keys.iter().map(|stroke| stroke.key).collect();
+        match self.keymap.fact(&keys) {
+            Fact::Exact(line) => {
+                self.held.keys.clear();
+                Some(self.binding(&line))
+            }
+            // No timeout: the next key settles it, a macro's too, and
+            // nothing settles where the fed keys run out.
+            Fact::Longer(_) | Fact::Prefix => Some(Effect::Nothing),
+            Fact::None if keys.len() == 1 => {
+                self.held.keys.clear();
+                None
+            }
+            Fact::None => Some(self.failed(&keys)),
+        }
+    }
+
+    /// Keys that began no binding after all: the longest head that is
+    /// a binding runs, and everything after it is let go as it was
+    /// taken.
+    fn failed(&mut self, keys: &[Key]) -> Effect {
+        let bound = |end: usize| match self.keymap.fact(&keys[..end]) {
+            Fact::Exact(line) | Fact::Longer(line) => Some((end, line)),
+            Fact::Prefix | Fact::None => None,
+        };
+        let (head, line) = (1..keys.len())
+            .filter_map(bound)
+            .next_back()
+            .map_or((0, None), |(end, line)| (end, Some(line)));
+        let rest = self.held.keys.split_off(head);
+        self.held.keys.clear();
+        self.held.released.extend(rest);
+        line.map_or(Effect::Nothing, |line| self.binding(&line))
+    }
+
+    /// A binding's line, through the `:` door and settled as a typed
+    /// line is. In visual it leaves visual first, as a typed `:` does,
+    /// so the line runs with no range and finds no live selection.
+    fn binding(&mut self, line: &str) -> Effect {
+        if matches!(self.mode, Mode::Visual(_)) {
+            self.leave_visual();
+        }
+        // `run`'s own settle is no part of this: the lookup answers
+        // only where nothing is pending, so `repeat.record` is empty
+        // wherever a binding runs and there is nothing to settle.
+        self.ex(line)
+    }
+
+    /// KEYS bound to LINE, which `/self/vim/bin/bind` runs: no LINE
+    /// takes the binding away, and there is no `unbind`.
+    ///
+    /// KEYS is the key notation, `<Leader>` among its names, and LINE
+    /// is a `:` line kept as typed and not read until its key. The
+    /// keymap cell is a script of one `bind KEYS LINE` a line, read
+    /// back at blanks, so KEYS holds no blank — nvim's `:map` spells
+    /// one `<Space>` — and LINE holds no line end.
+    pub fn bind(&mut self, keys: &str, line: &str) -> Effect {
+        if keys.is_empty() {
+            return self.error("E471: Argument required");
+        }
+        if keys.contains(char::is_whitespace) {
+            return self.refused(keys);
+        }
+        if line.contains(['\n', '\r']) {
+            return self.refused(line);
+        }
+        let Some(read) = self.keymap.read(keys) else {
+            return self.refused(keys);
+        };
+        if line.is_empty() {
+            return self.unbound(&read);
+        }
+        self.keymap.put(&read, keys, line);
+        Effect::Moved
+    }
+
+    /// Every binding whose keys read the same, taken away; `E31`
+    /// where there was none. There is no `unbind` of its own.
+    fn unbound(&mut self, keys: &[Key]) -> Effect {
+        if self.keymap.unbind(keys) {
+            return Effect::Moved;
+        }
+        self.error("E31: No such mapping")
+    }
+
+    /// `E474` naming the argument that was refused.
+    fn refused(&mut self, arg: &str) -> Effect {
+        self.error(&alloc::format!("E474: Invalid argument: {arg}"))
+    }
+
+    fn processed(&mut self, key: Key, past: bool) -> Effect {
+        let shown = !self.message.is_empty();
+        self.message.clear();
+        let taken = self.bound_key(key, past);
+        let effect = taken.unwrap_or_else(|| self.acted(key));
+        let message = shown || !self.message.is_empty();
+        if message && effect == Effect::Nothing {
+            Effect::Moved
+        } else {
+            effect
+        }
+    }
+
+    /// What a key no binding took does: the mode's own arm, and the
+    /// bookkeeping of the change it may have made.
+    ///
+    /// An `Alt(c)` reaching here is `<Esc>` then `c`, as nvim has it
+    /// in every mode — insert, visual, the `:` line, and normal, of
+    /// which its help says nothing.
+    fn acted(&mut self, key: Key) -> Effect {
+        if let Key::Alt(c) = key {
+            let fed = self.macros.fed;
+            self.held.released.push(Stroke { key: Key::Esc, fed });
+            self.held.released.push(Stroke { key: Key::Char(c), fed });
+            return Effect::Nothing;
+        }
         if !self.repeat.replaying {
             self.repeat.record.push(key);
         }
-        let shown = !self.message.is_empty();
-        self.message.clear();
         self.undone.walking = None;
         let before = self.position();
         // Caught before the mode this key leaves: a block insert's
@@ -1324,12 +1518,7 @@ impl Vim {
         if matches!(self.mode, Mode::Visual(_)) {
             self.to_end = self.want == usize::MAX;
         }
-        let message = shown || !self.message.is_empty();
-        if message && effect == Effect::Nothing {
-            Effect::Moved
-        } else {
-            effect
-        }
+        effect
     }
 
     /// The clipboard's answer to `Effect::Clipboard`: the put goes on
@@ -1508,6 +1697,7 @@ impl Vim {
         self.mode = Mode::default();
         self.pending = Pending::default();
         self.joining = false;
+        self.held = Held::default();
         self.macros.fed = false;
         self.macros.joined = false;
         self.bell = false;

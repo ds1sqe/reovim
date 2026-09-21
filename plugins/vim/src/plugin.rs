@@ -47,6 +47,7 @@ use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
+use crate::keymap::{Held, Stroke};
 use crate::macros::BUDGET;
 use crate::{Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Switch, Vim, bins};
 
@@ -102,6 +103,10 @@ pub struct Editor {
 enum Queued {
     Typed(Key),
     Fed(Key),
+    /// A key a failed prefix let go, carrying the origin it was taken
+    /// with. It is not looked up a second time, and it is charged no
+    /// second time either: the input it came from paid for it.
+    Past(Stroke),
 }
 
 /// A source-backed draft, in the Client's listing order.
@@ -147,6 +152,11 @@ struct Cells {
     /// `jumps_listed`'s own rd.
     jumps: Rd,
     recording: Rd,
+    /// One rd per option, by its name: a reading of the engine's own
+    /// field, `set` being the one writer.
+    options: BTreeMap<Rd, &'static str>,
+    /// `/self/vim/keymap`'s own rd.
+    keymap: Rd,
     /// `/self/vim/bin`, whose listing is the order a `:` line resolves
     /// a name in.
     bin: Rd,
@@ -352,6 +362,10 @@ impl Editor {
             vim.macros
                 .recording
                 .map_or_else(String::new, |name| format!("{name}\n"))
+        } else if let Some(name) = cells.options.get(&rd) {
+            vim.shown(name)?
+        } else if rd == cells.keymap {
+            vim.keymap.text()
         } else {
             vim.stored(*cells.registers.get(&rd)?)
         };
@@ -447,13 +461,27 @@ impl Editor {
         self.vim.borrow_mut().macros.fed = false;
         if result.is_err() {
             self.queue.borrow_mut().clear();
+            self.vim.borrow_mut().held = Held::default();
         }
         result?;
+        // What this key let go goes to the queue's front, before the
+        // bell's check below, so a bell drops a macro's released keys
+        // with the rest of its run. A released key that lets go of
+        // more, an Alt among them, is drained by its own step.
+        let released = self.vim.borrow_mut().released();
+        let mut queue = self.queue.borrow_mut();
+        for stroke in released.into_iter().rev() {
+            queue.push_front(Queued::Past(stroke));
+        }
+        drop(queue);
         let exhausted = self.spent.get() >= BUDGET;
         if self.vim.borrow_mut().rung() || exhausted {
-            self.queue
-                .borrow_mut()
-                .retain(|key| matches!(key, Queued::Typed(_)));
+            self.queue.borrow_mut().retain(|queued| match queued {
+                Queued::Typed(_) => true,
+                Queued::Fed(_) => false,
+                Queued::Past(stroke) => !stroke.fed,
+            });
+            self.vim.borrow_mut().cancel();
         }
         if exhausted {
             self.says(&format!("@: stopped after {BUDGET} keys"));
@@ -474,6 +502,9 @@ impl Editor {
                 self.spent.set(self.spent.get() + 1);
                 vim.fed(key, false)
             }
+            // Neither counted nor zeroing: the key that let this one
+            // go was counted, or zeroed, already.
+            Queued::Past(stroke) => vim.past(stroke),
         }
     }
 
@@ -1377,11 +1408,11 @@ impl Editor {
         };
         let mut shell = self.vim.borrow().shell.clone();
         ranged(&mut shell, ex.from, ex.to, bang, ex.ranged);
-        // The rest of the line is one argument by Vim's own rule, and
-        // an empty one is no argument at all.
-        let one = [arg];
-        let args = if arg.is_empty() { &one[..0] } else { &one[..] };
-        let out = match sh::ran(ctx, &shell, &name, args) {
+        // The rest of the line fills this name's own positionals: a
+        // token each at blanks and the last taking the rest, by Vim's
+        // own rule, so `:w my file` is one name still.
+        let args = cut(arg, bins::positionals(&name));
+        let out = match sh::ran(ctx, &shell, &name, &args) {
             Ok(ran) => printed(ctx, ran),
             Err(miss) => {
                 self.fails(&format!("{miss}"));
@@ -1715,11 +1746,28 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     let marks = read(home, "marks", one)?;
     let jumps = read(home, "jumps", one)?;
     let recording = read(home, "recording", one)?;
+    let over = read(home, "options", held)?;
+    let mut options = BTreeMap::new();
+    for name in ["ignorecase", "smartcase", "hlsearch", "vi", "leader"] {
+        options.insert(read(over, name, one)?, name);
+    }
+    let keymap = read(home, "keymap", one)?;
     let bin = read(home, "bin", held)?;
     for (name, decl) in bins::declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
     }
-    Ok(Cells { view, mode, pending, registers, marks, jumps, recording, bin })
+    Ok(Cells {
+        view,
+        mode,
+        pending,
+        registers,
+        marks,
+        jumps,
+        recording,
+        options,
+        keymap,
+        bin,
+    })
 }
 
 /// `/self/vim/marks`: a line a mark, `NAME LINE COLUMN`, the line
@@ -1758,6 +1806,24 @@ fn jumps_listed(ctx: &dyn Calls, vim: &Vim) -> String {
         let _ = writeln!(out);
     }
     out
+}
+
+/// The rest of a `:` line as the `count` arguments a name takes: a
+/// token each at blanks and the last taking the rest. An empty rest
+/// is no argument at all, and a name that takes none is handed what
+/// it was given, so the run says why the line cannot stand.
+fn cut(arg: &str, count: usize) -> Vec<&str> {
+    let mut args = Vec::new();
+    let mut rest = arg;
+    while !rest.is_empty() && args.len() + 1 < count {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        args.push(&rest[..end]);
+        rest = rest[end..].trim_start();
+    }
+    if !rest.is_empty() {
+        args.push(rest);
+    }
+    args
 }
 
 /// Vim's own language in the environment of the Shell a run reads: the
@@ -1870,6 +1936,25 @@ mod macro_queue_tests {
             "only the remaining budget and its sentinel"
         );
         assert!(matches!(queue.back(), Some(Queued::Typed(Key::Char('x')))));
+    }
+
+    #[test]
+    fn a_key_a_failed_prefix_let_go_is_charged_no_second_time() {
+        let (_rig, editor, host, _tui) = scene("bind-past-charge");
+        editor.vim.borrow_mut().bind("xy", "nohlsearch");
+        editor.spent.set(BUDGET - 4);
+        let mut queue = editor.queue.borrow_mut();
+        queue.push_back(Queued::Fed(Key::Char('x')));
+        queue.push_back(Queued::Fed(Key::Char('p')));
+        drop(queue);
+        let ctx = host.own();
+        while editor.step(&ctx).unwrap() {}
+        assert_eq!(editor.engine().text(), "bac\n", "both keys ran");
+        assert_eq!(
+            editor.spent.get(),
+            BUDGET - 2,
+            "the two fed keys, and neither of the two they let go"
+        );
     }
 
     struct Refused<'a> {
@@ -2019,6 +2104,28 @@ mod macro_queue_tests {
         assert!(!editor.vim.borrow().macros.fed);
         assert!(editor.queue.borrow().is_empty(), "failed run was retained");
         assert_eq!(editor.step(&ctx), Ok(false));
+    }
+
+    #[test]
+    fn a_refused_step_lets_go_of_a_half_held_prefix() {
+        let (_rig, editor, host, _tui) = scene("bind-refused-held");
+        let ctx = host.own();
+        {
+            let mut vim = editor.vim.borrow_mut();
+            vim.bind("dx", "nohlsearch");
+            // A clipboard write waiting on an rd the tree does not
+            // hold: the step after this one fails, whatever its key.
+            vim.clip = Some(Rd(u64::MAX));
+            vim.clipboard = Some(String::from("held"));
+        }
+        editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('d')));
+        assert!(editor.step(&ctx).is_err(), "the clipboard write failed");
+
+        // The `d` the prefix was holding went with the queue, so the
+        // next key is itself and takes its char.
+        editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
+        assert_eq!(editor.step(&ctx), Ok(true));
+        assert_eq!(editor.engine().text(), "bc\n");
     }
 
     fn failed_lookup(error: Error) {

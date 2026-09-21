@@ -61,6 +61,7 @@ send() {
         '<Left>' | '<Right>' | '<Up>' | '<Down>' | '<Home>' | '<End>')
             "${TMUX[@]}" send-keys -t "$SESSION" "${key:1:-1}" ;;
         '<C-'?'>') "${TMUX[@]}" send-keys -t "$SESSION" "C-${key:3:1}" ;;
+        '<M-'?'>') "${TMUX[@]}" send-keys -t "$SESSION" "M-${key:3:1}" ;;
         '<lt>') "${TMUX[@]}" send-keys -t "$SESSION" -l '<' ;;
         *) "${TMUX[@]}" send-keys -t "$SESSION" -l "$key" ;;
     esac

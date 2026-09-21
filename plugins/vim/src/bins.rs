@@ -15,7 +15,7 @@
 
 use alloc::vec::Vec;
 
-use reovim_kernel_interface::{Calls, Decl, Error, Rd};
+use reovim_kernel_interface::{Calls, Decl, Error, Rd, Ty};
 
 use crate::plugin::{Editor, named};
 use crate::{Effect, Quit, Switch, Vim};
@@ -88,6 +88,14 @@ reovim_sdk::declare! {
     record Args { bang: bool, name: utf8(64) }
 }
 
+reovim_sdk::declare! {
+    /// `bind`: the keys and the `:` line they run.
+    api bound ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { keys: utf8(64), line: utf8(512) }
+}
+
 /// The names, in the order a `:` line resolves one, each with the
 /// declaration of the shape it takes.
 ///
@@ -97,7 +105,7 @@ reovim_sdk::declare! {
 /// registered in and the order `children(/self/vim/bin)` lists them,
 /// which is where the abbreviation is read from; nothing lists a short
 /// form by hand.
-pub(crate) fn declared() -> [(&'static str, Decl); 22] {
+pub(crate) fn declared() -> [(&'static str, Decl); 23] {
     let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
     [
         ("write", file.clone()),
@@ -122,7 +130,28 @@ pub(crate) fn declared() -> [(&'static str, Decl); 22] {
         ("qall", bang),
         ("wall", plain.clone()),
         ("wqall", plain),
+        // Last, after `wqall`: `:b` is `buffer` still and `:bi` is
+        // this one, the listing being the whole of the ex rule.
+        ("bind", bound::decl()),
     ]
+}
+
+/// How many arguments of a `:` line the run of `name` fills: the
+/// `utf8` fields of the record it takes. Every positional of Vim's
+/// own names is one of those and nothing else of theirs is — the
+/// range and the bang reach a run as the environment its host set.
+/// Zero for a name that is none of Vim's.
+pub(crate) fn positionals(name: &str) -> usize {
+    let Some((_, decl)) = declared().into_iter().find(|(at, _)| *at == name)
+    else {
+        return 0;
+    };
+    let Some(Ty::Record(fields)) =
+        decl.methods.first().map(|method| &method.input)
+    else {
+        return 0;
+    };
+    fields.iter().filter(|field| matches!(field.ty, Ty::Utf8(_))).count()
 }
 
 /// One call on a name of Vim's: the rd it came in on is the name, and
@@ -154,6 +183,7 @@ pub(crate) fn dispatch(
         "global" | "vglobal" => each::dispatch(vim, ctx, rd, number, input),
         "delete" => lines::dispatch(vim, ctx, rd, number, input),
         "buffer" | "bdelete" => numbered::dispatch(vim, ctx, rd, number, input),
+        "bind" => bound::dispatch(vim, ctx, rd, number, input),
         _ => Err(Error::Unsupported),
     }
 }
@@ -241,6 +271,20 @@ impl numbered::Api for Editor {
             _ => return Err(Error::Unsupported),
         };
         self.did(ctx, rd, |_| effect)
+    }
+}
+
+impl bound::Api for Editor {
+    /// `:bind [KEYS] [LINE]`: KEYS run LINE, and KEYS with no LINE
+    /// takes the binding away. There is no `unbind`.
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: bound::Args,
+    ) -> Result<Rd, Error> {
+        let bound::Args { keys, line } = args;
+        self.did(ctx, rd, move |vim| vim.bind(&keys, &line))
     }
 }
 

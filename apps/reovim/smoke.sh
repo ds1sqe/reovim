@@ -407,20 +407,11 @@ rows_match
 shown new hello
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
     || fail "the capture after keys is not the pane: $(captured)"
-# `<Space>` in the notation is a space, and `M-x` sent by tmux (not
-# `keys`, since it is the terminal that must give ALT and the char in
-# one read) reaches the Plugin as one key: nothing is bound to it
-# before 01.9, so it changes nothing at all.
+# `<Space>` in the notation is a space. What `M-x` does is the bind
+# journey's, below: it must be the terminal that gives ALT and the
+# char in one read, which `keys` cannot.
 "$BIN" cli keys "$board" 'ia<Space>b<Esc>'
 shown new 'a b'
-before="$(captured)"
-"${TMUX[@]}" send-keys -t new M-x
-sleep 0.05
-[[ "$("$BIN" cli cat /session/1/client/1/self/vim/pending)" == "" ]] \
-    || fail "M-x left something pending"
-[[ "$("$BIN" cli cat /session/1/client/1/self/vim/mode)" == normal ]] \
-    || fail "M-x changed the mode"
-[[ "$(captured)" == "$before" ]] || fail "M-x changed the pane: $(captured)"
 "$BIN" cli keys "$board" u
 # One `u` takes the whole insert back, an insert being one revision, so
 # the file this editor writes below is what it was.
@@ -945,6 +936,45 @@ shown rc-empty 'E486: Pattern not found: Foo'
 keys rc-empty : q Enter
 ended rc-empty
 [[ "$ENDED" == 0 ]] || fail "the isolated config pane did not quit"
+
+# --- a leader bound by init, one bound live, and M-x ------------------
+# The keymap is data: `init` sets the leader and makes a binding, the
+# `:` line makes another while the editor runs, and the keymap cell is
+# a script of both. `M-x` is the one default binding, and it is the
+# terminal that must give ALT and the char in one read, which `cli
+# keys` cannot.
+mkdir -p "$DIR/bound" "$DIR/bound-home/reovim"
+printf 'one\n' > "$DIR/bound/f"
+printf 'set leader=<Space>\nbind <Leader>w write\n' \
+    > "$DIR/bound-home/reovim/init"
+start bound "$DIR/bound" "XDG_CONFIG_HOME='$DIR/bound-home' $BIN f"
+editing bound f
+keys bound x Space w
+holds "$DIR/bound/f" 'ne'
+
+# The same `bind`, typed live. `<` and `>` are the notation's own and
+# no key name of tmux's.
+keys bound : b i n d Space '<' L e a d e r '>' q Space q u i t Enter
+vim=/session/1/client/1/self/vim
+keymap="$("$BIN" cli cat "$vim/keymap")"
+wanted=$'bind <Leader>q quit\nbind <Leader>w write\nbind <M-x> cli'
+[[ "$keymap" == "$wanted" ]] \
+    || fail "the keymap holds $(tr '\n' ' ' <<< "$keymap")"
+[[ "$("$BIN" cli cat "$vim/options/leader")" == '<Space>' ]] \
+    || fail "the leader is $("$BIN" cli cat "$vim/options/leader")"
+
+# `M-x` opens the cli buffer, and Tab on its empty line lists PATH's
+# names, which is the milestone's own acceptance.
+keys bound M-x
+shown bound "^/module/fs/root$DIR/bound >$"
+keys bound Tab
+shown bound 'cat'
+shown bound 'ls'
+keys bound C-d
+editing bound f
+keys bound Space q
+ended bound
+[[ "$ENDED" == 0 ]] || fail "the bound pane did not quit"
 
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's

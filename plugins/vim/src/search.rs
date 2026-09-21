@@ -113,7 +113,7 @@ impl Vim {
         let mut next = pattern.find(&self.text, col)?;
         while let Some((start, end, _)) = next.filter(|m| m.0 <= limit) {
             found.push(start);
-            col = self.past(start, end);
+            col = self.beyond(start, end);
             next = (col <= limit && start < self.text.len())
                 .then(|| pattern.find(&self.text, col))
                 .transpose()?
@@ -137,7 +137,7 @@ impl Vim {
 
     /// Where to look after a match: its end, or the next char for an
     /// empty one.
-    fn past(&self, start: usize, end: usize) -> usize {
+    fn beyond(&self, start: usize, end: usize) -> usize {
         if end > start { end } else { self.forward_char(start) }
     }
 

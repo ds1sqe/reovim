@@ -64,6 +64,7 @@ fn the_three_names_resolve_and_s_stays_substitute() {
             "qall",
             "wall",
             "wqall",
+            "bind",
         ]
     );
     typed(&mut tui, ":help global<CR>");

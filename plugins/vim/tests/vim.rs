@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 use common::{edit, on, typed};
 use reovim_client_api::{BAR, BLOCK};
-use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit, Visual};
+use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit};
 
 /// The `:` line `keys` left for the Client to run: the range it read
 /// off the front, and the rest of it as it was typed.
@@ -68,31 +68,75 @@ fn the_entry_keys_put_the_cursor_where_vim_does() {
 }
 
 #[test]
-fn alt_changes_nothing_in_any_mode() {
-    let mut vim = on("abc\n");
-    let text = vim.text().to_string();
-    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
+fn an_unbound_alt_is_esc_then_the_char() {
+    // Normal: the count goes with the Esc, `j` moves a line down and
+    // `x` is normal mode's own.
+    let mut vim = on("abc\ndef\nghi\n");
+    typed(&mut vim, "2<M-j>x");
+    assert_eq!(vim.text(), "abc\nef\nghi\n");
+    assert_eq!(vim.position(), (1, 0));
+    assert_eq!(vim.showcmd(), "", "the count went with the Esc");
+
+    // An operator waiting is dropped by the Esc, not applied to `j`.
+    let mut vim = on("abc\ndef\nghi\n");
+    typed(&mut vim, "d<M-j>x");
+    assert_eq!(vim.text(), "abc\nef\nghi\n");
+
+    // Insert: the Esc ends it and the char is normal mode's.
+    let mut vim = on("abc\ndef\nghi\n");
+    typed(&mut vim, "iX<M-j>x");
+    assert_eq!(vim.text(), "Xabc\nef\nghi\n");
     assert_eq!(vim.mode(), Mode::Normal);
-    assert_eq!(vim.text(), text);
-    assert_eq!(vim.showcmd(), "");
 
-    assert_eq!(typed(&mut vim, "i"), Effect::Moved);
-    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
+    // Visual: the Esc leaves it, so `x` takes one char and not the
+    // selection.
+    let mut vim = on("abc\ndef\nghi\n");
+    typed(&mut vim, "vl<M-j>x");
+    assert_eq!(vim.text(), "abc\ndf\nghi\n");
+    assert_eq!(vim.mode(), Mode::Normal);
+
+    // The `:` line and the search line: the Esc drops what was typed.
+    let mut vim = on("abc\ndef\nghi\n");
+    typed(&mut vim, ":2<M-j>x");
+    assert_eq!(vim.text(), "abc\nef\nghi\n");
+    assert_eq!(vim.mode(), Mode::Normal);
+    let mut vim = on("abc\ndef\nghi\n");
+    typed(&mut vim, "/e<M-j>x");
+    assert_eq!(vim.text(), "abc\nef\nghi\n");
+    assert_eq!(vim.mode(), Mode::Normal);
+}
+
+#[test]
+fn a_bound_prefix_lets_go_of_what_it_held() {
+    // `dx` bound and `dd`: the two keys are let go and `dd` deletes a
+    // line, as it always did.
+    let mut vim = on("abc\ndef\n");
+    vim.bind("dx", "write");
+    typed(&mut vim, "dd");
+    assert_eq!(vim.text(), "def\n");
+
+    // `xy` bound and `xp`: two chars still swap.
+    let mut vim = on("abc\n");
+    vim.bind("xy", "write");
+    typed(&mut vim, "xp");
+    assert_eq!(vim.text(), "bac\n");
+
+    // `,w` and `,wab` bound: `,wax` runs the longest head that is a
+    // binding, and `a` and `x` after it are typed keys.
+    let mut vim = on("abc\n");
+    vim.bind(",w", "write");
+    vim.bind(",wab", "quit");
+    typed(&mut vim, ",wax");
+    assert_eq!(vim.text(), "axbc\n");
     assert_eq!(vim.mode(), Mode::Insert);
-    assert_eq!(vim.text(), text);
-    assert_eq!(vim.showcmd(), "");
 
-    assert_eq!(typed(&mut vim, "<Esc>v"), Effect::Moved);
-    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
-    assert_eq!(vim.mode(), Mode::Visual(Visual::Char));
-    assert_eq!(vim.text(), text);
-    assert_eq!(vim.showcmd(), "");
-
-    assert_eq!(typed(&mut vim, "<Esc>:"), Effect::Moved);
-    assert_eq!(typed(&mut vim, "<M-x>"), Effect::Nothing);
-    assert_eq!(vim.mode(), Mode::Command);
-    assert_eq!(vim.text(), text);
-    assert_eq!(vim.showcmd(), "");
+    // `\w` bound and `\<M-j>x`: no head is a binding, so both keys
+    // are let go, and the Alt let go is `<Esc>` then `j`.
+    let mut vim = on("abc\ndef\nghi\n");
+    vim.bind("\\w", "write");
+    typed(&mut vim, "\\<M-j>x");
+    assert_eq!(vim.text(), "abc\nef\nghi\n");
+    assert_eq!(vim.position(), (1, 0));
 }
 
 #[test]

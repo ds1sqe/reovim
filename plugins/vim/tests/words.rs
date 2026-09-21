@@ -219,6 +219,7 @@ fn the_listing_computes_the_short_form_of_every_name() {
         "qall",
         "wall",
         "wqall",
+        "bind",
     ];
     assert_eq!(names, all, "the order a `:` line resolves a name in");
 
@@ -230,7 +231,8 @@ fn the_listing_computes_the_short_form_of_every_name() {
         short,
         [
             "w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl", "g",
-            "v", "d", "b", "buffers", "bn", "bp", "bd", "qa", "wa", "wqa"
+            "v", "d", "b", "buffers", "bn", "bp", "bd", "qa", "wa", "wqa",
+            "bi"
         ]
     );
 

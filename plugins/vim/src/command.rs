@@ -292,11 +292,23 @@ impl Vim {
     }
 
     /// One `:set` argument; false with E518 for one not known.
+    ///
+    /// `NAME=VALUE` is read first, as nvim reads it: `leader` takes a
+    /// VALUE the notation spells at least one key with, kept as
+    /// typed, and a switch takes no value at all. `leader` with no
+    /// value, and `noleader`, are E474 the same way.
     fn set_one(&mut self, arg: &str) -> bool {
+        if let Some((name, value)) = arg.split_once('=') {
+            return self.set_value(arg, name, value);
+        }
         let (name, on) =
             arg.strip_prefix("no").map_or((arg, true), |n| (n, false));
         if matches!(name, "is" | "incsearch") {
             return true;
+        }
+        if name == "leader" {
+            self.refused(arg);
+            return false;
         }
         let Some(option) = self.option(name) else {
             self.error(&alloc::format!("E518: Unknown option: {arg}"));
@@ -304,6 +316,47 @@ impl Vim {
         };
         *option = on;
         true
+    }
+
+    /// `NAME=VALUE`: the leader as it was typed, E474 for a name that
+    /// takes no value, E518 for one that is no option at all.
+    fn set_value(&mut self, arg: &str, name: &str, value: &str) -> bool {
+        if name == "leader" && self.keymap.read(value).is_some() {
+            self.keymap.leader = String::from(value);
+            return true;
+        }
+        if name == "leader" {
+            self.refused(arg);
+            return false;
+        }
+        let bare = name.strip_prefix("no").unwrap_or(name);
+        if matches!(bare, "is" | "incsearch") || self.option(bare).is_some() {
+            self.refused(arg);
+            return false;
+        }
+        self.error(&alloc::format!("E518: Unknown option: {arg}"));
+        false
+    }
+
+    /// What `/self/vim/options/NAME` reads, one of the five: a switch
+    /// as `0` or `1`, the leader as `set leader` took it, and a
+    /// newline. `None` for a name that is none of them.
+    ///
+    /// The long names alone: a cell is the option's one reading, not
+    /// the `:set` spelling, which takes the short forms too.
+    pub(crate) fn shown(&self, name: &str) -> Option<String> {
+        let options = &self.search.options;
+        let on = match name {
+            "ignorecase" => options.ignorecase,
+            "smartcase" => options.smartcase,
+            "hlsearch" => options.hlsearch,
+            "vi" => options.vi,
+            "leader" => {
+                return Some(alloc::format!("{}\n", self.keymap.leader));
+            }
+            _ => return None,
+        };
+        Some(alloc::format!("{}\n", u8::from(on)))
     }
 
     /// The option `name` names.

@@ -121,6 +121,8 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
             "marks",
             "jumps",
             "recording",
+            "options",
+            "keymap",
             "bin"
         ]
     );
