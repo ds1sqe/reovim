@@ -108,7 +108,6 @@ impl Vim {
         let effect =
             self.apply(Operator::Delete, (from, to, Extent::Linewise), false);
         self.cursor = self.first_non_blank(self.line_start(self.cursor));
-        self.keep_want = false;
         self.want = self.wanted();
         effect
     }

@@ -557,7 +557,10 @@ impl Vim {
         if let Motion::Object { inner, kind } = motion {
             return self.object_span(inner, kind, n);
         }
-        let (start, want) = (self.cursor, self.want);
+        // The motion moves to find the span's end, then everything it
+        // did to the cursor and the want is undone: the operator's
+        // landing sets the want, as `w_set_curswant` has it.
+        let (start, want, keep) = (self.cursor, self.want, self.keep_want);
         let mut kind = motion.extent(self.find);
         self.pending.running = true;
         let moved = match motion {
@@ -567,7 +570,7 @@ impl Vim {
         };
         self.pending.running = false;
         let end = self.cursor;
-        (self.cursor, self.want) = (start, want);
+        (self.cursor, self.want, self.keep_want) = (start, want, keep);
         if moved == Effect::Nothing
             && !matches!(
                 motion,
@@ -650,7 +653,6 @@ impl Vim {
             && motion.inner_block()
         {
             self.cursor = self.first_non_blank(self.cursor);
-            self.keep_want = false;
         }
         effect
     }
@@ -725,7 +727,9 @@ impl Vim {
     /// `>` and `<` over the lines `from` to `to`, `times` over: each
     /// non-empty line's indent moved by `shiftwidth` and written with
     /// tabs, as nvim's defaults have it; the cursor on the first line
-    /// at the column wanted, as `nostartofline` leaves it.
+    /// at the column wanted, as `nostartofline` leaves it, and that
+    /// column the want from then on, as every operator sets
+    /// `w_set_curswant`.
     pub(crate) fn shifted(
         &mut self,
         from: usize,
@@ -744,7 +748,6 @@ impl Vim {
             .join("\n");
         let effect = self.replace(start, end - start, block);
         self.cursor = self.at_screen_column(start, self.want);
-        self.keep_want = true;
         self.clamp();
         effect
     }
@@ -810,7 +813,8 @@ impl Vim {
 
     /// After a delete: the cursor where the span was, or at the wanted
     /// column of the line left when lines went, as `nostartofline`
-    /// has it.
+    /// has it; either way the column landed on is the want from then
+    /// on, as every operator sets `w_set_curswant`.
     ///
     /// Chars taken down to nothing leave one empty line, as Vim's
     /// buffer always has a line. An empty span takes nothing, yet the
@@ -826,7 +830,6 @@ impl Vim {
         let start = at.min(self.bound());
         let line = self.line_start(start);
         self.cursor = if linewise {
-            self.keep_want = true;
             self.at_screen_column(line, self.want)
         } else {
             start
