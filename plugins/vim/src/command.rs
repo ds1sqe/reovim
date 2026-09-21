@@ -225,16 +225,19 @@ impl Vim {
     }
 
     /// A `:` line with no word on it: the cursor to the last line the
-    /// range names, at its first non-blank, where `:12` and `:$` leave
-    /// it; nothing at all for a line that named no range either. A
-    /// bare address is not a jump: it pushes nothing of its own, so
-    /// `'` is not this door's to set.
+    /// range names, at the wanted column, where `:12` and `:$` leave
+    /// it; nothing at all for a line that named no range either.
+    /// nvim's `do_one_cmd` ends a bare address with `beginline(BL_SOL
+    /// | BL_FIX)`, which under `nostartofline` (its default) is
+    /// `coladvance(curswant)` and leaves `curswant` alone. A bare
+    /// address is not a jump: it pushes nothing of its own, so `'` is
+    /// not this door's to set.
     fn addressed(&mut self, range: Lines, named: bool) -> Effect {
         if !named {
             return Effect::Moved;
         }
         let at = self.line_at(range.1).unwrap_or(self.cursor);
-        self.go_clamped(self.first_non_blank(at))
+        self.go_clamped(self.at_screen_column(at, self.want))
     }
 
     /// `[range]` off the front: `%`, `'a,'b` (`'<,'>` among them, `<`
