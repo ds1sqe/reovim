@@ -1062,6 +1062,49 @@ keys locator : q a ! Enter
 ended locator
 [[ "$ENDED" == 0 ]] || fail "the locator pane did not quit"
 
+# --- a README: the looks a Markdown draft is drawn in ----------------
+# plugins/markdown serves looks over every `.md` draft this Client
+# holds, and the tui composes them: the construct in the theme's look
+# and its markers concealed off the cursor's line, back on it. Nothing
+# of the file moves, so `:w` writes the bytes that were read.
+mkdir -p "$DIR/md"
+{
+    printf '# Heading\n\n'
+    printf 'a **bold** word\n\n'
+    printf '```rust\nlet x = 1;\n```\n'
+} > "$DIR/md/README.md"
+cp "$DIR/md/README.md" "$DIR/md/was"
+start md "$DIR/md" "$BIN README.md"
+editing md README.md
+mdself=/session/1/client/1/self
+# What the tui drew, each run in its own SGR, as `capture` paints it.
+# The escapes are the point here, so the colour is asked for: a pipe
+# gets none by default.
+coloured() {
+    "$BIN" cli --color=always capture "$mdself/dev/display/0/text"
+}
+# One run's escape and the text it opens, for a fixed-string match.
+sgr() {
+    printf '\033[%sm%s' "$1" "$2"
+}
+# The cursor starts on the heading, so that row shows its hashes and
+# every other row shows none of its markers.
+shown md '^# Heading$'
+shown md '^a bold word$'
+shown md '^rust$'
+coloured | grep -qF "$(sgr '1;34' Heading)" || fail 'the heading is plain'
+coloured | grep -qF "$(sgr 1 bold)" || fail 'bold is not bold'
+coloured | grep -qF "$(sgr '48;5;236' 'let x = 1;')" || fail 'no fence tint'
+# Down onto the bold line: its markers come back and the heading's go.
+keys md j j
+shown md '^a \*\*bold\*\* word$'
+shown md '^Heading$'
+keys md : w Enter
+keys md : q Enter
+ended md
+[[ "$ENDED" == 0 ]] || fail "the markdown pane did not quit"
+cmp -s "$DIR/md/README.md" "$DIR/md/was" || fail ":w moved the bytes"
+
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's
 # line, run over the tree from the directory the file is in: `:ls`

@@ -21,9 +21,9 @@ use crate::link::MODULES;
 /// fs and text are the server's, holding what is on its disk.
 const MINE: [&str; 3] = ["coreutils", "search", "sysutils"];
 
-/// The Host over `client`: the three Modules loaded under `/self`, and
-/// `/self/bin`'s `load` and `unload` over the `.rvm` files of this
-/// machine.
+/// The Host over `client`: the three Modules loaded under `/self`, the
+/// Plugins that serve no region of their own, and `/self/bin`'s `load`
+/// and `unload` over the `.rvm` files of this machine.
 pub fn over(client: Client) -> Result<Rc<Host>, Fail> {
     let host = Rc::new(Host::over(client, clock::now));
     bin::boot(&host, Rvm::new(Box::new(reovim_kernel_abi::load)))?;
@@ -33,5 +33,10 @@ pub fn over(client: Client) -> Result<Rc<Host>, Fail> {
         let booted = boot("");
         host.load(name, booted.module, booted.drivers)?;
     }
+    // Markdown decorates a `.md` draft wherever one is opened and holds
+    // no region, so it is loaded here and not in the table; `unload
+    // markdown` takes it away.
+    let markdown = reovim_plugin_markdown::boot();
+    host.load("markdown", markdown.module, markdown.drivers)?;
     Ok(host)
 }

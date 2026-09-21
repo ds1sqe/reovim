@@ -928,12 +928,26 @@ fn lookup(host: &Host, rd: Rd, name: &str) -> Answer {
     if let Some(child) = child {
         return Ok(Out::Rd(child));
     }
-    let Owner::Driver { module, driver } = owner else {
+    let Some((module, driver)) = serving(owner) else {
         return Err(Error::Invalid);
     };
     let d = host.driver(module, driver)?;
     let found = ready(d.lookup(&host.calls(module), rd, name));
     Ok(Out::Rd(named(flags, found)?))
+}
+
+/// Which Driver answers for a name `rd` holds no child of: the one the
+/// node was registered with, and a Module's first for its own home, so
+/// a Plugin may make a child when it is asked for one rather than
+/// register a node for every rd it might ever serve. A Module whose
+/// Driver has no `lookup` answers `Unsupported`, which [`named`] makes
+/// the `Invalid` a Container's missing name has always been.
+const fn serving(owner: Owner) -> Option<(ModuleId, DriverId)> {
+    match owner {
+        Owner::Driver { module, driver } => Some((module, driver)),
+        Owner::Home(module) => Some((module, DriverId(0))),
+        Owner::Container | Owner::Decl(_) => None,
+    }
 }
 
 /// The answer to a lookup the Driver would not make. A Driver with no
