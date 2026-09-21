@@ -104,8 +104,12 @@ impl Search {
     }
 
     /// `open`: `view` already registered; its two children, its first
-    /// slice, and its three nodes. Any failure here is the caller's
-    /// to undo, by unregistering `view`.
+    /// slice, and its three nodes. A slice that fails having found
+    /// something is kept, as [`Search::went_on`] keeps a later one:
+    /// the nodes stand with those entries and `failed` set, and the
+    /// cause is answered past them, on the read that asks for more.
+    /// Any other failure here is the caller's to undo, by
+    /// unregistering `view`.
     fn filled(
         &self,
         ctx: &dyn Calls,
@@ -120,7 +124,13 @@ impl Search {
 
         let handle = fill.handle();
         let (found, outcome) = fill::slice(&mut fill, ctx, self.budget);
-        outcome?;
+        let failed = match outcome {
+            Ok(()) => None,
+            // Nothing to hand on before the cause, so no view comes
+            // of it and the caller answers the cause itself.
+            Err(error) if found.is_empty() => return Err(error),
+            Err(error) => Some(error),
+        };
         let (done, total) = fill.progress();
         let whole = fill.whole();
         let mut state = self.state.borrow_mut();
@@ -129,7 +139,7 @@ impl Search {
             handle,
             entries: encoded(&found),
             progress,
-            failed: None,
+            failed,
         };
         state.nodes.insert(matches, node);
         state.nodes.insert(progress, Node::Progress(Progress { done, total }));

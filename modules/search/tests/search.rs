@@ -46,10 +46,19 @@ impl Sut {
         Self::with_budget(test, 1 << 20)
     }
 
+    /// The Module's own budget, the one a Plugin meets.
+    fn own_budget(test: &str) -> Self {
+        Self::loaded(test, Search::new())
+    }
+
     fn with_budget(test: &str, budget: usize) -> Self {
+        Self::loaded(test, Search::with_budget(budget))
+    }
+
+    fn loaded(test: &str, search: Search) -> Self {
         let rig = Rig::new(test);
         let host = Rc::new(Host::over(rig.client(), tick));
-        let driver = Rc::new(Search::with_budget(budget));
+        let driver = Rc::new(search);
         let booted = Booted { module: driver.clone(), drivers: vec![driver] };
         host.load("search", booted.module, booted.drivers).unwrap();
         let open =
@@ -445,6 +454,67 @@ fn a_match_found_before_a_spent_offset_in_the_same_slice_stands() {
     let held = sut.read(view.matches, 0, 1 << 20).unwrap();
     let found: Vec<u64> = entries(&held).iter().map(|m| m.at).collect();
     assert_eq!(found, [0], "the aaab match survives the later Spent");
+}
+
+#[test]
+fn open_keeps_the_match_before_its_own_spent_offset() {
+    // `\(a*\)*b` finds the `b` on line 2 for nothing and then spends
+    // the whole budget on the thirty `a` behind it, both inside the
+    // one slice `open` runs: the view stands with what that slice
+    // found, and `NoSpace` is answered past it, as a later slice's
+    // own failure already is.
+    let sut = Sut::own_budget("open-kept-nospace");
+    let text = format!("x\nb\n{}\n", "a".repeat(30));
+    let source = sut.source("f", text.as_bytes());
+    let view = sut.opened(args(source, "\\(a*\\)*b", 0));
+
+    let held = sut.read(view.matches, 0, 1 << 20).unwrap();
+    let found: Vec<(u64, u64)> =
+        entries(&held).iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(found, [(2, 1)], "the b on line 2 stands");
+
+    // The cause is remembered, not met again: the read past what is
+    // held answers it without cranking a slice, so no Modify follows.
+    let _watch = sut.watch(view.progress);
+    let (_, cursor) = sut.since(0);
+    assert_eq!(
+        sut.read(view.matches, held.len() as u64, 1 << 20),
+        Err(Error::NoSpace),
+        "the cause past what is held"
+    );
+    let (events, _) = sut.since(cursor);
+    let modified = events
+        .iter()
+        .any(|&(rd, kind)| rd == view.progress && kind == Kind::Modify);
+    assert!(!modified, "{events:?}");
+}
+
+#[test]
+fn open_keeps_the_match_before_a_window_that_is_not_utf8() {
+    // The bad byte stands two chunks in, past the first window's own
+    // read ahead, so that window is whole UTF-8 and holds the only
+    // `b`; the second window of the same slice reads the bad byte and
+    // fails `Invalid`.
+    let sut = Sut::small("open-kept-invalid");
+    let mut text = String::from("b\n");
+    while text.len() < 2 * 64 * 1024 {
+        text.push_str("cc\n");
+    }
+    assert_eq!(text.len(), 131_072, "the bad byte is past the read ahead");
+    let mut bytes = text.into_bytes();
+    bytes.extend_from_slice(&[0xFF, b'\n']);
+    let source = sut.source("f", &bytes);
+    let view = sut.opened(args(source, "b", 0));
+
+    let held = sut.read(view.matches, 0, 1 << 20).unwrap();
+    let found: Vec<(u64, u64)> =
+        entries(&held).iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(found, [(0, 1)], "the b of the first window stands");
+    assert_eq!(
+        sut.read(view.matches, held.len() as u64, 1 << 20),
+        Err(Error::Invalid),
+        "the cause past what is held"
+    );
 }
 
 #[test]
