@@ -1364,10 +1364,12 @@ impl Vim {
     }
 
     /// The cursor to the byte `at`, at its line's first non-blank:
-    /// where the Client said to begin.
+    /// where the Client said to begin, and the column wanted from
+    /// then on, as nvim's `beginline` sets `w_set_curswant`.
     pub fn begin(&mut self, at: usize) {
         self.cursor = self.first_non_blank(at.min(self.bound()));
         self.clamp();
+        self.want = self.wanted();
     }
 
     /// The text the Buffer held when it was opened, whole: cleared

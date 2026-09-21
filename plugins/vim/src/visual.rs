@@ -42,8 +42,10 @@ pub struct BlockInsert {
 
 impl Vim {
     /// `v`, `V` or Ctrl-V: into that mode, another kind switches, the
-    /// same kind leaves.
+    /// same kind leaves. The want is kept through all three, as nvim's
+    /// `nv_visual` never touches `curswant`; Esc alone sets it again.
     pub(crate) fn enter_visual(&mut self, kind: Visual) -> Effect {
+        self.keep_want = true;
         match self.mode {
             Mode::Visual(current) if current == kind => self.leave_visual(),
             Mode::Visual(_) => {
@@ -52,7 +54,6 @@ impl Vim {
             }
             _ => {
                 self.anchor = self.cursor;
-                self.to_end = false;
                 self.mode = Mode::Visual(kind);
                 Effect::Moved
             }

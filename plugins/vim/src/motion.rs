@@ -190,7 +190,10 @@ impl Vim {
     }
 
     /// The line above or below, at the column wanted or as far as the
-    /// line goes.
+    /// line goes: in normal mode its last char, in insert and visual
+    /// mode the end itself, as nvim's `coladvance` allows `one_more`
+    /// there, so a selection reaching past a shorter line takes its
+    /// newline too.
     pub(crate) fn vertical(&mut self, down: bool) -> Effect {
         let line = self.position().0;
         let target = if down { line + 1 } else { line.wrapping_sub(1) };
@@ -198,10 +201,8 @@ impl Vim {
         let Some(start) = self.line_at(target) else { return Effect::Nothing };
         let to = self.at_screen_column(start, self.want);
         match self.mode {
-            Mode::Insert => self.go(to),
-            Mode::Normal | Mode::Command | Mode::Visual(_) => {
-                self.go_clamped(to)
-            }
+            Mode::Insert | Mode::Visual(_) => self.go(to),
+            Mode::Normal | Mode::Command => self.go_clamped(to),
         }
     }
 
