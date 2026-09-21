@@ -1,0 +1,1 @@
+:e other<CR>:e third<CR>:bd<CR>:bd<CR>x:wqa<CR>

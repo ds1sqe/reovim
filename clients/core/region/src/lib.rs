@@ -127,7 +127,7 @@ impl Region {
     /// What the call says.
     pub fn opens(
         &self,
-        mut ctx: &dyn Calls,
+        ctx: &dyn Calls,
         target: Rd,
         plugin: &str,
     ) -> Result<(), Error> {
@@ -137,6 +137,33 @@ impl Region {
             name: String::new(),
             line: 0,
         };
+        self.asks(ctx, ask)
+    }
+
+    /// Pass the complete declared open request to the Client.
+    ///
+    /// Unlike [`Self::opens`], this preserves the intended filename
+    /// for an absent source and the requested starting line.
+    ///
+    /// ```no_run
+    /// use reovim_client_api::{NONE, open};
+    /// use reovim_client_region::Region;
+    /// use reovim_kernel_interface::{Calls, Error};
+    /// fn open_new(ctx: &dyn Calls) -> Result<(), Error> {
+    ///     Region::of(ctx)?.asks(ctx, open::Ask {
+    ///         target: NONE, plugin: String::new(),
+    ///         name: "notes/new.md".into(), line: 0,
+    ///     })
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    /// The open, request or handle close failure.
+    pub fn asks(
+        &self,
+        mut ctx: &dyn Calls,
+        ask: open::Ask,
+    ) -> Result<(), Error> {
         let h = ctx.open(self.open, Rights::WRITE)?;
         let asked = open::Call(&mut ctx, h).open(ask);
         ops::close(ctx, h)?;

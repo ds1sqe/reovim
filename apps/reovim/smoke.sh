@@ -867,9 +867,26 @@ listed="$("$BIN" cli ls /session/1/client/1/self/dev/buffers)"
     || fail "several opened $(tr '\n' ' ' <<< "$listed"), not 0 1 2"
 "$BIN" cli dmesg -t | grep -q "^open .*/several/missing: gone\$" \
     || fail "missing is not said in the log"
+keys several x : b n Enter
+editing several b
+keys several : b u f f e r s Enter
+shown several '0 #+'
+keys several : q Enter
+editing several a
+shown several 'E162:'
+keys several u : b d Enter
+editing several b
+# The draft `:bd` closed is gone from the Client: an op forwarded to it
+# says so, while `ls` from here answers the Kernel's mirror, which keeps
+# the rows it listed above. The Client's own listing is the `:cli` one.
+buffers=/session/1/client/1/self/dev/buffers
+! "$BIN" cli cat "$buffers/0/source" >/dev/null 2>&1 \
+    || fail "the closed draft still answers"
+"$BIN" cli cat "$buffers/1/source" >/dev/null \
+    || fail "the kept draft does not answer"
 keys several : c l i Enter
 keys several l s " " / s e l f / d e v / b u f f e r s Enter
-shown several '^0  1  2  3$'
+shown several '^1  2  3$'
 keys several C-d
 keys several : q Enter
 ended several
@@ -918,20 +935,20 @@ done
 # --- Tab on the : line: the name expanded, its usage line, the menu --
 # A token only one name under PATH begins is expanded to that name and
 # the usage line its declaration gives stands in the status row. `:w`
-# is three names — Vim's own `write` and `wq`, then `watch` under
-# `/bin` — so it is the wildmenu instead, `write` current and the line
-# holding it; Tab walks to the next. Enter on the expanded line runs
-# it, which writes.
+# is five names — Vim's own `write`, `wq`, `wall` and `wqall`, then
+# `watch` under `/bin` — so it is the wildmenu instead, `write` current
+# and the line holding it; Tab walks to the next. Enter on the expanded
+# line runs it, which writes.
 start tab "$DIR/words" "$BIN note"
 editing tab note
 keys tab : w r Tab
 shown tab ":write   write \[path\]"
-keys tab Escape : q Tab
+keys tab Escape : q u Tab
 shown tab ":quit   quit"
 keys tab Escape i x Escape : w Tab
-shown tab ":write   \[write\]  wq  watch"
+shown tab ":write   \[write\]  wq  wall  wqall  watch"
 keys tab Tab
-shown tab ":wq   write  \[wq\]  watch"
+shown tab ":wq   write  \[wq\]  wall  wqall  watch"
 keys tab Escape : w Tab Enter
 editing tab note
 keys tab : q Enter

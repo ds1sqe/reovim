@@ -304,6 +304,14 @@ impl Tui {
         if events.is_empty() {
             return Ok(());
         }
+        // A new View owns the next layout. Events from its departed
+        // draft must not refresh or retire the replacement.
+        let replaced = self.shown.as_ref().is_some_and(|view| {
+            view.over != NONE && self.over() != Some(view.over)
+        });
+        if replaced {
+            return Ok(());
+        }
         self.reread(&events)?;
         self.refresh()
     }

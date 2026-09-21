@@ -58,11 +58,11 @@ fn after(tui: &mut Editor, text: &str) -> String {
 fn one_candidate_is_the_name_expanded_and_its_usage_line() {
     let (_rig, mut tui) = over("tab-one");
 
-    // `q` is `quit` and nothing else under PATH, so it is one
+    // `qu` is `quit` and nothing else under PATH, so it is one
     // candidate: the whole name and a space on the line, then the
     // usage line its declaration gives. A name that takes nothing is
     // that name alone.
-    assert_eq!(after(&mut tui, ":q<Tab>"), ":quit   quit");
+    assert_eq!(after(&mut tui, ":qu<Tab>"), ":quit   quit");
     assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
     assert_eq!(after(&mut tui, ":nohl<Tab>"), ":nohlsearch   nohlsearch");
 
@@ -166,7 +166,7 @@ fn cd_moves_the_directory_a_name_resolves_under() {
 #[test]
 fn several_candidates_are_a_wildmenu_tab_and_ctrl_p_walk() {
     let (_rig, mut tui) = over("tab-menu");
-    let menu = ["write", "wq", "watch"];
+    let menu = ["write", "wq", "wall", "wqall", "watch"];
     let shown = |at: usize| {
         let current = format!("[{}]", menu[at]);
         let rest = menu
@@ -177,14 +177,17 @@ fn several_candidates_are_a_wildmenu_tab_and_ctrl_p_walk() {
         format!(":{}   {}", menu[at], listed.join("  "))
     };
 
-    // Vim's own `write` and `wq`, whose bin is first under PATH,
-    // before `watch`, which is under `/bin`.
+    // Vim's own `write`, `wq`, `wall` and `wqall`, in the order they
+    // are declared, whose bin is first under PATH, before `watch`,
+    // which is under `/bin`.
     assert_eq!(said_after(&mut tui, ":w<Tab>"), shown(0));
     assert_eq!(said_after(&mut tui, "<Tab>"), shown(1));
     assert_eq!(said_after(&mut tui, "<Tab>"), shown(2));
+    assert_eq!(said_after(&mut tui, "<Tab>"), shown(3));
+    assert_eq!(said_after(&mut tui, "<Tab>"), shown(4));
     assert_eq!(said_after(&mut tui, "<Tab>"), shown(0), "past the last");
-    assert_eq!(said_after(&mut tui, "<C-p>"), shown(2), "before the first");
-    assert_eq!(said_after(&mut tui, "<C-p>"), shown(1));
+    assert_eq!(said_after(&mut tui, "<C-p>"), shown(4), "before the first");
+    assert_eq!(said_after(&mut tui, "<C-p>"), shown(3));
     typed(&mut tui, "<Esc>");
 
     // Any other key leaves the menu with the word it stood on, and is
@@ -203,10 +206,11 @@ fn the_expanded_line_runs_the_name_it_holds() {
     assert_eq!(typed(&mut tui, "ix<Esc>:w<Tab><CR>"), Step::Changed);
     assert_eq!(rig.disk("d/note"), b"xone\ntwo\n");
 
-    // The wildmenu walked to another name runs that one: `watch` is a
-    // Driver under `/bin`, and a target that is not there is what the
-    // shell says of the run that failed, not E492.
-    typed(&mut tui, ":w<Tab><Tab><Tab>nothere<CR>");
+    // The wildmenu walked to another name runs that one: `watch`, the
+    // last of the five, is a Driver under `/bin`, and a target that is
+    // not there is what the shell says of the run that failed, not
+    // E492.
+    typed(&mut tui, ":w<Tab><Tab><Tab><Tab><Tab>nothere<CR>");
     assert_eq!(said(&mut tui), "watch nothere: gone");
 
     // `:q` Tab Enter quits, the draft being written.
@@ -291,14 +295,20 @@ fn under_vi_one_candidate_is_listed_as_several_are() {
 
     // Everything else on the line is the same code under both: the
     // menu of several, and a path argument from the tree.
-    assert_eq!(said_after(&mut tui, ":w<Tab>"), ":write   [write]  wq  watch");
+    assert_eq!(
+        said_after(&mut tui, ":w<Tab>"),
+        ":write   [write]  wq  wall  wqall  watch"
+    );
     typed(&mut tui, "<Esc>");
     assert_eq!(after(&mut tui, ":w al<Tab>"), ":write alpha ");
 
     // `:set novi` is the way back, through the same option.
     typed(&mut tui, ":set novi<CR>");
     assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
-    assert_eq!(said_after(&mut tui, ":w<Tab>"), ":write   [write]  wq  watch");
+    assert_eq!(
+        said_after(&mut tui, ":w<Tab>"),
+        ":write   [write]  wq  wall  wqall  watch"
+    );
     typed(&mut tui, "<Esc>");
 }
 

@@ -184,20 +184,32 @@ fn a_crossing_refused_by_e37_leaves_the_next_door_still_a_jump() {
     );
 
     typed(&mut tui, "G");
-    assert_eq!(typed(&mut tui, ":e b<CR>"), Step::Changed);
-    typed(&mut tui, "x");
+    assert_eq!(typed(&mut tui, ":e new<CR>"), Step::Changed);
+    typed(&mut tui, "ix<CR>y<CR>z<Esc>kkx");
     typed(&mut tui, "<C-o>");
-    assert_eq!(said(&mut tui), E37, "b unsaved, the crossing refused");
+    assert_eq!(
+        said(&mut tui),
+        E37,
+        "source-less draft unsaved, the crossing refused"
+    );
     assert_eq!(typed(&mut tui, ":w<CR>"), Step::Changed);
     typed(&mut tui, "G");
 
-    // A normal door out of `b`, not a walk of the list: it must still
-    // be a jump, or the stuck `crossing` above would have swallowed
-    // it.
+    // A normal door out of the newly saved draft, not a walk of the
+    // list: it must still be a jump, or the stuck `crossing` above
+    // would have swallowed it.
     assert_eq!(typed(&mut tui, ":e a<CR>"), Step::Changed);
-    assert_eq!(typed(&mut tui, "<C-o>"), Step::Changed, "crosses back to b");
+    assert_eq!(
+        typed(&mut tui, "<C-o>"),
+        Step::Changed,
+        "crosses back to the saved draft"
+    );
     assert_eq!(typed(&mut tui, "x"), Step::Changed);
-    assert_eq!(lines(&mut tui)[..3], ["", "y", ""], "b's own last line, G's");
+    assert_eq!(
+        lines(&mut tui)[..3],
+        ["", "y", ""],
+        "the saved draft's last line, G's"
+    );
 }
 
 #[test]

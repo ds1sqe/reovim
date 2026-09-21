@@ -125,6 +125,17 @@ pub enum Effect {
     /// directory the Client started Vim in; `true` for `:w! NAME`.
     SaveAs(String, bool),
     Quit(Quit),
+    /// Navigate the Client's source-backed drafts, retaining unsaved text.
+    Switch(Switch),
+    /// Close a draft by its decimal tree name; empty means current.
+    /// The bool forces departure from a modified draft. Closing the
+    /// current draft is deferred until its stay has ended.
+    Close(String, bool),
+    /// Print the source-backed drafts, current/alternate flags and names.
+    List,
+    /// Write the modified current draft and retained source-backed drafts.
+    /// Later candidates are attempted after failure; the Client stays.
+    SaveAll,
     /// `:exp[lore][!] [NAME]`: the Client asked to show an rd in this
     /// region, in the Plugin its table gives that rd's shape. The name
     /// given, resolved as `:w NAME` is, or the directory the file is
@@ -132,8 +143,8 @@ pub enum Effect {
     /// draft is unsaved.
     Explore(Option<String>, bool),
     /// `:e[dit][!] PATH`: the same ask over the file that name holds,
-    /// which comes back a Vim of its own. A name that is not there is
-    /// E345, where `:explore`'s is E344.
+    /// which comes back a Vim of its own. A missing ordinary path
+    /// opens a named draft without creating the file.
     Open(String, bool),
     /// `:e` with no name: the Buffer read again. `true` for `:e!`,
     /// which drops what has not gone down whatever it is; without it
@@ -183,12 +194,42 @@ pub struct Ex {
 pub enum Quit {
     /// `:q`: refused with E37 while there are unsaved changes.
     Ask,
-    /// `:q!`, `ZQ`: whatever the Buffer holds, exit 0.
+    /// `:q!`, `ZQ`: skip this draft; other modified drafts still refuse.
     Force,
-    /// `:wq`, `:x`, `ZZ`: written, then exit 0.
+    /// `:wq`, `:x`, `ZZ`: write this draft, then check the others.
+    /// Another modified draft refuses exit and becomes current.
     Write,
     /// `:cq`: exit 1, so the caller uses nothing.
     Abort,
+    /// `:qall[!]`: check all drafts unless forced. A true argument
+    /// permits exit without writing any of their modifications.
+    All(bool),
+    /// `:wqall`: attempt every required write and leave only if all succeed.
+    /// Unchanged unnamed and missing-file drafts require no write.
+    WriteAll,
+}
+
+/// A request to select a retained source-backed draft.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Switch {
+    /// The following source-backed draft, wrapping at the end.
+    Next,
+    /// The preceding source-backed draft, wrapping at the start.
+    Previous,
+    /// A decimal name under `/self/dev/buffers`, or `#` for the alternate.
+    /// This is a Client draft name, not a source rd or filesystem path.
+    Named(String),
+    /// The source last left for another source; a source-less draft
+    /// never becomes the alternate, and a missing alternate is E23.
+    ///
+    /// ```
+    /// use reovim_plugin_vim::{Effect, Key, Switch, Vim};
+    /// for key in [Key::Ctrl('^'), Key::Ctrl('6')] {
+    ///     assert_eq!(Vim::default().key(key),
+    ///         Effect::Switch(Switch::Alternate));
+    /// }
+    /// ```
+    Alternate,
 }
 
 /// Where a jump lands.
@@ -428,6 +469,9 @@ pub struct Vim {
     marks: Marks,
 
     // Kept.
+    left: Option<Rd>,
+    alt: Option<Rd>,
+    greeting: Option<String>,
     /// The unnamed register, `None` until something fills it; an
     /// empty yank fills it, an empty delete does not.
     register: Option<Register>,
@@ -786,6 +830,7 @@ impl Vim {
             Key::Char(c @ ('/' | '?')) => return self.prompt(c, count),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
             Key::Char('q') if self.macros.fed => Effect::Nothing,
+            Key::Ctrl('^' | '6') => Effect::Switch(Switch::Alternate),
             Key::Char('q') if self.macros.recording.is_some() => {
                 return self.recorded();
             }
@@ -1359,6 +1404,31 @@ impl Vim {
         {
             self.jump_to(pos, land);
         }
+        if let Some(greeting) = self.greeting.take() {
+            self.message = greeting;
+        }
+    }
+
+    pub(crate) fn arrived(&mut self, source: Option<Rd>) {
+        if let Some(left) =
+            self.left.take().filter(|left| Some(*left) != source)
+        {
+            self.alt = Some(left);
+        }
+        if self.alt == source {
+            self.alt = None;
+        }
+    }
+
+    pub(crate) fn greets(&mut self, message: String) {
+        self.greeting = Some(message);
+    }
+
+    pub(crate) fn forgot(&mut self, draft: Rd, source: Option<Rd>) {
+        self.places.remove(&draft);
+        if let Some(source) = source {
+            self.jumps.forget(source);
+        }
     }
 
     /// Where `opened` begins with no kept `Place`: the byte line
@@ -1393,6 +1463,7 @@ impl Vim {
             self.jumps.push(Jump { source: self.source, pos });
         }
         if let Some(buffer) = self.buffer.take() {
+            self.left = self.source;
             self.places.insert(
                 buffer,
                 Place {

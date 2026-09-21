@@ -34,7 +34,7 @@ use alloc::vec::Vec;
 use core::cell::{Cell, Ref, RefCell};
 use core::fmt::Write as _;
 
-use reovim_client_api::{NONE, draft, part};
+use reovim_client_api::{NONE, buffers, draft, open, part};
 use reovim_client_region::{Region, Surface, count, drafted};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
@@ -48,7 +48,7 @@ use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
 use crate::macros::BUDGET;
-use crate::{Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Vim, bins};
+use crate::{Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Switch, Vim, bins};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -64,7 +64,7 @@ const E492: &str = "E492: Not an editor command:";
 /// What `:explore` says to a name that is not on disk: Vim's word for
 /// a directory it cannot find, the name as the person typed it.
 const E344: &str = "E344: Can't find directory";
-/// What `:edit` says to one: the same, for a file.
+/// What `:edit` says to an unusable or unnameable path.
 const E345: &str = "E345: Can't find file";
 /// What undo and redo say at the ends of the history.
 const OLDEST: &str = "Already at oldest change";
@@ -92,6 +92,7 @@ pub struct Editor {
     stay: RefCell<Option<Rc<Stay>>>,
     queue: RefCell<VecDeque<Queued>>,
     spent: Cell<usize>,
+    closing: Cell<Option<(Rd, Option<Rd>)>>,
 }
 
 /// Provenance controls recording, cancellation and the execution budget.
@@ -99,6 +100,14 @@ pub struct Editor {
 enum Queued {
     Typed(Key),
     Fed(Key),
+}
+
+/// A source-backed draft, in the Client's listing order.
+struct Listed {
+    draft: Rd,
+    name: String,
+    source: Rd,
+    path: String,
 }
 
 /// What one stay at the Plugin is: the region this Vim holds for it,
@@ -192,7 +201,18 @@ impl Module for Editor {
     /// this can fail: a `start` that fails after drops it with the
     /// local it became, never `opened`'s to see.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let closing = self.closing.take();
+        let greeting = self.vim.borrow_mut().greeting.take();
         let arrive = self.vim.borrow_mut().arrive.take();
+        if let Some((draft, source)) = closing {
+            let list = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
+            let h = ctx.open(list, Rights::WRITE)?;
+            let mut calls = ctx;
+            let closed = buffers::Call(&mut calls, h).close(draft);
+            ops::close(ctx, h)?;
+            closed_draft(closed)?;
+            self.vim.borrow_mut().forgot(draft, source);
+        }
         let surface = Surface::default();
         let view = surface.start(ctx, home)?;
         let cells = registered(ctx, home, view)?;
@@ -215,6 +235,8 @@ impl Module for Editor {
         };
         *self.stay.borrow_mut() = Some(Rc::new(stay));
         let mut vim = self.vim.borrow_mut();
+        vim.arrived(source);
+        vim.greeting = greeting;
         vim.buffer = Some(buffer);
         vim.h = Some(h);
         vim.source = source;
@@ -480,6 +502,10 @@ impl Editor {
             }
             Effect::Clipboard => self.pasting(ctx),
             Effect::Quit(how) => self.quit(ctx, how),
+            Effect::Switch(to) => self.switched(ctx, to),
+            Effect::Close(name, bang) => self.closed(ctx, &name, bang),
+            Effect::List => self.list(ctx),
+            Effect::SaveAll => self.save_all(ctx).map(drop),
             Effect::Explore(name, bang) => {
                 self.explore(ctx, name.as_deref(), bang)
             }
@@ -505,7 +531,7 @@ impl Editor {
         pos: Pos,
         land: Land,
     ) -> Result<(), Error> {
-        if self.shown(ctx, rd, "", false)? {
+        if self.shown(ctx, rd, "", false, "")? {
             self.vim.borrow_mut().arrive = Some((rd, pos, land));
         }
         Ok(())
@@ -803,25 +829,281 @@ impl Editor {
         }
     }
 
-    /// `:q` while the Buffer holds what its source has not; `:q!` and
-    /// `ZQ` whatever it holds; `:wq`, `:x` and `ZZ` written first,
-    /// which over nothing leaves an untouched Buffer and makes the
-    /// file of a changed one, or is E32 without a name; `:cq` with 1,
-    /// so the caller uses nothing.
+    /// Check this draft, then other source-backed drafts before exit.
+    /// A forced quit skips this draft; only forced quit-all skips all.
+    /// Write-all visits every modified candidate before deciding to exit.
     fn quit(&self, ctx: &dyn Calls, how: Quit) -> Result<(), Error> {
+        match how {
+            Quit::Abort => return self.stay()?.surface.region()?.ends(ctx, 1),
+            Quit::All(true) => {
+                return self.stay()?.surface.region()?.ends(ctx, 0);
+            }
+            Quit::WriteAll => return self.quit_written_all(ctx),
+            _ => {}
+        }
         let unsaved = self.unsaved(ctx)?;
-        if how == Quit::Ask && unsaved {
+        if matches!(how, Quit::Ask | Quit::All(false)) && unsaved {
             self.fails(E37);
             return Ok(());
         }
-        let code = match how {
-            Quit::Abort => Some(1),
-            Quit::Write => self.written(ctx, unsaved)?,
-            _ => Some(0),
+        if how == Quit::Write && self.written(ctx, unsaved)?.is_none() {
+            return Ok(());
+        }
+        if self.guard_others(ctx, true)? {
+            return Ok(());
+        }
+        self.stay()?.surface.region()?.ends(ctx, 0)
+    }
+
+    fn quit_written_all(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        if self.save_all(ctx)? {
+            self.stay()?.surface.region()?.ends(ctx, 0)?;
+        }
+        Ok(())
+    }
+
+    /// List only drafts that expose an actual source identity.
+    fn listed(&self, ctx: &dyn Calls) -> Result<Vec<Listed>, Error> {
+        let (root, dir) = {
+            let vim = self.vim.borrow();
+            (vim.root.unwrap_or(ROOT), vim.dir.clone())
         };
-        // The write said why it did not happen; the editor stays.
-        let Some(code) = code else { return Ok(()) };
-        self.stay()?.surface.region()?.ends(ctx, code)
+        let root = format!("{}/", ops::where_is(ctx, root)?);
+        let list = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
+        let mut listed = Vec::new();
+        for draft in ops::children(ctx, list)? {
+            let child = match ops::lookup(ctx, draft, "source") {
+                Ok(child) => child,
+                Err(Error::Gone | Error::Unsupported) => continue,
+                Err(error) => return Err(error),
+            };
+            let source = decode(&ops::bytes(ctx, child)?)?;
+            let path = ops::where_is(ctx, source)?;
+            let path =
+                as_given(&dir, path.strip_prefix(&root).unwrap_or(&path));
+            listed.push(Listed {
+                draft,
+                source,
+                name: named(ctx, draft)?,
+                path: String::from(path),
+            });
+        }
+        Ok(listed)
+    }
+
+    fn list(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let (current, alternate) = {
+            let vim = self.vim.borrow();
+            (vim.buffer, vim.alt)
+        };
+        let mut out = String::new();
+        for item in self.listed(ctx)? {
+            let line =
+                item.line(current, alternate, unsaved_draft(ctx, item.draft)?);
+            let _ = writeln!(out, "{line}");
+        }
+        self.says(&out);
+        Ok(())
+    }
+
+    fn switched(&self, ctx: &dyn Calls, to: Switch) -> Result<(), Error> {
+        let current = self.vim.borrow().buffer;
+        let list = self.listed(ctx)?;
+        let source = match to {
+            Switch::Alternate => self.alternate(),
+            Switch::Named(name) if name == "#" => self.alternate(),
+            Switch::Named(name) => self.by_name(&list, &name),
+            Switch::Next => neighbour(&list, current, false),
+            Switch::Previous => neighbour(&list, current, true),
+        };
+        source.map_or(Ok(()), |source| {
+            self.shown(ctx, source, "", false, "").map(drop)
+        })
+    }
+
+    fn alternate(&self) -> Option<Rd> {
+        let alternate = self.vim.borrow().alt;
+        if alternate.is_none() {
+            self.fails("E23: No alternate file");
+        }
+        alternate
+    }
+
+    fn by_name(&self, list: &[Listed], name: &str) -> Option<Rd> {
+        let found = list.iter().find(|item| item.name == name);
+        if found.is_none() {
+            self.fails(&format!("E86: Buffer {name} does not exist"));
+        }
+        found.map(|item| item.source)
+    }
+
+    /// A quit follows the unsaved draft; a Container door stays put.
+    fn guard_others(
+        &self,
+        ctx: &dyn Calls,
+        follow: bool,
+    ) -> Result<bool, Error> {
+        let current = self.vim.borrow().buffer;
+        let Some(other) = other_unsaved(ctx, self.listed(ctx)?, current)?
+        else {
+            return Ok(false);
+        };
+        let message = format!(
+            "E162: No write since last change for buffer \"{}\"",
+            other.path
+        );
+        self.fails(&message);
+        if follow && self.shown(ctx, other.source, "", true, "")? {
+            self.vim.borrow_mut().greets(message);
+        }
+        Ok(true)
+    }
+
+    fn closed(
+        &self,
+        mut ctx: &dyn Calls,
+        name: &str,
+        bang: bool,
+    ) -> Result<(), Error> {
+        let current = self.vim.borrow().buffer.ok_or(Error::Closed)?;
+        let list = self.listed(ctx)?;
+        let own = name.is_empty() || named(ctx, current)? == name;
+        let selected = list.iter().find(|item| item.name == name);
+        let (draft, source) = match (own, selected) {
+            (true, _) => (current, self.vim.borrow().source),
+            (false, Some(item)) => (item.draft, Some(item.source)),
+            (false, None) => {
+                self.fails("E516: No buffers were deleted");
+                return Ok(());
+            }
+        };
+        if !bang && unsaved_draft(ctx, draft)? {
+            self.fails(&format!(
+                "E89: No write since last change for buffer {} \
+                 (add ! to override)",
+                named(ctx, draft)?
+            ));
+            return Ok(());
+        }
+        if own {
+            return self.close_current(ctx, draft, source, &list);
+        }
+        let root = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
+        let h = ctx.open(root, Rights::WRITE)?;
+        let result = buffers::Call(&mut ctx, h).close(draft);
+        ops::close(ctx, h)?;
+        closed_draft(result)?;
+        self.vim.borrow_mut().forgot(draft, source);
+        Ok(())
+    }
+
+    fn close_current(
+        &self,
+        ctx: &dyn Calls,
+        draft: Rd,
+        source: Option<Rd>,
+        list: &[Listed],
+    ) -> Result<(), Error> {
+        let alternate = self.vim.borrow().alt;
+        let to = list
+            .iter()
+            .find(|item| Some(item.source) == alternate)
+            .map(|item| item.source)
+            .or_else(|| neighbour(list, Some(draft), false))
+            .filter(|to| Some(*to) != source)
+            .unwrap_or(NONE);
+        if self.shown(ctx, to, "", true, "")? {
+            self.closing.set(Some((draft, source)));
+        }
+        Ok(())
+    }
+
+    fn save_all(&self, ctx: &dyn Calls) -> Result<bool, Error> {
+        let current = self.vim.borrow().buffer.ok_or(Error::Closed)?;
+        let listed = self.listed(ctx)?;
+        let root = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
+        let candidates =
+            ops::children(ctx, root)?.into_iter().filter(|draft| {
+                *draft == current
+                    || listed.iter().any(|item| item.draft == *draft)
+            });
+        let mut failure = None;
+        for draft in candidates {
+            let result = self.write_candidate(ctx, draft, current);
+            let success = match result {
+                Ok(success) => success,
+                Err(error) => self.write_failed(ctx, draft, current, error)?,
+            };
+            self.keep_failure(success, &mut failure);
+        }
+        if let Some(message) = failure {
+            self.fails(&message);
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    fn keep_failure(&self, success: bool, failure: &mut Option<String>) {
+        if !success && failure.is_none() {
+            *failure = Some(self.vim.borrow().message.clone());
+        }
+    }
+
+    fn write_candidate(
+        &self,
+        ctx: &dyn Calls,
+        draft: Rd,
+        current: Rd,
+    ) -> Result<bool, Error> {
+        if !unsaved_draft(ctx, draft)? {
+            return Ok(true);
+        }
+        if draft != current {
+            return Self::wrote(ctx, draft).map(|()| true);
+        }
+        let unnamed = {
+            let vim = self.vim.borrow();
+            vim.source.is_none() && vim.name.is_none()
+        };
+        if unnamed {
+            self.fails(&format!(
+                "E141: No file name for buffer {}",
+                named(ctx, draft)?
+            ));
+            return Ok(false);
+        }
+        self.save(ctx, false)
+    }
+
+    /// A write that answered `Stale`: W12 said of that draft, its own
+    /// marked stale as any refused flush marks it. Any other error is
+    /// the frame's.
+    fn write_failed(
+        &self,
+        ctx: &dyn Calls,
+        draft: Rd,
+        current: Rd,
+        error: Error,
+    ) -> Result<bool, Error> {
+        if error != Error::Stale {
+            return Err(error);
+        }
+        if draft == current {
+            self.stale(ctx, |_| Err(Error::Stale))?;
+        }
+        self.fails(&format!(
+            "W12: buffer {} changed in another Client and here",
+            named(ctx, draft)?
+        ));
+        Ok(false)
+    }
+
+    /// A hidden draft gets its own handle, closed on every save outcome.
+    fn wrote(ctx: &dyn Calls, draft: Rd) -> Result<(), Error> {
+        let h = ctx.open(draft, Rights::READ.union(Rights::WRITE))?;
+        let result = save_draft(ctx, h);
+        let closed = ops::close(ctx, h);
+        result.and(closed)
     }
 
     /// What `:wq`, `:x` and `ZZ` write before they leave: the source
@@ -847,8 +1129,8 @@ impl Editor {
     /// no name it is the directory the file is in. Whatever is there
     /// goes to the Client's table, a Container to a listing and a cell
     /// to another Vim; a name that is not there is E344. The swap
-    /// takes the draft with it, so unsaved changes are E37 without the
-    /// bang, as `:q` has it.
+    /// retains file drafts. A Container door refuses unsaved drafts
+    /// unless forced, since the next Plugin may end the Client.
     fn explore(
         &self,
         ctx: &dyn Calls,
@@ -856,7 +1138,7 @@ impl Editor {
         bang: bool,
     ) -> Result<(), Error> {
         let Some(name) = name else {
-            return self.shown(ctx, self.here(ctx)?, "", bang).map(drop);
+            return self.shown(ctx, self.here(ctx)?, "", bang, "").map(drop);
         };
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
@@ -864,23 +1146,71 @@ impl Editor {
             self.fails(&format!("{E344} \"{name}\" in cdpath"));
             return Ok(());
         };
-        self.shown(ctx, target, "", bang).map(drop)
+        self.shown(ctx, target, "", bang, "").map(drop)
     }
 
     /// `:e[dit][!] PATH`: the file that name holds in this region,
     /// which the Client's table gives another Vim. The name is
-    /// resolved as `:explore`'s is; one that is not there is E345.
+    /// resolved as `:explore`'s is; a missing ordinary path becomes
+    /// a named draft without creating a file.
     fn edited(
         &self,
         ctx: &dyn Calls,
         name: &str,
         bang: bool,
     ) -> Result<(), Error> {
-        let Some(target) = self.at(ctx, name)? else {
+        if name == "#" {
+            return self.switched(ctx, Switch::Alternate);
+        }
+        let (from, rest) = self.from(name);
+        match cell::resolve(ctx, from, rest) {
+            Ok(target) => self.shown(ctx, target, "", bang, "").map(drop),
+            Err(Error::Gone) => self.edit_missing(ctx, name, bang),
+            Err(Error::Unsupported) => {
+                self.fails(&format!("{E345} \"{name}\" in path"));
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn edit_missing(
+        &self,
+        ctx: &dyn Calls,
+        name: &str,
+        bang: bool,
+    ) -> Result<(), Error> {
+        let Some(anchored) = self.new_name(ctx, name)? else {
             self.fails(&format!("{E345} \"{name}\" in path"));
             return Ok(());
         };
-        self.shown(ctx, target, "", bang).map(drop)
+        self.shown(ctx, NONE, "", bang, &anchored).map(drop)
+    }
+
+    /// Normalize in tree coordinates before checking the mirror boundary.
+    fn new_name(
+        &self,
+        ctx: &dyn Calls,
+        name: &str,
+    ) -> Result<Option<String>, Error> {
+        let (from, rest) = self.from(name);
+        let first = rest.split('/').next().unwrap_or_default();
+        if first
+            .strip_prefix("rd:")
+            .and_then(|n| n.parse::<u64>().ok())
+            .is_some()
+        {
+            return Ok(None);
+        }
+        let base = ops::where_is(ctx, from)?;
+        let path = reovim_sdk::path::under(&base, rest);
+        let root = self.vim.borrow().root.unwrap_or(ROOT);
+        let root = ops::where_is(ctx, root)?;
+        let prefix = format!("{}/", root.trim_start_matches('/'));
+        Ok(path
+            .strip_prefix(&prefix)
+            .filter(|name| !name.is_empty())
+            .map(String::from))
     }
 
     /// `:e` with no name: the Buffer read again, taking what another
@@ -904,31 +1234,47 @@ impl Editor {
     /// `:cli` opens over as it moves what `:ls` lists.
     fn cli(&self, ctx: &dyn Calls, bang: bool) -> Result<(), Error> {
         let cwd = self.vim.borrow().shell.cwd();
-        self.shown(ctx, cwd, "cli", bang).map(drop)
+        self.shown(ctx, cwd, "cli", bang, "").map(drop)
     }
 
     /// The Client asked to show `target` in this region, in the Plugin
     /// `plugin` names or, with an empty name, in the one its table
     /// gives that rd's shape. This is the end of this Vim: the swap
-    /// takes the draft with it, so unsaved changes are E37 without the
-    /// bang, as `:q` has it. Nothing is shown again here; the Plugin
-    /// that comes shows itself. Whether the ask went out: `false` for
-    /// E37's refusal, which `arriving` reads before it sets `arrive`.
+    /// retains file drafts; a modified source-less draft needs force.
+    /// A Container door also guards other modified drafts. False
+    /// means no ask went out, for a refusal or same-source selection;
+    /// the caller then stores no arrival or closing state.
     fn shown(
         &self,
         ctx: &dyn Calls,
         target: Rd,
         plugin: &str,
         bang: bool,
+        name: &str,
     ) -> Result<bool, Error> {
-        if !bang && self.unsaved(ctx)? {
-            self.fails(E37);
+        if Some(target) == self.vim.borrow().source && plugin.is_empty() {
             return Ok(false);
         }
         let file = target == NONE
             || !ops::info(ctx, target)?.flags.contains(Flags::CONTAINER);
+        let unnamed = self.vim.borrow().source.is_none();
+        if !bang && (unnamed || !file) && self.unsaved(ctx)? {
+            self.fails(E37);
+            return Ok(false);
+        }
+        if !bang && !file && self.guard_others(ctx, false)? {
+            return Ok(false);
+        }
         let stay = self.stay()?;
-        stay.surface.region()?.opens(ctx, target, plugin)?;
+        stay.surface.region()?.asks(
+            ctx,
+            open::Ask {
+                target,
+                plugin: String::from(plugin),
+                name: String::from(name),
+                line: 0,
+            },
+        )?;
         if file && matches!(plugin, "" | "vim") {
             stay.leaving.set(true);
         }
@@ -962,7 +1308,7 @@ impl Editor {
                 return Ok(());
             }
         };
-        self.says(out.lines().next().unwrap_or_default());
+        self.says(&out.lines().collect::<Vec<_>>().join("  "));
         Ok(())
     }
 
@@ -1090,9 +1436,10 @@ impl Editor {
     /// and not the tree's, else where the editor stands.
     fn from<'a>(&self, path: &'a str) -> (Rd, &'a str) {
         let vim = self.vim.borrow();
-        let (from, rest) = path
-            .strip_prefix('/')
-            .map_or((vim.cwd, path), |rest| (vim.root, rest));
+        let (from, rest) =
+            path.strip_prefix('/').map_or((vim.cwd, path), |rest| {
+                (vim.root, rest.trim_start_matches('/'))
+            });
         (from.unwrap_or(ROOT), rest)
     }
 
@@ -1135,6 +1482,85 @@ impl Editor {
         let revisions = history::Call(&mut ctx, self.handle()?).tree()?;
         Ok(revisions.head != revisions.published)
     }
+}
+
+const fn closed_draft(result: Result<(), Error>) -> Result<(), Error> {
+    match result {
+        Ok(()) | Err(Error::Stale) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn other_unsaved(
+    ctx: &dyn Calls,
+    listed: Vec<Listed>,
+    current: Option<Rd>,
+) -> Result<Option<Listed>, Error> {
+    for item in listed.into_iter().filter(|item| Some(item.draft) != current) {
+        if unsaved_draft(ctx, item.draft)? {
+            return Ok(Some(item));
+        }
+    }
+    Ok(None)
+}
+
+impl Listed {
+    fn line(
+        &self,
+        current: Option<Rd>,
+        alternate: Option<Rd>,
+        dirty: bool,
+    ) -> String {
+        let marker = if Some(self.draft) == current {
+            '%'
+        } else if Some(self.source) == alternate {
+            '#'
+        } else {
+            ' '
+        };
+        let modified = if dirty { '+' } else { ' ' };
+        format!("{} {marker}{modified} {}", self.name, self.path)
+    }
+}
+
+fn neighbour(
+    list: &[Listed],
+    current: Option<Rd>,
+    previous: bool,
+) -> Option<Rd> {
+    let at = list.iter().position(|item| Some(item.draft) == current);
+    let len = list.len();
+    if len == 0 {
+        return None;
+    }
+    let index = match (at, previous) {
+        (Some(at), false) => (at + 1) % len,
+        (Some(at), true) => (at + len - 1) % len,
+        (None, false) => 0,
+        (None, true) => len - 1,
+    };
+    Some(list[index].source)
+}
+
+fn unsaved_draft(mut ctx: &dyn Calls, draft: Rd) -> Result<bool, Error> {
+    let h = ctx.open(draft, Rights::READ)?;
+    let result = history::Call(&mut ctx, h).tree();
+    let closed = ops::close(ctx, h);
+    let tree = result?;
+    closed?;
+    Ok(tree.head != tree.published)
+}
+
+fn save_draft(mut ctx: &dyn Calls, h: Handle) -> Result<(), Error> {
+    let bytes = ops::whole(ctx, h)?;
+    if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+        text::Call(&mut ctx, h).replace(text::Edit {
+            at: bytes.len() as u64,
+            len: 0,
+            text: String::from("\n"),
+        })?;
+    }
+    publish::Call(&mut ctx, h).save()
 }
 
 /// The file as the person named it: `name`, a path under the root,
@@ -1337,6 +1763,7 @@ mod macro_queue_tests {
         calls: &'a dyn Calls,
         info: Option<Rd>,
         opening: Option<Rd>,
+        lookup: Option<(Rd, Error)>,
     }
 
     impl Calls for Refused<'_> {
@@ -1388,8 +1815,12 @@ mod macro_queue_tests {
         ) -> Reply<reovim_kernel_interface::Out> {
             use reovim_kernel_interface::Op;
             let denied = Reply::err(Error::Denied);
+            let blocked = self.lookup.map(|(rd, _)| rd);
+            let error = self.lookup.map_or(Error::Denied, |(_, error)| error);
+            let lookup = Reply::err(error);
             match op {
                 Op::Info { rd } if self.info == Some(rd) => denied,
+                Op::Lookup { rd, .. } if blocked == Some(rd) => lookup,
                 other => self.calls.submit(other),
             }
         }
@@ -1431,8 +1862,9 @@ mod macro_queue_tests {
         let (_rig, editor, host, mut tui) = scene("macro-info-failure");
         let ctx = host.own();
         let b = cell::resolve(&ctx, ROOT, "/module/fs/root/b").unwrap();
-        let refused = Refused { calls: &ctx, info: Some(b), opening: None };
-        assert_eq!(editor.shown(&refused, b, "", true), Err(Error::Denied));
+        let refused =
+            Refused { calls: &ctx, info: Some(b), opening: None, lookup: None };
+        assert_eq!(editor.shown(&refused, b, "", true, ""), Err(Error::Denied));
         assert!(!editor.stay().unwrap().leaving.get());
         tui.tick().unwrap();
         assert_eq!(reovim_rig::lines(&mut tui), ["abc"]);
@@ -1444,8 +1876,12 @@ mod macro_queue_tests {
         let ctx = host.own();
         let clipboard = Rd(u64::MAX);
         editor.vim.borrow_mut().clip = Some(clipboard);
-        let refused =
-            Refused { calls: &ctx, info: None, opening: Some(clipboard) };
+        let refused = Refused {
+            calls: &ctx,
+            info: None,
+            opening: Some(clipboard),
+            lookup: None,
+        };
         editor.replayed("\"+yyx".chars().map(Key::Char).collect());
         for _ in 0..3 {
             assert_eq!(editor.step(&refused), Ok(true));
@@ -1454,5 +1890,31 @@ mod macro_queue_tests {
         assert!(!editor.vim.borrow().macros.fed);
         assert!(editor.queue.borrow().is_empty(), "failed run was retained");
         assert_eq!(editor.step(&ctx), Ok(false));
+    }
+
+    fn failed_lookup(error: Error) {
+        let (_rig, editor, host, mut tui) =
+            scene(&format!("buffers-lookup-{error:?}"));
+        let ctx = host.own();
+        let cwd = editor.vim.borrow().cwd.unwrap();
+        let refused = Refused {
+            calls: &ctx,
+            info: None,
+            opening: None,
+            lookup: Some((cwd, error)),
+        };
+        assert_eq!(editor.edited(&refused, "missing", false), Err(error));
+        tui.tick().unwrap();
+        assert_eq!(reovim_rig::lines(&mut tui), ["abc"]);
+    }
+
+    #[test]
+    fn denied_edit_lookup_is_not_a_missing_file() {
+        failed_lookup(Error::Denied);
+    }
+
+    #[test]
+    fn busy_edit_lookup_is_not_a_missing_file() {
+        failed_lookup(Error::Busy);
     }
 }

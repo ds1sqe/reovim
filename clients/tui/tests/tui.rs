@@ -783,3 +783,57 @@ fn a_match_partly_under_a_selection_is_its_head_then_the_selection() {
     ];
     assert_eq!(runs, expected, "the match's head, then the selection");
 }
+
+fn retiring_drafts(name: &str) -> (Rig, Tui, Stub, Rc<Host>, Rd, Rd) {
+    let rig = Rig::new(name);
+    let (mut tui, stub, host) = hosted(&rig, None);
+    let ctx = host.own();
+    let old = reovim_client_region::drafted(&ctx, None).unwrap();
+    let new = reovim_client_region::drafted(&ctx, None).unwrap();
+    ops::put(&ctx, old, b"old".to_vec()).unwrap();
+    ops::put(&ctx, new, b"new".to_vec()).unwrap();
+    assert_eq!(ops::bytes(&ctx, old).unwrap(), b"old");
+    stub.0.script.borrow_mut().shows = Some(old);
+    assert_eq!(
+        press(&mut tui, &stub, Act::Show(view(0, ""))),
+        Ok(Step::Changed)
+    );
+    assert_eq!(tui.over(), Some(old));
+    assert_eq!(frame(&mut tui).lines, ["old"]);
+    let list = cell::resolve(&ctx, ROOT, "/self/dev/buffers").unwrap();
+    ops::call_by_name(&ctx, list, "close", encode(&old)).unwrap();
+    assert_eq!(ops::info(&ctx, old), Err(Error::Invalid));
+    assert!(!ops::children(&ctx, list).unwrap().contains(&old));
+    (rig, tui, stub, host, old, new)
+}
+
+#[test]
+fn a_new_view_replaces_a_closed_laid_draft() {
+    let (_rig, mut tui, stub, _host, _old, new) =
+        retiring_drafts("tui-retired-view");
+    stub.0.script.borrow_mut().shows = Some(new);
+    assert_eq!(
+        press(&mut tui, &stub, Act::Show(view(0, "new"))),
+        Ok(Step::Changed)
+    );
+    assert_eq!(tui.over(), Some(new));
+    assert_eq!(frame(&mut tui).lines, ["new"]);
+}
+
+#[test]
+fn gone_on_the_current_view_still_fails() {
+    let (_rig, mut tui, _stub, _host, _old, _new) =
+        retiring_drafts("tui-current-gone");
+    assert_eq!(tui.tick(), Err(Error::Gone));
+}
+
+#[test]
+fn a_none_view_does_not_hide_current_gone() {
+    let (_rig, mut tui, stub, _host, _old, _new) =
+        retiring_drafts("tui-none-gone");
+    stub.0.script.borrow_mut().shows = Some(NONE);
+    assert_eq!(
+        press(&mut tui, &stub, Act::Show(view(0, ""))),
+        Err(Error::Gone)
+    );
+}

@@ -18,7 +18,7 @@ use alloc::vec::Vec;
 use reovim_kernel_interface::{Calls, Decl, Error, Rd};
 
 use crate::plugin::{Editor, named};
-use crate::{Effect, Quit, Vim};
+use crate::{Effect, Quit, Switch, Vim};
 
 reovim_sdk::declare! {
     /// A name that reads nothing after it: `wq`, `xit`, `cquit`,
@@ -80,6 +80,14 @@ reovim_sdk::declare! {
     record Args { from: u64, to: u64, register: utf8(8) }
 }
 
+reovim_sdk::declare! {
+    /// Select or close a draft by its name under the Client's buffers.
+    api numbered ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { bang: bool, name: utf8(64) }
+}
+
 /// The names, in the order a `:` line resolves one, each with the
 /// declaration of the shape it takes.
 ///
@@ -89,7 +97,7 @@ reovim_sdk::declare! {
 /// registered in and the order `children(/self/vim/bin)` lists them,
 /// which is where the abbreviation is read from; nothing lists a short
 /// form by hand.
-pub(crate) fn declared() -> [(&'static str, Decl); 14] {
+pub(crate) fn declared() -> [(&'static str, Decl); 22] {
     let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
     [
         ("write", file.clone()),
@@ -99,13 +107,21 @@ pub(crate) fn declared() -> [(&'static str, Decl); 14] {
         ("cquit", plain.clone()),
         ("substitute", subst::decl()),
         ("set", option::decl()),
-        ("nohlsearch", plain),
+        ("nohlsearch", plain.clone()),
         ("edit", file.clone()),
         ("explore", file),
-        ("cli", bang),
+        ("cli", bang.clone()),
         ("global", each::decl()),
         ("vglobal", each::decl()),
         ("delete", lines::decl()),
+        ("buffer", numbered::decl()),
+        ("buffers", plain.clone()),
+        ("bnext", plain.clone()),
+        ("bprevious", plain.clone()),
+        ("bdelete", numbered::decl()),
+        ("qall", bang),
+        ("wall", plain.clone()),
+        ("wqall", plain),
     ]
 }
 
@@ -125,10 +141,11 @@ pub(crate) fn dispatch(
     input: &[u8],
 ) -> Result<Vec<u8>, Error> {
     match named(ctx, rd)?.as_str() {
-        "wq" | "xit" | "cquit" | "nohlsearch" => {
+        "wq" | "xit" | "cquit" | "nohlsearch" | "buffers" | "bnext"
+        | "bprevious" | "wall" | "wqall" => {
             plain::dispatch(vim, ctx, rd, number, input)
         }
-        "quit" | "cli" => bang::dispatch(vim, ctx, rd, number, input),
+        "quit" | "cli" | "qall" => bang::dispatch(vim, ctx, rd, number, input),
         "write" | "edit" | "explore" => {
             file::dispatch(vim, ctx, rd, number, input)
         }
@@ -136,6 +153,7 @@ pub(crate) fn dispatch(
         "set" => option::dispatch(vim, ctx, rd, number, input),
         "global" | "vglobal" => each::dispatch(vim, ctx, rd, number, input),
         "delete" => lines::dispatch(vim, ctx, rd, number, input),
+        "buffer" | "bdelete" => numbered::dispatch(vim, ctx, rd, number, input),
         _ => Err(Error::Unsupported),
     }
 }
@@ -153,6 +171,13 @@ impl plain::Api for Editor {
             "wq" | "xit" => self.did(ctx, rd, |_| Effect::Quit(Quit::Write)),
             "cquit" => self.did(ctx, rd, |_| Effect::Quit(Quit::Abort)),
             "nohlsearch" => self.did(ctx, rd, Vim::nohlsearch),
+            "buffers" => self.did(ctx, rd, |_| Effect::List),
+            "bnext" => self.did(ctx, rd, |_| Effect::Switch(Switch::Next)),
+            "bprevious" => {
+                self.did(ctx, rd, |_| Effect::Switch(Switch::Previous))
+            }
+            "wall" => self.did(ctx, rd, |_| Effect::SaveAll),
+            "wqall" => self.did(ctx, rd, |_| Effect::Quit(Quit::WriteAll)),
             _ => Err(Error::Unsupported),
         }
     }
@@ -172,6 +197,7 @@ impl bang::Api for Editor {
             "quit" if bang => Effect::Quit(Quit::Force),
             "quit" => Effect::Quit(Quit::Ask),
             "cli" => Effect::Cli(bang),
+            "qall" => Effect::Quit(Quit::All(bang)),
             _ => return Err(Error::Unsupported),
         };
         self.did(ctx, rd, |_| effect)
@@ -196,6 +222,22 @@ impl file::Api for Editor {
             "edit" if held => Effect::Open(path, bang),
             "edit" => Effect::Reload(bang),
             "explore" => Effect::Explore(held.then_some(path), bang),
+            _ => return Err(Error::Unsupported),
+        };
+        self.did(ctx, rd, |_| effect)
+    }
+}
+
+impl numbered::Api for Editor {
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: numbered::Args,
+    ) -> Result<Rd, Error> {
+        let effect = match named(ctx, rd)?.as_str() {
+            "buffer" => Effect::Switch(Switch::Named(args.name)),
+            "bdelete" => Effect::Close(args.name, args.bang),
             _ => return Err(Error::Unsupported),
         };
         self.did(ctx, rd, |_| effect)

@@ -56,6 +56,14 @@ fn the_three_names_resolve_and_s_stays_substitute() {
             "global",
             "vglobal",
             "delete",
+            "buffer",
+            "buffers",
+            "bnext",
+            "bprevious",
+            "bdelete",
+            "qall",
+            "wall",
+            "wqall",
         ]
     );
     typed(&mut tui, ":help global<CR>");

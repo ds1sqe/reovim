@@ -111,6 +111,16 @@ impl Jumps {
         }
     }
 
+    /// Remove a source while preserving the position among survivors.
+    pub(crate) fn forget(&mut self, source: Rd) {
+        let before = self.list[..self.at.min(self.list.len())]
+            .iter()
+            .filter(|jump| jump.source != Some(source))
+            .count();
+        self.list.retain(|jump| jump.source != Some(source));
+        self.at = before;
+    }
+
     /// Every entry with no source, dropped: nothing names that Buffer
     /// to come back by once it is left. Unnamed entries are always a
     /// suffix of the list: a push only ever adds

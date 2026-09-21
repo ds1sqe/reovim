@@ -211,6 +211,14 @@ fn the_listing_computes_the_short_form_of_every_name() {
         "global",
         "vglobal",
         "delete",
+        "buffer",
+        "buffers",
+        "bnext",
+        "bprevious",
+        "bdelete",
+        "qall",
+        "wall",
+        "wqall",
     ];
     assert_eq!(names, all, "the order a `:` line resolves a name in");
 
@@ -222,14 +230,12 @@ fn the_listing_computes_the_short_form_of_every_name() {
         short,
         [
             "w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl", "g",
-            "v", "d"
+            "v", "d", "b", "buffers", "bn", "bp", "bd", "qa", "wa", "wqa"
         ]
     );
 
-    // Nothing under PATH is reached by a beginning of its name: `wa`
-    // is no name of Vim's and the line goes to the shell whole, where
-    // `watch` is `watch`.
-    assert!(!names.iter().any(|name| name.starts_with("wa")));
+    // A prefix of a shell name still is not its full spelling.
+    assert!(!names.iter().any(|name| name.starts_with("wat")));
     assert!(!names.iter().any(|name| name.starts_with('l')));
 }
 
@@ -289,15 +295,17 @@ fn a_following_line_is_read_once_and_its_cell_closed() {
 }
 
 #[test]
-fn a_file_that_is_not_there_is_e345_and_the_region_stays() {
+fn a_missing_file_opens_a_named_draft_without_creating_it() {
     let rig = work("words-e345");
     let seen = Seen::default();
     let mut tui = over(&rig, &seen);
     assert_eq!(typed(&mut tui, ":edit nothere<CR>"), Step::Changed);
     let frame = tui.frame(80, 24).unwrap();
-    let said = "E345: Can't find file \"nothere\" in path";
-    assert_eq!(frame.status, format!("note  1:1  r1   {said}"));
-    assert_eq!(frame.lines, ["one", "two"], "the file is still it");
+    assert!(frame.status.starts_with("nothere  "));
+    assert_eq!(frame.lines, [""]);
+    assert!(!rig.dir().join("d/nothere").exists());
+    typed(&mut tui, "ix<Esc>:w<CR>");
+    assert_eq!(rig.disk("d/nothere"), b"x\n");
 }
 
 #[test]

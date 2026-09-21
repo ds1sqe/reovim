@@ -142,8 +142,8 @@ fn a_file_mark_refused_by_e37_leaves_the_cursor_kept() {
         &[("a", b"one\ntwo\nthree\n"), ("b", b"x\ny\n")],
     );
     typed(&mut tui, "jmAgg");
-    assert_eq!(typed(&mut tui, ":e b<CR>"), Step::Changed);
-    typed(&mut tui, "x");
+    assert_eq!(typed(&mut tui, ":e new<CR>"), Step::Changed);
+    typed(&mut tui, "ix<Esc>");
     typed(&mut tui, "'A");
     assert_eq!(
         said(&mut tui),

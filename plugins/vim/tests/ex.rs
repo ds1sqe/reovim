@@ -99,7 +99,7 @@ fn what_vim_would_have_said_is_what_the_run_printed() {
     assert_eq!(typed(&mut tui, ":set nothere<CR>"), Step::Changed);
     assert_eq!(said(&mut tui), "E518: Unknown option: nothere");
     assert_eq!(typed(&mut tui, ":e nothere<CR>"), Step::Changed);
-    assert_eq!(said(&mut tui), "E345: Can't find file \"nothere\" in path");
+    assert_eq!(said(&mut tui), "\"nothere\" [New]");
     assert_eq!(typed(&mut tui, ":u<CR>"), Step::Changed);
     assert_eq!(said(&mut tui), "E492: Not an editor command: u", "no `undo`");
 
