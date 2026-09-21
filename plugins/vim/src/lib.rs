@@ -693,6 +693,10 @@ pub struct Vim {
     /// clipboard's, and a search's own `epoch` — so a reply of an
     /// older number is stale wherever it came from and there is no
     /// second numbering to keep in step. 0 is no wait at all.
+    ///
+    /// It only ever grows, and it is the engine's for its whole life
+    /// rather than a stay's: `leave` leaves it alone, so a reply the
+    /// stay before it asked for cannot answer a wait of this one.
     continuation: u64,
     /// The input now running, whose a released key reads as its
     /// maker's: every key the engine keeps or asks for carries this
@@ -2399,7 +2403,6 @@ impl Vim {
         self.block = None;
         self.wild = None;
         self.message.clear();
-        self.continuation = 0;
         self.repeat.record.clear();
         self.repeat.first = false;
         self.prompt.at = char::default();

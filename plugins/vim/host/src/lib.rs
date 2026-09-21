@@ -1392,30 +1392,38 @@ impl Editor {
 
     /// A put waiting for the clipboard: what it holds, answered to
     /// the continuation the put asked with, and the put itself, which
-    /// is an effect like any other. No clipboard at all is a refusal,
-    /// which the engine words.
+    /// is an effect like any other.
+    ///
+    /// Every end of the read answers, since the put is what waits: a
+    /// read the host cannot make `PASTED` is a `REFUSED` reply
+    /// carrying the error it met, and the engine words it and clears
+    /// the put. Leaving here without a reply — which is what `?` on
+    /// the read did — would leave the put waiting for the rest of the
+    /// stay, `State.waiting` never back at 0, the frame's sync
+    /// skipped and nothing typed afterwards reaching the server.
     fn pasting(&self, ctx: &dyn Calls, continuation: u64) -> Result<(), Error> {
-        let held = self.clipboard(ctx)?;
-        let kind = if held.is_some() { reply::PASTED } else { reply::REFUSED };
+        let (text, failed) = match self.clipboard(ctx) {
+            Ok(text) => (text, None),
+            Err(error) => (String::new(), Some(error)),
+        };
         let answer = resolver::Reply {
             continuation,
-            kind,
-            text: held.unwrap_or_default(),
+            kind: if failed.is_none() { reply::PASTED } else { reply::REFUSED },
+            text,
+            error: failed.map_or(0, |error| error as u64),
             ..blank_reply()
         };
         let effect = self.vim.borrow_mut().reply(&answer);
         self.act(ctx, effect)
     }
 
-    /// What the clipboard holds, through its rd; `None` when the
-    /// Client serves no cell or the machine has no tool.
-    fn clipboard(&self, ctx: &dyn Calls) -> Result<Option<String>, Error> {
-        let Some(rd) = self.clip.get() else { return Ok(None) };
-        match ops::bytes(ctx, rd) {
-            Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
-            Err(Error::Unsupported | Error::Busy) => Ok(None),
-            Err(error) => Err(error),
-        }
+    /// What the clipboard holds, through its rd; the error the read
+    /// met otherwise, `Unsupported` where the Client serves no cell at
+    /// all, as a machine with no tool on PATH answers.
+    fn clipboard(&self, ctx: &dyn Calls) -> Result<String, Error> {
+        let rd = self.clip.get().ok_or(Error::Unsupported)?;
+        let bytes = ops::bytes(ctx, rd)?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     /// What a `"+` yank left for the clipboard, written to its rd; no

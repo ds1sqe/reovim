@@ -17,9 +17,10 @@ use reovim_client_api::resolver::{
 };
 use reovim_client_api::{NONE, filled, kind, land, reply};
 use reovim_client_tui::Tui;
+use reovim_kernel_interface::Error;
 use reovim_plugin_vim::{Effect, Quit, Switch, Vim, effect};
 use reovim_plugin_vim_host::Editor;
-use reovim_rig::{Rig, opened};
+use reovim_rig::{Rig, lines, opened, said};
 
 /// A reply at rest: the `kind` it is, nothing filled, nothing
 /// refused. Each test fills the one field its own answer carries.
@@ -236,16 +237,29 @@ fn the_engine_holds_no_path_or_handle() {
     }
 }
 
-/// An editor over a file of `text`, for what only a stay has.
-fn over(name: &str, text: &[u8]) -> (Rig, Tui, Rc<Host>, Rc<Editor>) {
+/// An editor over `note`, which holds `text`, with `other` beside it
+/// for a swap; `clip` is the machine it was given. For what only a
+/// stay has.
+fn over(
+    name: &str,
+    text: &[u8],
+    clip: Clip,
+) -> (Rig, Tui, Rc<Host>, Rc<Editor>) {
     let rig = Rig::new(name);
     rig.file("note", text);
+    rig.file("other", b"three\nfour\n");
     let host = rig.host();
     let editor = Editor::new();
     let table = one(Rc::clone(&editor));
-    let tui =
-        opened(&host, table, Clip::none(), "", Some("note"), None).unwrap();
+    let tui = opened(&host, table, clip, "", Some("note"), None).unwrap();
     (rig, tui, host, editor)
+}
+
+/// A machine whose clipboard answers neither text nor "no tool": a
+/// read the Client is not allowed to make, which is every failure the
+/// host cannot read as an empty one.
+fn denied() -> Clip {
+    Clip::new(Box::new(|| Err(Error::Denied)), Box::new(|_| Err(Error::Denied)))
 }
 
 /// A stay's own first list is numbered like every other wait, so no
@@ -253,6 +267,58 @@ fn over(name: &str, text: &[u8]) -> (Rig, Tui, Rc<Host>, Rc<Editor>) {
 /// file, whose loading is no change — has a number of its own.
 #[test]
 fn a_stays_first_list_is_numbered_like_every_other_wait() {
-    let (_rig, _tui, _host, editor) = over("reply-first-list", b"");
+    let (_rig, _tui, _host, editor) =
+        over("reply-first-list", b"", Clip::none());
     assert_ne!(editor.engine().epoch(), 0, "the stay took a number");
+}
+
+/// A clipboard read that fails is an end of the read like any other,
+/// so it answers the put that asked for it. Not "no cell" and not "no
+/// tool", which the host already reads as an empty clipboard: a read
+/// the machine refused outright.
+///
+/// The put is what waits, so leaving without an answer would leave it
+/// waiting for the rest of the stay — `State.waiting` never back at 0,
+/// the frame's sync skipped, and nothing typed afterwards reaching the
+/// server. The reply is the one way the wait ends.
+#[test]
+fn a_refused_clipboard_read_answers_the_put() {
+    let (rig, mut tui, _host, editor) =
+        over("reply-clip-denied", b"one\ntwo\n", denied());
+    reovim_rig::typed(&mut tui, "\"+p");
+
+    assert_eq!(editor.engine().state().waiting, 0, "nothing waits");
+    assert_eq!(said(&mut tui), "E353: Nothing in register +");
+    assert_eq!(lines(&mut tui), ["one", "two"], "and nothing was put");
+
+    // The stay goes on: the key after it edits, and the edit goes
+    // down, which is what the skipped sync would have held back.
+    reovim_rig::typed(&mut tui, "x:w<CR>");
+    assert_eq!(lines(&mut tui), ["ne", "two"]);
+    assert_eq!(rig.disk("note"), b"ne\ntwo\n", "the edit reached the file");
+}
+
+/// The numbering is the engine's for its whole life, not a stay's: a
+/// swap leaves the counter alone, so the list the second stay opens
+/// with is numbered past every wait the first one made. A number that
+/// went back would let a reply of the stay before answer a wait of
+/// this one.
+#[test]
+fn a_stay_swap_keeps_the_numbering() {
+    let (_rig, mut tui, _host, editor) =
+        over("reply-stay-swap", b"one\ntwo\n", Clip::none());
+
+    // The first stay's own waits: the list it opened with, and the
+    // number the edit after it drew.
+    reovim_rig::typed(&mut tui, "x:w<CR>");
+    let first = editor.engine().epoch();
+    assert!(first > 1, "the first stay numbered more than its opening");
+
+    reovim_rig::typed(&mut tui, ":e other<CR>");
+    assert_eq!(lines(&mut tui), ["three", "four"], "the second stay");
+    let second = editor.engine().epoch();
+    assert!(
+        second > first,
+        "the second stay opened on {second}, the first stay's last {first}"
+    );
 }
