@@ -60,7 +60,7 @@ fn blank_and_hash_lines_are_skipped() {
     let rig = rig("init-blank");
     let host = rig.host();
     let mut tui = editor(&host, "\n# x\n  \n", "a");
-    assert!(entries(&host).is_empty());
+    assert_eq!(entries(&host), [] as [(u8, String); 0]);
     assert_eq!(lines(&mut tui), ["one", "Two"]);
 }
 
