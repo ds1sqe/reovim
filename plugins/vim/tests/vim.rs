@@ -4,11 +4,11 @@ mod common;
 
 use std::fmt::Write as _;
 
-use common::{edit, on, typed};
-use reovim_client_api::{BAR, BLOCK, MATCH, SELECTION};
+use common::{as_of, edit, on, tapped, typed};
+use reovim_client_api::{BAR, BLOCK, MATCH, SELECTION, origin};
 use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{
-    Edit, Effect, Ex, Filled, Key, Mode, Quit, Stroke, Vim, Visual, Want,
+    Edit, Effect, Ex, Filled, Key, Mode, Quit, Vim, Visual, Want,
 };
 
 /// The `:` line `keys` left for the Client to run: the range it read
@@ -25,24 +25,25 @@ fn ex(from: u64, to: u64, line: &str) -> Effect {
 #[test]
 fn insert_edits_join_and_esc_steps_back() {
     let mut vim = on("");
-    assert_eq!(vim.key(Key::Char('i')), Effect::Moved);
+    assert_eq!(vim.key(tapped(Key::Char('i'))), Effect::Moved);
     assert_eq!(vim.mode(), Mode::Insert);
-    assert_eq!(vim.key(Key::Char('a')), edit(0, 0, "a", false));
-    assert_eq!(vim.key(Key::Char('b')), edit(1, 0, "b", true));
+    assert_eq!(vim.key(tapped(Key::Char('a'))), edit(0, 0, "a", false));
+    assert_eq!(vim.key(tapped(Key::Char('b'))), edit(1, 0, "b", true));
     // The text had no final `\n`; the Enter ends its line and opens
     // the next, so the cursor's line is one the text holds.
-    assert_eq!(vim.key(Key::Enter), edit(2, 0, "\n\n", true));
-    assert_eq!(vim.key(Key::Char('c')), edit(3, 0, "c", true));
+    assert_eq!(vim.key(tapped(Key::Enter)), edit(2, 0, "\n\n", true));
+    assert_eq!(vim.key(tapped(Key::Char('c'))), edit(3, 0, "c", true));
     assert_eq!(vim.position(), (1, 1));
-    assert_eq!(vim.key(Key::Backspace), edit(3, 1, "", true));
-    assert_eq!(vim.key(Key::Backspace), edit(2, 1, "", true), "across");
+    assert_eq!(vim.key(tapped(Key::Backspace)), edit(3, 1, "", true));
+    assert_eq!(vim.key(tapped(Key::Backspace)), edit(2, 1, "", true), "across");
     assert_eq!(vim.text(), "ab\n", "one line, ended");
-    assert_eq!(vim.key(Key::Left), Effect::Moved, "an arrow ends the step");
-    assert_eq!(vim.key(Key::Char('é')), edit(1, 0, "é", false));
-    assert_eq!(vim.key(Key::Esc), Effect::Moved);
+    let arrow = vim.key(tapped(Key::Left));
+    assert_eq!(arrow, Effect::Moved, "an arrow ends the step");
+    assert_eq!(vim.key(tapped(Key::Char('é'))), edit(1, 0, "é", false));
+    assert_eq!(vim.key(tapped(Key::Esc)), Effect::Moved);
     assert_eq!(vim.mode(), Mode::Normal);
     assert_eq!(vim.position(), (0, 1), "back onto the char inserted");
-    assert_eq!(vim.key(Key::Esc), Effect::Nothing);
+    assert_eq!(vim.key(tapped(Key::Esc)), Effect::Nothing);
 }
 
 #[test]
@@ -425,11 +426,11 @@ fn the_clipboard_registers_wait_for_their_rd() {
 fn fed_keys_do_not_record_and_repeat_preserves_the_last_change() {
     let mut vim = on("abcdefgh\n");
     typed(&mut vim, "qb");
-    vim.fed(Key::Char('x'), false);
+    vim.key(as_of(Key::Char('x'), origin::FED));
     typed(&mut vim, "q");
     assert_eq!(vim.stored('b'), "");
     typed(&mut vim, "x");
-    vim.fed(Key::Char('l'), true);
+    vim.key(as_of(Key::Char('l'), origin::REPEAT));
     typed(&mut vim, ".");
     assert_eq!(vim.text(), "cefgh\n");
 }
@@ -438,9 +439,10 @@ fn fed_keys_do_not_record_and_repeat_preserves_the_last_change() {
 fn a_motion_before_the_first_fed_edit_does_not_join_prior_typing() {
     let mut vim = on("abcdef\nghijkl\n");
     typed(&mut vim, "x");
-    vim.fed(Key::Char('j'), false);
-    assert_eq!(vim.fed(Key::Char('x'), false), edit(6, 1, "", false));
-    assert_eq!(vim.fed(Key::Char('x'), false), edit(6, 1, "", true));
+    vim.key(as_of(Key::Char('j'), origin::FED));
+    let fed = |vim: &mut Vim| vim.key(as_of(Key::Char('x'), origin::FED));
+    assert_eq!(fed(&mut vim), edit(6, 1, "", false));
+    assert_eq!(fed(&mut vim), edit(6, 1, "", true));
     typed(&mut vim, "'[");
     assert_eq!(vim.position(), (1, 0));
 }
@@ -471,13 +473,14 @@ fn a_fed_line_does_not_replace_the_last_typed_ex() {
     let mut vim = on("abc\n");
     typed(&mut vim, ":set ic<CR>");
     for key in reovim_plugin_vim::notation::keys(":set noic<CR>").unwrap() {
-        vim.fed(key, false);
+        vim.key(as_of(key, origin::FED));
     }
     let effect = typed(&mut vim, "@:");
     assert_eq!(
         effect,
-        Effect::Replay(
-            reovim_plugin_vim::notation::keys(":set ic<CR>").unwrap()
+        Effect::Fed(
+            reovim_plugin_vim::notation::keys(":set ic<CR>").unwrap(),
+            false
         )
     );
 }
@@ -487,10 +490,10 @@ fn huge_counts_on_empty_registers_finish_and_nonempty_runs_are_bounded() {
     let mut vim = on("x\n");
     assert_eq!(
         typed(&mut vim, "999999999999999999999999999@a"),
-        Effect::Replay(vec![])
+        Effect::Fed(vec![], false)
     );
     typed(&mut vim, "\"ayiw");
-    let Effect::Replay(keys) = typed(&mut vim, "200000@a") else {
+    let Effect::Fed(keys, false) = typed(&mut vim, "200000@a") else {
         panic!("a register run must return replay keys");
     };
     assert_eq!(keys, vec![Key::Char('x'); 100_001]);
@@ -589,16 +592,18 @@ fn maximum_height_is_safe_with_visual_selection_after_scrolling() {
 #[test]
 fn dot_is_keys_for_the_queue() {
     let mut vim = on("abcdef\n");
-    assert_eq!(vim.key(Key::Char('.')), Effect::Nothing, "no last change");
+    let dot = vim.key(tapped(Key::Char('.')));
+    assert_eq!(dot, Effect::Nothing, "no last change");
     assert_eq!(typed(&mut vim, "x"), edit(0, 1, "", false));
     // The engine replays nothing itself: `.` answers the keys, and
     // the Plugin's queue runs them as a repeat's.
-    assert_eq!(vim.key(Key::Char('.')), Effect::Repeat(vec![Key::Char('x')]));
+    let dot = vim.key(tapped(Key::Char('.')));
+    assert_eq!(dot, Effect::Fed(vec![Key::Char('x')], true));
     assert_eq!(vim.text(), "bcdef\n", "the engine ran none of them");
-    vim.key(Key::Char('3'));
+    vim.key(tapped(Key::Char('3')));
     assert_eq!(
-        vim.key(Key::Char('.')),
-        Effect::Repeat(vec![Key::Char('3'), Key::Char('x')]),
+        vim.key(tapped(Key::Char('.'))),
+        Effect::Fed(vec![Key::Char('3'), Key::Char('x')], true),
         "a count typed before `.` leads the keys it answers"
     );
 }
@@ -660,8 +665,8 @@ fn an_operator_waits_with_its_search() {
     assert_eq!(vim.text(), "b\n");
     assert_eq!(vim.showcmd(), "");
     assert_eq!(
-        vim.key(Key::Char('.')),
-        Effect::Repeat(keys("d/b<CR>").unwrap()),
+        vim.key(tapped(Key::Char('.'))),
+        Effect::Fed(keys("d/b<CR>").unwrap(), true),
         "the record stood through the wait, so `.` is the four keys"
     );
 }
@@ -797,12 +802,12 @@ fn a_wait_runs_again_as_its_key_came() {
     // A macro's `<CR>`, let go by a failed prefix and run again by
     // `past`: the landing's edit joins the run it came from.
     let mut vim = on("ab\nxb\n");
-    vim.fed(Key::Char('x'), false);
+    vim.key(as_of(Key::Char('x'), origin::FED));
     for key in keys("d/b").unwrap() {
-        vim.fed(key, false);
+        vim.key(as_of(key, origin::FED));
     }
     let epoch = vim.epoch();
-    let asked = vim.past(Stroke { key: Key::Enter, fed: true });
+    let asked = vim.key(as_of(Key::Enter, origin::RELEASED));
     assert_eq!(asked, want(&vim, "b", 0));
     assert_eq!(
         vim.matched(epoch, &[(0, 1), (3, 1)], Filled::Whole),
@@ -814,14 +819,14 @@ fn a_wait_runs_again_as_its_key_came() {
     let mut vim = on("ab\nxb\n");
     typed(&mut vim, "x");
     for key in keys("d/b").unwrap() {
-        vim.fed(key, true);
+        vim.key(as_of(key, origin::REPEAT));
     }
     let epoch = vim.epoch();
-    assert_eq!(vim.fed(Key::Enter, true), want(&vim, "b", 0));
+    assert_eq!(vim.key(as_of(Key::Enter, origin::REPEAT)), want(&vim, "b", 0));
     vim.matched(epoch, &[(0, 1), (3, 1)], Filled::Whole);
     assert_eq!(
-        vim.key(Key::Char('.')),
-        Effect::Repeat(vec![Key::Char('x')]),
+        vim.key(tapped(Key::Char('.'))),
+        Effect::Fed(vec![Key::Char('x')], true),
         "the repeat's own re-run left the last change alone"
     );
 }

@@ -16,7 +16,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, RefCell};
 
-use reovim_client_api::{Key, buffers, keyboard, open, window};
+use reovim_client_api::{buffers, keyboard, open, window};
 use reovim_kernel_interface::{
     Calls, DriverId, Error, Flags, Handle, Rd, Reply, Rights, part,
 };
@@ -91,16 +91,21 @@ impl Region {
         decode(&ops::bytes(ctx, self.size)?)
     }
 
-    /// Every key this Plugin has not taken, in order: what one frame
-    /// runs. A read with nothing to take is `Busy`, the stream not
-    /// being over, so an empty answer is a frame with nothing typed.
+    /// Every press this Plugin has not taken, in order: what one
+    /// frame runs. A read with nothing to take is `Busy`, the stream
+    /// not being over, so an empty answer is a frame with nothing
+    /// typed.
+    ///
+    /// A press is handed on whole, the clock and the source the
+    /// Client stamped with it: a code no [`Key`](reovim_client_api::Key)
+    /// stands for is the reader's to drop, not this one's.
     ///
     /// # Errors
     /// What the read says, `Busy` apart.
-    pub fn keys(&self, ctx: &dyn Calls) -> Result<Vec<Key>, Error> {
+    pub fn keys(&self, ctx: &dyn Calls) -> Result<Vec<keyboard::Press>, Error> {
         let mut keys = Vec::new();
         while let Some(press) = self.pressed(ctx)? {
-            keys.extend(Key::of(press.key));
+            keys.push(press);
         }
         Ok(keys)
     }

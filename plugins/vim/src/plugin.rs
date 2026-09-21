@@ -37,7 +37,9 @@ use alloc::vec::Vec;
 use core::cell::{Cell, Ref, RefCell};
 use core::fmt::Write as _;
 
-use reovim_client_api::{NONE, buffers, draft, open, part};
+use reovim_client_api::origin::TYPED;
+use reovim_client_api::resolver::Input;
+use reovim_client_api::{NONE, buffers, draft, open, origin, part};
 use reovim_client_region::{Region, Surface, count, drafted};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
@@ -52,11 +54,11 @@ use reovim_search_api::{ENTRY, entries, search};
 use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
-use crate::keymap::{Held, Stroke};
+use crate::keymap::Held;
 use crate::macros::BUDGET;
 use crate::{
     E32, Edit, Effect, Ex, Filled, Key, Land, Mode, Pos, Quit, Switch, Vim,
-    Want, bins,
+    Want, bins, keyed,
 };
 
 /// How many entries one read of `matches` asks for. The 48 KiB they
@@ -179,24 +181,11 @@ const DRIVER: DriverId = DriverId(0);
 pub struct Editor {
     vim: RefCell<Vim>,
     stay: RefCell<Option<Rc<Stay>>>,
-    queue: RefCell<VecDeque<Queued>>,
+    queue: RefCell<VecDeque<Input>>,
     spent: Cell<usize>,
     closing: Cell<Option<(Rd, Option<Rd>)>>,
     /// Captured startup lines, taken once at the first Vim frame.
     init: RefCell<Option<String>>,
-}
-
-/// Provenance controls recording, cancellation and the execution budget.
-#[derive(Clone, Copy)]
-enum Queued {
-    Typed(Key),
-    /// A key some `Effect` fed: a macro's, or, with the flag, one of
-    /// the keys `.` answered, which run as a repeat's.
-    Fed(Key, bool),
-    /// A key a failed prefix let go, carrying the origin it was taken
-    /// with. It is not looked up a second time, and it is charged no
-    /// second time either: the input it came from paid for it.
-    Past(Stroke),
 }
 
 /// A source-backed draft, in the Client's listing order.
@@ -522,7 +511,9 @@ impl Editor {
         }
         if !self.stay()?.asked.get() {
             let keys = self.stay()?.surface.region()?.keys(ctx)?;
-            self.queue.borrow_mut().extend(keys.into_iter().map(Queued::Typed));
+            self.queue.borrow_mut().extend(
+                keys.into_iter().map(|press| Input { press, origin: TYPED }),
+            );
         }
         while self.step(ctx)? {}
         self.wanted(ctx)?;
@@ -646,10 +637,12 @@ impl Editor {
     /// fed one is a key of its run and waits as any other does.
     fn interrupting(&self) -> Option<usize> {
         let queue = self.queue.borrow();
-        let ctrl_c = queue
-            .iter()
-            .position(|queued| matches!(queued, Queued::Typed(Key::Ctrl('c'))));
-        let esc = matches!(queue.front(), Some(Queued::Typed(Key::Esc)));
+        let typed = |input: &Input, key: Key| {
+            input.origin == TYPED && input.press.key == key.code()
+        };
+        let ctrl_c =
+            queue.iter().position(|input| typed(input, Key::Ctrl('c')));
+        let esc = queue.front().is_some_and(|input| typed(input, Key::Esc));
         ctrl_c.or_else(|| esc.then_some(0))
     }
 
@@ -669,47 +662,51 @@ impl Editor {
     /// the queue's front, then the bell or the budget dropping what a
     /// macro fed.
     fn tail(&self) {
-        // What this key let go goes to the queue's front, before the
-        // bell's check below, so a bell drops a macro's released keys
-        // with the rest of its run. A released key that lets go of
-        // more, an Alt among them, is drained by its own step.
-        let released = self.vim.borrow_mut().released();
-        let mut queue = self.queue.borrow_mut();
-        for stroke in released.into_iter().rev() {
-            queue.push_front(Queued::Past(stroke));
-        }
-        drop(queue);
+        // The bell first, so what a macro fed is gone before the key
+        // it let go next is asked for: a released input says a key
+        // was let go and not whose it was, and the engine is what
+        // knows.
         let exhausted = self.spent.get() >= BUDGET;
         if self.vim.borrow_mut().rung() || exhausted {
-            self.queue.borrow_mut().retain(|queued| match queued {
-                Queued::Typed(_) => true,
-                Queued::Fed(..) => false,
-                Queued::Past(stroke) => !stroke.fed,
-            });
+            self.queue.borrow_mut().retain(|input| input.origin == TYPED);
             self.vim.borrow_mut().cancel();
         }
         if exhausted {
             self.says(&format!("@: stopped after {BUDGET} keys"));
         }
+        // One key a prefix let go, at the queue's front where the next
+        // step takes it; the engine holds the rest until that step
+        // asks again, a released key that lets go of more, an Alt
+        // among them, included.
+        let waiting = self
+            .queue
+            .borrow()
+            .front()
+            .is_some_and(|input| input.origin == origin::RELEASED);
+        let released =
+            (!waiting).then(|| self.vim.borrow_mut().released()).flatten();
+        if let Some(input) = released {
+            self.queue.borrow_mut().push_front(input);
+        }
     }
 
-    /// Fed context survives the engine call until its whole effect finishes.
-    fn key(&self, queued: Queued) -> Effect {
-        let mut vim = self.vim.borrow_mut();
-        vim.macros.fed = matches!(queued, Queued::Fed(..));
-        match queued {
-            Queued::Typed(key) => {
-                self.spent.set(0);
-                vim.key(key)
-            }
-            Queued::Fed(key, repeat) => {
+    /// One input, and what the budget makes of its origin: a typed
+    /// key zeroes what a replay has spent, a macro's key and a
+    /// repeat's count, and a key a prefix let go neither — the input
+    /// it came from was counted, or zeroed, already.
+    ///
+    /// The engine sets its own fed context from the origin it takes,
+    /// a released key's maker's among them, and it stands there until
+    /// the whole effect of this input has been performed.
+    fn key(&self, input: Input) -> Effect {
+        match input.origin {
+            TYPED => self.spent.set(0),
+            origin::FED | origin::REPEAT => {
                 self.spent.set(self.spent.get() + 1);
-                vim.fed(key, repeat)
             }
-            // Neither counted nor zeroing: the key that let this one
-            // go was counted, or zeroed, already.
-            Queued::Past(stroke) => vim.past(stroke),
+            _ => {}
         }
+        self.vim.borrow_mut().key(input)
     }
 
     /// Keep only the fed prefix the remaining budget can reach, plus a
@@ -722,15 +719,20 @@ impl Editor {
         let capacity = (BUDGET + 1).saturating_sub(self.spent.get());
         keys.truncate(capacity);
         let mut spare = capacity - keys.len();
+        // The press of the key that made them, which the engine holds
+        // as the input it is running: the `@a` or the `.`, so the
+        // host invents no keyboard for what it feeds.
+        let Some(maker) = self.vim.borrow().taken().cloned() else { return };
+        let origin = if repeat { origin::REPEAT } else { origin::FED };
         let mut queue = self.queue.borrow_mut();
-        queue.retain(|key| {
-            let fed = matches!(key, Queued::Fed(..));
+        queue.retain(|input| {
+            let fed = matches!(input.origin, origin::FED | origin::REPEAT);
             let keep = !fed || spare != 0;
             spare = spare.saturating_sub(usize::from(fed));
             keep
         });
         for key in keys.into_iter().rev() {
-            queue.push_front(Queued::Fed(key, repeat));
+            queue.push_front(keyed(key, origin, &maker.press));
         }
     }
 
@@ -826,12 +828,8 @@ impl Editor {
         let asked = asked(&effect);
         self.stale(ctx, asked, |ctx| match effect {
             Effect::Nothing | Effect::Moved => Ok(()),
-            Effect::Replay(keys) => {
-                self.replayed(keys, false);
-                Ok(())
-            }
-            Effect::Repeat(keys) => {
-                self.replayed(keys, true);
+            Effect::Fed(keys, repeat) => {
+                self.replayed(keys, repeat);
                 Ok(())
             }
             Effect::Edit(edit) => self.send(ctx, edit),
@@ -2451,20 +2449,55 @@ fn printed(ctx: &dyn Calls, ran: Ran) -> String {
 mod macro_queue_tests {
     use super::*;
 
+    use crate::tapped;
+
     #[test]
     fn recursive_tails_are_bounded_and_keep_typed_input() {
         let editor = Editor::default();
+        // The press its keys carry: the input the engine is running,
+        // which here is one key a person typed and nothing else.
+        editor.vim.borrow_mut().key(tapped(Key::Esc, TYPED));
         editor.spent.set(BUDGET - 3);
-        editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
+        editor.queue.borrow_mut().push_back(tapped(Key::Char('x'), TYPED));
         editor.replayed(alloc::vec![Key::Char('@'); 100], false);
         editor.replayed(alloc::vec![Key::Char('a'); 100], false);
         let queue = editor.queue.borrow();
         assert_eq!(
-            queue.iter().filter(|q| matches!(q, Queued::Fed(..))).count(),
+            queue.iter().filter(|q| q.origin == origin::FED).count(),
             4,
             "only the remaining budget and its sentinel"
         );
-        assert!(matches!(queue.back(), Some(Queued::Typed(Key::Char('x')))));
+        assert_eq!(queue.back(), Some(&tapped(Key::Char('x'), TYPED)));
+    }
+
+    /// The engine holds what a failed prefix let go and the queue
+    /// takes one key of it at a time, so a frame that ends no key —
+    /// a crank of a waiting search — queues that key once, not once
+    /// a crank.
+    /// A `<C-c>` a macro fed is a key of its run and waits as any
+    /// other does; a person's ends the wait wherever it stands.
+    #[test]
+    fn a_fed_ctrl_c_does_not_end_a_wait() {
+        let (_rig, editor, _host, _tui) = scene("wait-fed-ctrl-c");
+        let mut queue = editor.queue.borrow_mut();
+        queue.push_back(tapped(Key::Ctrl('c'), origin::FED));
+        drop(queue);
+        assert_eq!(editor.interrupting(), None);
+        editor.queue.borrow_mut().push_back(tapped(Key::Ctrl('c'), TYPED));
+        assert_eq!(editor.interrupting(), Some(1));
+    }
+
+    #[test]
+    fn a_released_key_is_queued_once_however_often_the_tail_runs() {
+        let (_rig, editor, _host, _tui) = scene("bind-released-once");
+        let mut vim = editor.vim.borrow_mut();
+        vim.bind("dx", "nohlsearch");
+        vim.key(tapped(Key::Char('d'), TYPED));
+        vim.key(tapped(Key::Char('d'), TYPED));
+        drop(vim);
+        editor.tail();
+        editor.tail();
+        assert_eq!(editor.queue.borrow().len(), 1, "one key, queued once");
     }
 
     #[test]
@@ -2473,8 +2506,8 @@ mod macro_queue_tests {
         editor.vim.borrow_mut().bind("xy", "nohlsearch");
         editor.spent.set(BUDGET - 4);
         let mut queue = editor.queue.borrow_mut();
-        queue.push_back(Queued::Fed(Key::Char('x'), false));
-        queue.push_back(Queued::Fed(Key::Char('p'), false));
+        queue.push_back(tapped(Key::Char('x'), origin::FED));
+        queue.push_back(tapped(Key::Char('p'), origin::FED));
         drop(queue);
         let ctx = host.own();
         while editor.step(&ctx).unwrap() {}
@@ -2635,7 +2668,7 @@ mod macro_queue_tests {
     #[test]
     fn the_keys_behind_a_refused_edit_go_with_the_queue() {
         let (_rig, editor, host, _tui) = refusing("refused-queue");
-        let keys = ['x', 'x', 'l'].map(|c| Queued::Typed(Key::Char(c)));
+        let keys = ['x', 'x', 'l'].map(|c| tapped(Key::Char(c), TYPED));
         editor.queue.borrow_mut().extend(keys);
         editor.framed(&host.own()).unwrap();
         assert_eq!(editor.engine().text(), "abc\n", "nothing went down");
@@ -2652,14 +2685,14 @@ mod macro_queue_tests {
         for command in ["cli", "q", "explore"] {
             let (_rig, editor, host, _tui) = scene(command);
             *editor.init.borrow_mut() = Some(String::from(command));
-            editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
+            editor.queue.borrow_mut().push_back(tapped(Key::Char('x'), TYPED));
             editor.framed(&host.own()).unwrap();
             assert_eq!(editor.engine().text(), "abc\n", "{command}");
             assert!(editor.stay().unwrap().asked.get());
-            assert!(matches!(
+            assert_eq!(
                 editor.queue.borrow().front(),
-                Some(Queued::Typed(Key::Char('x')))
-            ));
+                Some(&tapped(Key::Char('x'), TYPED))
+            );
         }
     }
 
@@ -2691,6 +2724,9 @@ mod macro_queue_tests {
             opening: Some(clipboard),
             lookup: None,
         };
+        // The press its keys carry: the input the engine is running,
+        // which here is one key a person typed and nothing else.
+        editor.vim.borrow_mut().key(tapped(Key::Esc, TYPED));
         editor.replayed("\"+yyx".chars().map(Key::Char).collect(), false);
         for _ in 0..3 {
             assert_eq!(editor.step(&refused), Ok(true));
@@ -2713,12 +2749,12 @@ mod macro_queue_tests {
             vim.clip = Some(Rd(u64::MAX));
             vim.clipboard = Some(String::from("held"));
         }
-        editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('d')));
+        editor.queue.borrow_mut().push_back(tapped(Key::Char('d'), TYPED));
         assert!(editor.step(&ctx).is_err(), "the clipboard write failed");
 
         // The `d` the prefix was holding went with the queue, so the
         // next key is itself and takes its char.
-        editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
+        editor.queue.borrow_mut().push_back(tapped(Key::Char('x'), TYPED));
         assert_eq!(editor.step(&ctx), Ok(true));
         assert_eq!(editor.engine().text(), "bc\n");
     }

@@ -179,7 +179,7 @@ impl Loaded {
     /// and the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
         let keys = self.surface.region()?.keys(ctx)?;
-        for key in keys {
+        for key in keys.iter().filter_map(|press| Key::of(press.key)) {
             // What the last key had to say stood until this one.
             self.state.borrow_mut().message = String::new();
             self.pressed(ctx, key)?;

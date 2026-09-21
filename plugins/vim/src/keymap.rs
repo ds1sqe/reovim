@@ -11,23 +11,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_client_api::notation;
+use reovim_client_api::resolver::Input;
 
 use crate::Key;
-
-/// One key as it was taken: the key itself, and whether a macro fed
-/// it rather than a person typing it.
-///
-/// The origin travels with the key through the keymap and back out to
-/// the host's queue, so a bell or the replay budget can drop what a
-/// macro fed and keep what was typed, and so a replayed key that a
-/// binding let go still joins its macro's one revision.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Stroke {
-    /// The key itself.
-    pub key: Key,
-    /// Fed by a macro or a repeat rather than typed.
-    pub fed: bool,
-}
 
 /// What the map makes of the keys held so far.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,10 +36,14 @@ pub enum Fact {
 /// does not carry it to the next.
 #[derive(Debug, Default)]
 pub struct Held {
-    /// The keys held while the map may still answer for them.
-    pub(crate) keys: Vec<Stroke>,
-    /// The keys the map answered for none of, for the host's queue.
-    pub(crate) released: Vec<Stroke>,
+    /// The inputs held while the map may still answer for them, each
+    /// the `Press` its key was taken with and whose key it is.
+    pub(crate) keys: Vec<Input>,
+    /// The inputs the map answered for none of, which the host's
+    /// queue runs again. They keep the origin they were taken with:
+    /// the engine, not the host, is what remembers whose a released
+    /// key is, there being no origin for "released, and a macro's".
+    pub(crate) released: Vec<Input>,
 }
 
 /// The bindings and the leader they may be spelled with.
@@ -160,7 +150,9 @@ mod tests {
 
     use reovim_client_api::notation::keys;
 
-    use crate::{Effect, Key, Vim};
+    use reovim_client_api::origin::{FED, TYPED};
+
+    use crate::{Effect, Key, Vim, tapped};
 
     /// A map of KEYS to a line each, under the default leader.
     fn map(bound: &[(&str, &str)]) -> Keymap {
@@ -198,20 +190,34 @@ mod tests {
         let mut vim = Vim::default();
         vim.loaded(b"abc\n");
         vim.bind("dx", "nohlsearch");
-        assert_eq!(vim.key(Key::Char('d')), Effect::Nothing, "a prefix held");
+        let held = vim.key(tapped(Key::Char('d'), TYPED));
+        assert_eq!(held, Effect::Nothing, "a prefix held");
 
         // The held keys are one stay's and go with it; the keymap is
         // kept, so the next `d` begins the prefix afresh rather than
         // the `x` finishing the one the stay before left half typed.
         vim.leave();
         assert_eq!(vim.keymap.fact(&keys("dx").unwrap()), xit());
-        vim.key(Key::Char('x'));
+        vim.key(tapped(Key::Char('x'), TYPED));
         assert_eq!(vim.text(), "bc\n", "`x` was itself");
     }
 
     /// `dx`'s line as `fact` answers for it.
     fn xit() -> Fact {
         Fact::Exact(String::from("nohlsearch"))
+    }
+
+    /// An `Alt` no binding knows is `<Esc>` then its char, let go as
+    /// the key itself was taken: a macro's stay the macro's, so a
+    /// bell drops them with the rest of its run.
+    #[test]
+    fn an_unbound_alt_lets_go_of_its_two_keys_as_the_run_s() {
+        let mut vim = Vim::default();
+        vim.loaded(b"abc\n");
+        vim.key(tapped(Key::Alt('j'), FED));
+        let origins: Vec<u64> =
+            vim.held.released.iter().map(|input| input.origin).collect();
+        assert_eq!(origins, [FED, FED]);
     }
 
     #[test]

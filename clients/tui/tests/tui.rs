@@ -146,7 +146,7 @@ impl Stub {
     /// given for it, and the View it shows now.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
         let keys = self.region().keys(ctx)?;
-        for key in keys {
+        for key in keys.iter().filter_map(|press| Key::of(press.key)) {
             let act = self.0.script.borrow_mut().took(key);
             act.map_or(Ok(()), |act| self.act(ctx, &act))?;
         }

@@ -36,7 +36,6 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub use keymap::Stroke;
 pub use marks::Pos;
 pub use operator::Motion;
 pub use plugin::Editor;
@@ -48,7 +47,9 @@ use jumps::{Jump, Jumps};
 use keymap::{Fact, Held, Keymap};
 use marks::Marks;
 use operator::{Find, Operator};
-use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, window};
+use reovim_client_api::keyboard::Press;
+use reovim_client_api::resolver::Input;
+use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, origin, window};
 use reovim_client_sh::{Line, Shell};
 use reovim_kernel_interface::{Handle, Rd};
 use search::{Found, SPANS, Search};
@@ -107,31 +108,29 @@ pub struct Edit {
 /// What a key did, before the calls it asks for are made.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
-    /// Register keys for the Client queue, never keyboard writes.
+    /// Keys for the host's queue, never keyboard writes: a macro's
+    /// run, or, with the flag, the keys `.` answered, which run as a
+    /// repeat's. The records' `Fed { keys, repeat }`.
+    ///
+    /// The host makes an [`Input`] of each, carrying the press of the
+    /// key that made them — the `@a` or the `.` — so no clock and no
+    /// source is invented. The engine replays nothing itself, so a
+    /// key of them that cannot be answered in its turn is an `Effect`
+    /// like any other.
     ///
     /// ```
-    /// use reovim_plugin_vim::{Effect, Key, Vim, notation};
+    /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
+    /// use reovim_plugin_vim::{Effect, Vim, keyed, notation};
     /// let mut vim = Vim::default();
     /// vim.loaded(b"abc\n");
-    /// for key in notation::keys("qaxq@").unwrap() { vim.key(key); }
-    /// assert_eq!(vim.key(Key::Char('a')),
-    ///     Effect::Replay(vec![Key::Char('x')]));
+    /// let none = Press { key: 0, when: 0, source: NONE };
+    /// for key in notation::keys("qaxq@").unwrap() {
+    ///     vim.key(keyed(key, origin::TYPED, &none));
+    /// }
+    /// assert_eq!(vim.key(keyed(Key::Char('a'), origin::TYPED, &none)),
+    ///     Effect::Fed(vec![Key::Char('x')], false));
     /// ```
-    Replay(Vec<Key>),
-    /// `.`: the last change's keys, for the queue to run as a
-    /// repeat's. The engine replays nothing itself, so a key of them
-    /// that cannot be answered in its turn is an `Effect` like any
-    /// other.
-    ///
-    /// ```
-    /// use reovim_plugin_vim::{Effect, Key, Vim, notation};
-    /// let mut vim = Vim::default();
-    /// vim.loaded(b"abc\n");
-    /// for key in notation::keys("x").unwrap() { vim.key(key); }
-    /// assert_eq!(vim.key(Key::Char('.')),
-    ///     Effect::Repeat(vec![Key::Char('x')]));
-    /// ```
-    Repeat(Vec<Key>),
+    Fed(Vec<Key>, bool),
     Nothing,
     /// The cursor or the mode moved; the text did not.
     Moved,
@@ -249,9 +248,11 @@ pub enum Switch {
     /// never becomes the alternate, and a missing alternate is E23.
     ///
     /// ```
-    /// use reovim_plugin_vim::{Effect, Key, Switch, Vim};
+    /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
+    /// use reovim_plugin_vim::{Effect, Switch, Vim, keyed};
+    /// let none = Press { key: 0, when: 0, source: NONE };
     /// for key in [Key::Ctrl('^'), Key::Ctrl('6')] {
-    ///     assert_eq!(Vim::default().key(key),
+    ///     assert_eq!(Vim::default().key(keyed(key, origin::TYPED, &none)),
     ///         Effect::Switch(Switch::Alternate));
     /// }
     /// ```
@@ -457,6 +458,10 @@ pub struct Vim {
     /// The keys a binding may still be, and the keys a failed prefix
     /// let go for the host's queue to run again.
     held: Held,
+    /// The input now running, whose a released key reads as its
+    /// maker's: every key the engine keeps or asks for carries this
+    /// press, so no clock and no source is ever invented.
+    taken: Option<Input>,
     /// What Vim has read of one view's `matches`, and the motion
     /// waiting on it.
     found: Found,
@@ -571,6 +576,31 @@ pub struct Vim {
     /// it must outlive the `leave` and `start` the swap runs between,
     /// which is what lets `leave` read its own `Land` (see that type).
     arrive: Option<(Rd, Pos, Land)>,
+}
+
+/// The input of `key` in `origin`, taking `from`'s clock and source.
+///
+/// Every key no person typed carries the press of the key that made
+/// it — the `@a`, the `.`, or the prefix that let it go — so the host
+/// invents no keyboard and a recorded stream replays as it was.
+#[must_use]
+pub fn keyed(key: Key, origin: u64, from: &Press) -> Input {
+    let press = Press { key: key.code(), when: from.when, source: from.source };
+    Input { press, origin }
+}
+
+/// One key of `origin`, for the tests inside this crate: a press of
+/// no clock and no source, which the engine keeps and never reads.
+#[cfg(test)]
+pub(crate) fn tapped(key: Key, origin: u64) -> Input {
+    keyed(key, origin, &Press { key: 0, when: 0, source: NONE })
+}
+
+/// The key a press names, or none for a code no `Key` stands for:
+/// the engine's one reading of a code, at its entry and of the keys
+/// it kept from one.
+fn key_of(press: &Press) -> Option<Key> {
+    Key::of(press.key)
 }
 
 impl Vim {
@@ -1135,7 +1165,7 @@ impl Vim {
             keys.splice(0..0, count.chars().map(Key::Char));
         }
         self.repeat.first = true;
-        Effect::Repeat(keys)
+        Effect::Fed(keys, true)
     }
 
     fn insert(&mut self, key: Key) -> Effect {
@@ -1342,69 +1372,102 @@ impl Vim {
         }
     }
 
-    /// One key in the current mode; a message showing or shown goes
-    /// with it, so the View is shown again.
-    pub fn key(&mut self, key: Key) -> Effect {
-        self.macros.fed = false;
-        self.macros.joined = false;
-        if self.macros.recording.is_some() {
-            self.macros.record.push(key);
-        }
-        self.processed(key, false)
-    }
-
-    /// A replay key. Nested repeats restore their caller's context.
+    /// One input in the current mode: the key its press names, run as
+    /// its origin says. A message showing or shown goes with it, so
+    /// the View is shown again.
+    ///
+    /// This is the engine's one entry. A key a person typed comes in
+    /// as `TYPED`, a macro's as `FED`, a `.`'s as `REPEAT` and a key
+    /// a failed prefix let go as `RELEASED`, that one running again
+    /// in the origin it was taken with — a macro's key is still the
+    /// macro's, so its edits join that run's one revision and a bell
+    /// still drops it. A code no `Key` stands for is nothing here,
+    /// and the queue moves on.
     ///
     /// ```
-    /// use reovim_plugin_vim::{Key, Vim};
+    /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
+    /// use reovim_plugin_vim::{Vim, keyed};
     /// let mut vim = Vim::default();
     /// vim.loaded(b"abc\n");
-    /// vim.fed(Key::Char('x'), false);
+    /// let none = Press { key: 0, when: 0, source: NONE };
+    /// vim.key(keyed(Key::Char('x'), origin::FED, &none));
     /// assert_eq!(vim.text(), "bc\n");
     /// ```
-    pub fn fed(&mut self, key: Key, repeat: bool) -> Effect {
-        let fed = core::mem::replace(&mut self.macros.fed, true);
-        let was = self.repeat.replaying;
-        self.repeat.replaying = repeat;
-        let effect = self.processed(key, false);
-        self.repeat.replaying = was;
-        self.macros.fed = fed;
-        effect
+    pub fn key(&mut self, input: Input) -> Effect {
+        let Some(key) = key_of(&input.press) else { return Effect::Nothing };
+        let past = input.origin == origin::RELEASED;
+        // A `.`'s keys replay; a key it let go runs as its own key
+        // did, which is not replaying, as its maker was not.
+        self.repeat.replaying = input.origin == origin::REPEAT;
+        let typed = input.origin == origin::TYPED;
+        if typed {
+            self.macros.joined = false;
+        }
+        if typed && self.macros.recording.is_some() {
+            self.macros.record.push(key);
+        }
+        let taken = if past { self.let_go(&input) } else { input };
+        self.macros.fed = matches!(taken.origin, origin::FED | origin::REPEAT);
+        self.taken = Some(taken);
+        self.processed(key, past)
     }
 
-    /// A key a failed prefix let go, run again in the origin it was
-    /// taken with: a macro's key is still the macro's, so its edits
-    /// join that run's one revision and a bell still drops it.
+    /// The input the engine last took, its origin the maker's where a
+    /// prefix let the key go: what the host reads for the press to
+    /// give the keys that input asks it to feed.
+    #[must_use]
+    pub const fn taken(&self) -> Option<&Input> {
+        self.taken.as_ref()
+    }
+
+    /// The next key a failed prefix let go, for the host to put at
+    /// the front of its queue; `None` once there are none.
+    ///
+    /// One at a time, and the engine keeps it: `RELEASED` says a key
+    /// was let go but not whose it was, and a bell drops a macro's
+    /// released keys while it keeps a person's.
     ///
     /// ```
-    /// use reovim_plugin_vim::{Key, Vim};
+    /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
+    /// use reovim_plugin_vim::{Effect, Vim, keyed};
     /// let mut vim = Vim::default();
     /// vim.loaded(b"abc\n");
     /// vim.bind("xy", "write");
-    /// assert_eq!(vim.key(Key::Char('x')), reovim_plugin_vim::Effect::Nothing);
-    /// vim.key(Key::Char('p'));
-    /// for stroke in vim.released() {
-    ///     vim.past(stroke);
+    /// let none = Press { key: 0, when: 0, source: NONE };
+    /// let typed = |key| keyed(key, origin::TYPED, &none);
+    /// assert_eq!(vim.key(typed(Key::Char('x'))), Effect::Nothing);
+    /// vim.key(typed(Key::Char('p')));
+    /// while let Some(input) = vim.released() {
+    ///     vim.key(input);
     /// }
     /// assert_eq!(vim.text(), "bac\n");
     /// ```
-    pub fn past(&mut self, stroke: Stroke) -> Effect {
-        self.macros.fed = stroke.fed;
-        self.processed(stroke.key, true)
+    pub fn released(&mut self) -> Option<Input> {
+        let input = self.held.released.first()?;
+        Some(Input { press: input.press.clone(), origin: origin::RELEASED })
     }
 
-    /// The keys a failed prefix let go, for the host to put back at
-    /// the front of its queue; empty once there are none.
-    pub fn released(&mut self) -> Vec<Stroke> {
-        core::mem::take(&mut self.held.released)
+    /// The input a `RELEASED` one stands for: the one the engine let
+    /// go, whose origin says whose key it was. One the host dropped
+    /// before running it is still here, and is handed out again.
+    fn let_go(&mut self, input: &Input) -> Input {
+        let held = self.held.released.first();
+        if held.is_some_and(|held| held.press == input.press) {
+            return self.held.released.remove(0);
+        }
+        // A release the engine no longer holds — a stay left between
+        // the two, or a test handing one in — runs in the fed context
+        // it finds itself in.
+        let origin = if self.macros.fed { origin::FED } else { origin::TYPED };
+        Input { press: input.press.clone(), origin }
     }
 
     /// A bell or the replay budget: what a macro fed goes, held and
     /// released alike, and what a person typed stays. So a macro that
     /// ends inside a prefix cannot be finished by the next typed key.
     pub(crate) fn cancel(&mut self) {
-        self.held.keys.retain(|stroke| !stroke.fed);
-        self.held.released.retain(|stroke| !stroke.fed);
+        self.held.keys.retain(|input| input.origin == origin::TYPED);
+        self.held.released.retain(|input| input.origin == origin::TYPED);
     }
 
     /// The keymap at `key`, before anything else this key would do:
@@ -1436,15 +1499,19 @@ impl Vim {
             // register alike, and neither reaches the line.
             self.pending = Pending::default();
         }
-        self.hold(key)
+        self.hold()
     }
 
-    /// `key` held with the keys before it, and what the map makes of
-    /// them all.
-    fn hold(&mut self, key: Key) -> Option<Effect> {
-        self.held.keys.push(Stroke { key, fed: self.macros.fed });
-        let keys: Vec<Key> =
-            self.held.keys.iter().map(|stroke| stroke.key).collect();
+    /// The input now running held with the keys before it, and what
+    /// the map makes of them all.
+    fn hold(&mut self) -> Option<Effect> {
+        self.held.keys.extend(self.taken.clone());
+        let keys: Vec<Key> = self
+            .held
+            .keys
+            .iter()
+            .filter_map(|input| key_of(&input.press))
+            .collect();
         match self.keymap.fact(&keys) {
             Fact::Exact(line) => {
                 self.held.keys.clear();
@@ -1661,6 +1728,16 @@ impl Vim {
         }
     }
 
+    /// An `Alt` no binding knows, let go as `<Esc>` and its char in
+    /// the origin and with the press this key was taken with, as
+    /// every key a failed prefix is let go with.
+    fn let_alt_go(&mut self, c: char) {
+        let Some(taken) = self.taken.clone() else { return };
+        for key in [Key::Esc, Key::Char(c)] {
+            self.held.released.push(keyed(key, taken.origin, &taken.press));
+        }
+    }
+
     /// What a key no binding took does: the mode's own arm, and the
     /// bookkeeping of the change it may have made.
     ///
@@ -1669,9 +1746,9 @@ impl Vim {
     /// which its help says nothing.
     fn acted(&mut self, key: Key) -> Effect {
         if let Key::Alt(c) = key {
-            let fed = self.macros.fed;
-            self.held.released.push(Stroke { key: Key::Esc, fed });
-            self.held.released.push(Stroke { key: Key::Char(c), fed });
+            // Let go in the origin this key was taken with, and with
+            // its press, as every key a prefix lets go is.
+            self.let_alt_go(c);
             return Effect::Nothing;
         }
         if !self.repeat.replaying {

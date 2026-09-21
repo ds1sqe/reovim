@@ -122,7 +122,7 @@ impl Stub {
         let keys = self.region().keys(ctx)?;
         let act = {
             let script = &mut *self.0.script.borrow_mut();
-            script.keys.extend(keys);
+            script.keys.extend(keys.iter().filter_map(|p| Key::of(p.key)));
             script.frames += 1;
             script.acts.pop_front()
         };

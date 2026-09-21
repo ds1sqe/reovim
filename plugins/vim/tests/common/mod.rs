@@ -2,30 +2,56 @@
 //! this on its own and uses what it needs.
 #![allow(dead_code)]
 
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use reovim_client::Host;
 use reovim_client::dev::Table;
+use reovim_client_api::keyboard::Press;
+use reovim_client_api::{NONE, origin, resolver::Input};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Edit, Editor, Effect, Stroke, Vim};
+use reovim_plugin_vim::{Edit, Editor, Effect, Key, Vim, keyed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
+
+/// The press this test stands for `n`: a clock of its own counting
+/// up, and the rig's own source, which is no Client of a keyboard.
+/// The engine keeps it whole and reads none of it.
+const fn stamped(n: u64) -> Press {
+    Press { key: 0, when: n, source: NONE }
+}
 
 pub fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
     Effect::Edit(Edit { at, len, text: text.to_string(), join })
 }
 
-/// Every key of `text` in Vim notation; the last effect. What a
-/// failed prefix let go runs again, and what `.` answered runs as a
-/// repeat's, both as the Plugin's queue runs them.
+/// Every key of `text` in Vim notation, each an input of a press of
+/// this run's own; the last effect. What a failed prefix let go runs
+/// again, and what `.` answered runs as a repeat's, both as the
+/// Plugin's queue runs them.
 pub fn typed(vim: &mut Vim, text: &str) -> Effect {
     let mut last = Effect::Nothing;
-    for key in keys(text).unwrap() {
-        let effect = vim.key(key);
+    for (n, key) in keys(text).unwrap().into_iter().enumerate() {
+        let effect = vim.key(input(key, origin::TYPED, n));
         last = ran(vim, effect);
     }
     last
+}
+
+/// One input of `key` in `origin`, its press the `n`th of this run.
+fn input(key: Key, origin: u64, n: usize) -> Input {
+    keyed(key, origin, &stamped(n as u64 + 1))
+}
+
+/// One key typed, for a test that hands the engine its inputs itself.
+pub fn tapped(key: Key) -> Input {
+    input(key, origin::TYPED, 0)
+}
+
+/// One key of `origin`, for a test that hands the engine its inputs
+/// itself: `FED` a macro's, `REPEAT` a `.`'s, `RELEASED` one a failed
+/// prefix let go.
+pub fn as_of(key: Key, origin: u64) -> Input {
+    input(key, origin, 0)
 }
 
 /// The queue's own two turns around one effect: the keys a failed
@@ -34,10 +60,10 @@ pub fn typed(vim: &mut Vim, text: &str) -> Effect {
 /// its keys made, which is what one `.` did.
 fn ran(vim: &mut Vim, effect: Effect) -> Effect {
     let last = drained(vim, effect);
-    let Effect::Repeat(keys) = last else { return last };
+    let Effect::Fed(keys, true) = last else { return last };
     let mut edits = Vec::new();
-    for key in keys {
-        let effect = vim.fed(key, true);
+    for (n, key) in keys.into_iter().enumerate() {
+        let effect = vim.key(input(key, origin::REPEAT, n));
         match drained(vim, effect) {
             Effect::Edit(edit) => edits.push(edit),
             Effect::Edits(more) => edits.extend(more),
@@ -50,12 +76,8 @@ fn ran(vim: &mut Vim, effect: Effect) -> Effect {
 /// What `released()` holds, each through `past` and at the front, so
 /// a key that lets go of more is drained before what follows it.
 fn drained(vim: &mut Vim, mut last: Effect) -> Effect {
-    let mut queue: VecDeque<Stroke> = vim.released().into();
-    while let Some(stroke) = queue.pop_front() {
-        last = vim.past(stroke);
-        for stroke in vim.released().into_iter().rev() {
-            queue.push_front(stroke);
-        }
+    while let Some(input) = vim.released() {
+        last = vim.key(input);
     }
     last
 }
@@ -64,8 +86,8 @@ fn drained(vim: &mut Vim, mut last: Effect) -> Effect {
 /// keys run as the queue runs them.
 pub fn edits(vim: &mut Vim, text: &str) -> Vec<Edit> {
     let mut all = Vec::new();
-    for key in keys(text).unwrap() {
-        let effect = vim.key(key);
+    for (n, key) in keys(text).unwrap().into_iter().enumerate() {
+        let effect = vim.key(input(key, origin::TYPED, n));
         match ran(vim, effect) {
             Effect::Edit(edit) => all.push(edit),
             Effect::Edits(more) => all.extend(more),

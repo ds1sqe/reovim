@@ -129,7 +129,7 @@ impl Vim {
         };
         let keys = decode(head.chars().chain(text.chars()).chain(tail.chars()));
         let len = keys.len().saturating_mul(count).min(BUDGET + 1);
-        Effect::Replay(keys.iter().copied().cycle().take(len).collect())
+        Effect::Fed(keys.iter().copied().cycle().take(len).collect(), false)
     }
 
     pub(crate) const fn ring(&mut self) {
@@ -139,10 +139,12 @@ impl Vim {
     /// Takes the bell raised by an unsuccessful command.
     ///
     /// ```
-    /// use reovim_plugin_vim::{Key, Vim};
+    /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
+    /// use reovim_plugin_vim::{Vim, keyed};
     /// let mut vim = Vim::default();
     /// vim.loaded(b"a\n");
-    /// vim.key(Key::Char('h'));
+    /// let none = Press { key: 0, when: 0, source: NONE };
+    /// vim.key(keyed(Key::Char('h'), origin::TYPED, &none));
     /// assert!(vim.rung());
     /// assert!(!vim.rung());
     /// ```
@@ -176,7 +178,10 @@ impl Vim {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Effect, Key, Vim};
+
+    use reovim_client_api::origin::{FED, TYPED};
+
+    use crate::{Effect, Key, Vim, tapped};
 
     #[test]
     fn decoding_stops_at_the_key_budget_without_reading_the_tail() {
@@ -204,35 +209,41 @@ mod tests {
         );
         assert_eq!(
             vim.macro_run('a', 2),
-            Effect::Replay(alloc::vec![
-                Key::Char('x'),
-                Key::Ctrl('j'),
-                Key::Char('x'),
-                Key::Ctrl('j'),
-            ])
+            Effect::Fed(
+                alloc::vec![
+                    Key::Char('x'),
+                    Key::Ctrl('j'),
+                    Key::Char('x'),
+                    Key::Ctrl('j'),
+                ],
+                false
+            )
         );
         vim.macros.last_ex = String::from("write");
         assert_eq!(
             vim.macro_run(':', 1),
-            Effect::Replay(alloc::vec![
-                Key::Char(':'),
-                Key::Char('w'),
-                Key::Char('r'),
-                Key::Char('i'),
-                Key::Char('t'),
-                Key::Char('e'),
-                Key::Enter,
-            ])
+            Effect::Fed(
+                alloc::vec![
+                    Key::Char(':'),
+                    Key::Char('w'),
+                    Key::Char('r'),
+                    Key::Char('i'),
+                    Key::Char('t'),
+                    Key::Char('e'),
+                    Key::Enter,
+                ],
+                false
+            )
         );
         vim.registers.get_mut(&'a').unwrap().text = "x".repeat(BUDGET + 2);
         assert_eq!(
             vim.macro_run('a', 2),
-            Effect::Replay(alloc::vec![Key::Char('x'); BUDGET + 1])
+            Effect::Fed(alloc::vec![Key::Char('x'); BUDGET + 1], false)
         );
         vim.macros.last_ex = "x".repeat(BUDGET + 2);
         let mut expected = alloc::vec![Key::Char('x'); BUDGET + 1];
         expected[0] = Key::Char(':');
-        assert_eq!(vim.macro_run(':', 2), Effect::Replay(expected));
+        assert_eq!(vim.macro_run(':', 2), Effect::Fed(expected, false));
     }
 
     #[test]
@@ -281,10 +292,10 @@ mod tests {
         let mut vim = Vim::default();
         vim.loaded(b"abc\n");
         for key in [Key::Char('q'), Key::Char('a')] {
-            vim.key(key);
+            vim.key(tapped(key, TYPED));
         }
-        vim.key(Key::Char('l'));
-        vim.fed(Key::Char('x'), false);
+        vim.key(tapped(Key::Char('l'), TYPED));
+        vim.key(tapped(Key::Char('x'), FED));
         vim.ring();
         vim.macros.last = Some('b');
         vim.macros.last_ex = String::from("write");
@@ -302,10 +313,9 @@ mod tests {
     fn nested_dot_restores_the_callers_fed_context() {
         let mut vim = Vim::default();
         vim.loaded(b"abcdef\n");
-        vim.key(Key::Char('x'));
-        vim.macros.fed = true;
-        let effect = vim.fed(Key::Char('.'), false);
-        assert!(matches!(effect, Effect::Repeat(_)), "keys for the queue");
+        vim.key(tapped(Key::Char('x'), TYPED));
+        let effect = vim.key(tapped(Key::Char('.'), FED));
+        assert!(matches!(effect, Effect::Fed(..)), "keys for the queue");
         assert!(vim.macros.fed);
         assert!(!vim.repeat.replaying);
     }
