@@ -540,7 +540,8 @@ struct Pending {
     count: usize,
     /// A `g`, `d`, `Z`, `f` or the like waiting for its second key.
     key: Option<char>,
-    /// An operator waiting for its motion, with its own count.
+    /// An operator waiting for its motion, with the count typed
+    /// before it; 0 is none, which `G` and `gg` tell from a typed 1.
     operator: Option<(Operator, usize)>,
     /// `"x` typed: the register the next operator or put uses.
     register: Option<char>,
@@ -1137,7 +1138,7 @@ impl Vim {
             && key == Key::Char(op.key())
         {
             self.pending.operator = None;
-            return self.lines(op, first.saturating_mul(n));
+            return self.lines(op, first.max(1).saturating_mul(n));
         }
         if let Some(motion) = Motion::of(key, count) {
             return self.motion(motion, n);
@@ -1156,11 +1157,13 @@ impl Vim {
             Key::Char('Z') if self.pending.operator.is_none() => {
                 return self.wait('Z', count);
             }
-            Key::Char('d') => return self.operator(Operator::Delete, n),
-            Key::Char('c') => return self.operator(Operator::Change, n),
-            Key::Char('y') => return self.operator(Operator::Yank, n),
-            Key::Char('>') => return self.operator(Operator::ShiftRight, n),
-            Key::Char('<') => return self.operator(Operator::ShiftLeft, n),
+            Key::Char('d') => return self.operator(Operator::Delete, count),
+            Key::Char('c') => return self.operator(Operator::Change, count),
+            Key::Char('y') => return self.operator(Operator::Yank, count),
+            Key::Char('>') => {
+                return self.operator(Operator::ShiftRight, count);
+            }
+            Key::Char('<') => return self.operator(Operator::ShiftLeft, count),
             Key::Char(c @ ('/' | '?')) => return self.prompt(c, count),
             _ if self.pending.operator.take().is_some() => Effect::Nothing,
             Key::Char('q') if self.macros.fed => Effect::Nothing,
@@ -1233,9 +1236,9 @@ impl Vim {
             return self.motion(motion, n);
         }
         match (first, key) {
-            ('g', Key::Char('u')) => self.operator(Operator::Lower, n),
-            ('g', Key::Char('U')) => self.operator(Operator::Upper, n),
-            ('g', Key::Char('~')) => self.operator(Operator::Toggle, n),
+            ('g', Key::Char('u')) => self.operator(Operator::Lower, count),
+            ('g', Key::Char('U')) => self.operator(Operator::Upper, count),
+            ('g', Key::Char('~')) => self.operator(Operator::Toggle, count),
             ('g', Key::Char('v')) => self.reselect(),
             ('g', Key::Char('F')) => self.file_under_cursor(),
             ('"', Key::Char(name)) => self.named(name, count),
@@ -1319,19 +1322,20 @@ impl Vim {
         Effect::Nothing
     }
 
-    /// An operator key: the operator waits for a motion, or doubled
-    /// (`dd`, `cc`, `yy`, `gUgU`) takes `n` lines.
-    fn operator(&mut self, op: Operator, n: usize) -> Effect {
+    /// An operator key, `count` the digits typed before it and 0
+    /// none of them: the operator waits for a motion, or doubled
+    /// (`dd`, `cc`, `yy`, `gUgU`) takes that many lines.
+    fn operator(&mut self, op: Operator, count: usize) -> Effect {
         match self.pending.operator.take() {
-            Some((waiting, count)) if waiting == op => {
-                self.lines(op, count.saturating_mul(n))
+            Some((waiting, before)) if waiting == op => {
+                self.lines(op, before.max(1).saturating_mul(count.max(1)))
             }
             Some(_) => {
                 self.repeat.record.clear();
                 Effect::Nothing
             }
             None => {
-                self.pending.operator = Some((op, n));
+                self.pending.operator = Some((op, count));
                 self.keep_want = true;
                 Effect::Nothing
             }
@@ -1355,8 +1359,20 @@ impl Vim {
             return effect;
         }
         let effect = match self.pending.operator.take() {
-            Some((op, count)) => {
-                self.operate(op, count.saturating_mul(n), motion)
+            Some((op, before)) => {
+                let n = before.max(1).saturating_mul(n);
+                // nvim's `normal_cmd` multiplies the count typed
+                // before the operator into the one typed after it,
+                // and for `G` and `gg` that count is a line number,
+                // not a repetition: the product is the line. Without
+                // one before it the motion already holds the line its
+                // own count named, or the last or the first with no
+                // count at all; a typed 1 counts like any digit.
+                let motion = match motion {
+                    Motion::Line(_) if before > 0 => Motion::Line(n - 1),
+                    motion => motion,
+                };
+                self.operate(op, n, motion)
             }
             None => self.move_by(motion, n),
         };
