@@ -88,7 +88,7 @@ fn replay(case: &Path) -> Result<(), String> {
     let one = vim.clone();
     let table: Table =
         Box::new(move |_| Some((String::from("vim"), one.booted())));
-    let host = rig.host();
+    let host = rig.searching(None);
     let dev = dev::boot(&host, table, Clip::none(), "", Some("file"), None, "")
         .map_err(|error| format!("{name}: {error:?}"))?;
     let mut tui = Tui::open(host, dev).map_err(|e| format!("{name}: {e:?}"))?;

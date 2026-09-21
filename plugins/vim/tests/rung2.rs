@@ -1,11 +1,14 @@
 //! Vim alone, rung 2: what the corpus cannot see. The revisions an
-//! operator makes, the spans a View marks, the messages, `.` over
-//! a selection, the registers' kinds.
+//! operator makes, the spans a selection marks, the messages, `.`
+//! over a selection, the registers' kinds.
+//!
+//! The search's own marks are read through the Module now, so they
+//! are tests/search.rs's.
 
 mod common;
 
 use common::{edit, edits, on, typed};
-use reovim_client_api::{MATCH, SELECTION};
+use reovim_client_api::SELECTION;
 use reovim_plugin_vim::{Edit, Effect, Kind, Mode, Register, Vim, Visual};
 
 fn register(text: &str, kind: Kind) -> Register {
@@ -38,11 +41,6 @@ fn spans(vim: &mut Vim, rows: usize, style: u64) -> Vec<(u64, u64)> {
 /// What it would select in a region tall enough for anything.
 fn selected(vim: &mut Vim) -> Vec<(u64, u64)> {
     spans(vim, 24, SELECTION)
-}
-
-/// What it would mark as a search match.
-fn marked(vim: &mut Vim) -> Vec<(u64, u64)> {
-    spans(vim, 24, MATCH)
 }
 
 #[test]
@@ -186,30 +184,6 @@ fn a_view_spans_the_selection_in_bytes() {
     assert_eq!(span, [(1, 4), (5, 7), (8, 12)], "`$` reaches every end");
     let scrolled = spans(&mut vim, 1, SELECTION);
     assert_eq!(scrolled, [(8, 12)], "one row shows one line of it");
-}
-
-#[test]
-fn hlsearch_marks_every_match_until_noh() {
-    let mut vim = on("ab\nb\n");
-    assert_eq!(typed(&mut vim, "/b<CR>"), Effect::Moved);
-    assert_eq!(marked(&mut vim), Vec::new(), "off by default");
-    // What `/self/vim/bin/set` and `.../nohlsearch` do to the engine;
-    // the runs themselves are tests/ex.rs.
-    assert_eq!(vim.set("hls"), Effect::Moved);
-    assert_eq!(marked(&mut vim), [(1, 2), (3, 4)], "every match");
-    assert_eq!(vim.nohlsearch(), Effect::Moved);
-    assert_eq!(marked(&mut vim), Vec::new());
-    assert_eq!(typed(&mut vim, "n"), Effect::Moved);
-    assert_eq!(marked(&mut vim).len(), 2, "back with the next search");
-    assert_eq!(vim.set("nohlsearch"), Effect::Moved);
-    assert_eq!(marked(&mut vim), Vec::new());
-    // The options are one argument, which splits itself.
-    assert_eq!(vim.set("ic hls"), Effect::Moved);
-    assert_eq!(typed(&mut vim, "/B<CR>"), Effect::Moved);
-    assert_eq!(marked(&mut vim).len(), 2, "ignorecase");
-    assert_eq!(vim.set("noic"), Effect::Moved);
-    assert_eq!(typed(&mut vim, "/B<CR>"), Effect::Moved);
-    assert_eq!(vim.status(), "E486: Pattern not found: B");
 }
 
 #[test]

@@ -23,6 +23,7 @@ reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-kernel-runtime = { path = "../../kernel/runtime" }
 reovim-module-coreutils = { path = "../../modules/coreutils" }
 reovim-module-fs = { path = "../../modules/fs" }
+reovim-module-search = { path = "../../modules/search" }
 reovim-module-sysutils = { path = "../../modules/sysutils" }
 reovim-module-text = { path = "../../modules/text" }
 reovim-sdk = { path = "../../sdk/rust" }

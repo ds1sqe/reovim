@@ -311,3 +311,30 @@ fn stale_replay_reaches_its_first_edit_then_drops_its_tail() {
     );
     assert_eq!(observer.read_all(buffer).unwrap(), b"acdef!\n");
 }
+
+#[test]
+fn a_dot_inside_a_run_ends_where_its_keys_end() {
+    let rig = Rig::new("macro-dot-queue");
+    // Line 1 is the run: one `.`, which the queue runs as its own
+    // keys and not as one Effect of the engine's.
+    rig.file("file", b".\nabc\nabc\n");
+    let vim = Editor::new();
+    let mut tui = opened(
+        &rig.host(),
+        one(vim.clone()),
+        Clip::none(),
+        "",
+        Some("file"),
+        None,
+    )
+    .unwrap();
+    typed(&mut tui, "\"ayyjA!<Esc>j0@a");
+    assert_eq!(lines(&mut tui), [".", "abc!", "abc!"]);
+    typed(&mut tui, "u");
+    assert_eq!(lines(&mut tui), [".", "abc!", "abc"]);
+    assert_eq!(
+        vim.engine().position(),
+        (2, 2),
+        "the undo cursor is where the repeat's first edit began"
+    );
+}

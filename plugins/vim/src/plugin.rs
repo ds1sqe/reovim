@@ -45,14 +45,79 @@ use reovim_sdk::dynamic::Value;
 use reovim_sdk::path;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
+use reovim_search_api::{ENTRY, entries, search};
 use reovim_text_api::{history, publish, text};
 
 use crate::command::{Typed, options, typed};
 use crate::keymap::{Held, Stroke};
 use crate::macros::BUDGET;
 use crate::{
-    E32, Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Switch, Vim, bins,
+    E32, Edit, Effect, Ex, Filled, Key, Land, Mode, Pos, Quit, Switch, Vim,
+    Want, bins,
 };
+
+/// How many entries one read of `matches` asks for. The 48 KiB they
+/// come to is no multiple of the 64 KiB a local read copies, and
+/// needs to be none.
+const READ: usize = 2048;
+
+/// How many reads one frame makes for a list nobody waits for, which
+/// is `hlsearch`'s. Four slices of 2^14 are 14 to 24 ms.
+const READS: usize = 4;
+
+/// The entries `bytes` holds, as the engine counts them.
+fn listed(bytes: &[u8]) -> Vec<(usize, usize)> {
+    let counted = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
+    entries(bytes)
+        .into_iter()
+        .map(|one| (counted(one.at), counted(one.len)))
+        .collect()
+}
+
+/// A view held open and its `matches` found, as the opener holds
+/// them. A failure here closes the handle that holds the view, which
+/// is what ends it.
+fn holding(ctx: &dyn Calls, view: Rd, want: &Want) -> Result<Sought, Error> {
+    let held = ctx.open(view, Rights::READ)?;
+    let found = || {
+        let rd = cell::resolve(ctx, view, "matches")?;
+        let matches = ctx.open(rd, Rights::READ)?;
+        Ok::<Sought, Error>(Sought {
+            want: want.clone(),
+            view,
+            held,
+            matches,
+            at: 0,
+        })
+    };
+    found().inspect_err(|_| {
+        let _ = ops::close(ctx, held);
+    })
+}
+
+/// The view Vim holds ended: `matches`, then the handle whose close
+/// ends the view itself.
+fn unsought(ctx: &dyn Calls, stay: &Stay) {
+    let Some(sought) = stay.sought.borrow_mut().take() else { return };
+    let _ = ops::close(ctx, sought.matches);
+    let _ = ops::close(ctx, sought.held);
+}
+
+/// The view read on by `read` bytes.
+fn onward(stay: &Stay, read: usize) {
+    if let Some(sought) = stay.sought.borrow_mut().as_mut() {
+        sought.at += read as u64;
+    }
+}
+
+/// What a refusal of the Module's says: the two causes it does not
+/// tell apart are the engine's to word.
+const fn refused(error: Error) -> Filled {
+    match error {
+        Error::NoSpace => Filled::Spent,
+        _ => Filled::Refused,
+    }
+}
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
@@ -103,7 +168,9 @@ pub struct Editor {
 #[derive(Clone, Copy)]
 enum Queued {
     Typed(Key),
-    Fed(Key),
+    /// A key some `Effect` fed: a macro's, or, with the flag, one of
+    /// the keys `.` answered, which run as a repeat's.
+    Fed(Key, bool),
     /// A key a failed prefix let go, carrying the origin it was taken
     /// with. It is not looked up a second time, and it is charged no
     /// second time either: the input it came from paid for it.
@@ -124,6 +191,12 @@ struct Listed {
 /// answered, and dropped at `stop`.
 struct Stay {
     surface: Surface,
+    /// The search Module's own `open`, where this Client serves one:
+    /// what a list is opened through. `None` leaves every search
+    /// saying so.
+    search: Option<Rd>,
+    /// The view Vim holds open, and where it has read to.
+    sought: RefCell<Option<Sought>>,
     /// The rds under Vim's home, as `start` was answered with them.
     cells: Cells,
     /// What the runs of Vim's own names printed, until each is read
@@ -137,6 +210,18 @@ struct Stay {
     leaving: Cell<bool>,
     /// A successful request to replace this stay or leave the editor.
     asked: Cell<bool>,
+}
+
+/// The view Vim holds over its own draft, as the opener holds it:
+/// the key it is of, the view's rd and the handle whose close ends
+/// it, the handle `matches` is read through, and how far that has
+/// been read.
+struct Sought {
+    want: Want,
+    view: Rd,
+    held: Handle,
+    matches: Handle,
+    at: u64,
 }
 
 /// What a read of one of Vim's own rds is a read of: the rds `start`
@@ -160,6 +245,8 @@ struct Cells {
     keymap: Rd,
     /// `/self/vim/point`'s own rd: `point` with no argument.
     point: Rd,
+    /// `/self/vim/search`: the rd of the view Vim holds, or `NONE`.
+    search: Rd,
     /// `/self/vim/bin`, whose listing is the order a `:` line resolves
     /// a name in.
     bin: Rd,
@@ -261,6 +348,8 @@ impl Module for Editor {
         let bytes = ops::whole(ctx, h)?;
         let stay = Stay {
             surface,
+            search: cell::resolve(ctx, ROOT, "/self/search/open").ok(),
+            sought: RefCell::new(None),
             cells,
             outputs: cell::Cells::default(),
             stale: Cell::new(false),
@@ -332,7 +421,7 @@ impl Driver for Editor {
             return stay.surface.read(at, len, || self.framed(ctx));
         }
         let output = || stay.outputs.read(ctx, rd, at, len).into();
-        self.held(ctx, &stay.cells, rd)
+        self.held(ctx, &stay, rd)
             .map_or_else(output, |held| Reply::ok(part(&held, at, len)))
     }
 
@@ -358,7 +447,13 @@ impl Editor {
     /// read: the borrow is this statement's, and Vim's own frame has
     /// returned by the time another Plugin asks. `None` for an rd that
     /// is no cell of the state's.
-    fn held(&self, ctx: &dyn Calls, cells: &Cells, rd: Rd) -> Option<Vec<u8>> {
+    fn held(&self, ctx: &dyn Calls, stay: &Stay, rd: Rd) -> Option<Vec<u8>> {
+        let cells = &stay.cells;
+        if rd == cells.search {
+            let held = stay.sought.borrow();
+            let view = held.as_ref().map_or(NONE, |sought| sought.view);
+            return Some(encode(&view));
+        }
         let vim = self.vim.borrow();
         let read = if rd == cells.mode {
             format!("{}\n", vim.mode().name())
@@ -398,6 +493,7 @@ impl Editor {
             self.queue.borrow_mut().extend(keys.into_iter().map(Queued::Typed));
         }
         while self.step(ctx)? {}
+        self.wanted(ctx)?;
         // The second of the two flushes: an insert session ends at its
         // Esc, and every other edit at the frame that made it. A stay
         // already stale skips it: the row already says W12, and a
@@ -490,7 +586,7 @@ impl Editor {
         if self.vim.borrow_mut().rung() || exhausted {
             self.queue.borrow_mut().retain(|queued| match queued {
                 Queued::Typed(_) => true,
-                Queued::Fed(_) => false,
+                Queued::Fed(..) => false,
                 Queued::Past(stroke) => !stroke.fed,
             });
             self.vim.borrow_mut().cancel();
@@ -504,15 +600,15 @@ impl Editor {
     /// Fed context survives the engine call until its whole effect finishes.
     fn key(&self, queued: Queued) -> Effect {
         let mut vim = self.vim.borrow_mut();
-        vim.macros.fed = matches!(queued, Queued::Fed(_));
+        vim.macros.fed = matches!(queued, Queued::Fed(..));
         match queued {
             Queued::Typed(key) => {
                 self.spent.set(0);
                 vim.key(key)
             }
-            Queued::Fed(key) => {
+            Queued::Fed(key, repeat) => {
                 self.spent.set(self.spent.get() + 1);
-                vim.fed(key, false)
+                vim.fed(key, repeat)
             }
             // Neither counted nor zeroing: the key that let this one
             // go was counted, or zeroed, already.
@@ -522,19 +618,23 @@ impl Editor {
 
     /// Keep only the fed prefix the remaining budget can reach, plus a
     /// sentinel. Typed input is never cancelled by a replay's bound.
-    fn replayed(&self, mut keys: Vec<Key>) {
+    ///
+    /// `repeat` is whether these are the keys `.` answered, which run
+    /// as a repeat's: the queue carries that as far as `Vim::fed`, so
+    /// a `.` inside `@a` ends where its own keys end.
+    fn replayed(&self, mut keys: Vec<Key>, repeat: bool) {
         let capacity = (BUDGET + 1).saturating_sub(self.spent.get());
         keys.truncate(capacity);
         let mut spare = capacity - keys.len();
         let mut queue = self.queue.borrow_mut();
         queue.retain(|key| {
-            let fed = matches!(key, Queued::Fed(_));
+            let fed = matches!(key, Queued::Fed(..));
             let keep = !fed || spare != 0;
             spare = spare.saturating_sub(usize::from(fed));
             keep
         });
         for key in keys.into_iter().rev() {
-            queue.push_front(Queued::Fed(key));
+            queue.push_front(Queued::Fed(key, repeat));
         }
     }
 
@@ -602,7 +702,11 @@ impl Editor {
         self.stale(ctx, |ctx| match effect {
             Effect::Nothing | Effect::Moved => Ok(()),
             Effect::Replay(keys) => {
-                self.replayed(keys);
+                self.replayed(keys, false);
+                Ok(())
+            }
+            Effect::Repeat(keys) => {
+                self.replayed(keys, true);
                 Ok(())
             }
             Effect::Edit(edit) => self.send(ctx, edit),
@@ -614,6 +718,7 @@ impl Editor {
                 self.save_as(ctx, &name, bang).map(|_| ())
             }
             Effect::Clipboard => self.pasting(ctx),
+            Effect::Search(want) => self.searching(ctx, want),
             Effect::Quit(how) => self.quit(ctx, how),
             Effect::Switch(to) => self.switched(ctx, to),
             Effect::Close(name, bang) => self.closed(ctx, &name, bang),
@@ -632,6 +737,149 @@ impl Editor {
             // ask for by name; see `arrive` for the rest.
             Effect::Goto(rd, pos, land) => self.arriving(ctx, rd, pos, land),
         })
+    }
+
+    /// The bridge: the view `want` names, read until the engine is
+    /// answered. Every wait ends inside the turn that began it, the
+    /// motion running again through `matched` each time.
+    fn searching(&self, ctx: &dyn Calls, mut want: Want) -> Result<(), Error> {
+        loop {
+            match self.sought(ctx, &want)? {
+                Effect::Search(next) => want = next,
+                effect => return self.act(ctx, effect),
+            }
+        }
+    }
+
+    /// One turn of it: the view for `want`, one read of its
+    /// `matches`, and the `Effect` the engine made of what came back.
+    ///
+    /// Every failure is answered to the engine before it goes up, so
+    /// no wait outlives it.
+    fn sought(&self, ctx: &dyn Calls, want: &Want) -> Result<Effect, Error> {
+        let stay = self.stay()?;
+        let Some(open) = stay.search else {
+            return Ok(self.answered(want.epoch, &[], Filled::Absent));
+        };
+        let Err(error) = self.viewing(ctx, &stay, open, want) else {
+            return self.reading(ctx, &stay, want.epoch);
+        };
+        let filled = refused(error);
+        let effect = self.answered(want.epoch, &[], filled);
+        // `open`'s own two causes are the engine's to word; anything
+        // else goes up, the wait already ended.
+        let its_own = filled == Filled::Spent || error == Error::Invalid;
+        if its_own { Ok(effect) } else { Err(error) }
+    }
+
+    /// The view Vim holds, for `want`: the one it has where that is
+    /// this key's and this epoch's, else that one closed and another
+    /// opened over the draft.
+    fn viewing(
+        &self,
+        ctx: &dyn Calls,
+        stay: &Stay,
+        open: Rd,
+        want: &Want,
+    ) -> Result<(), Error> {
+        if stay.sought.borrow().as_ref().is_some_and(|s| s.want == *want) {
+            return Ok(());
+        }
+        unsought(ctx, stay);
+        let source = self.vim.borrow().buffer.ok_or(Error::Closed)?;
+        let h = ctx.open(open, Rights::WRITE)?;
+        let mut calls = ctx;
+        let args = search::Open {
+            source,
+            pattern: want.pattern.clone(),
+            ignorecase: want.ignorecase,
+            smartcase: want.smartcase,
+            from: want.from,
+        };
+        let opened = search::Call(&mut calls, h).open(args);
+        ops::close(ctx, h)?;
+        let view = opened?;
+        *stay.sought.borrow_mut() = Some(holding(ctx, view, want)?);
+        Ok(())
+    }
+
+    /// One read of `matches` on from where the last one ended:
+    /// entries are `More`, the empty read `Whole`, `Busy` more with
+    /// none. A slice that failed left what it found behind it, so a
+    /// read at the same place hands those on with the cause.
+    fn reading(
+        &self,
+        ctx: &dyn Calls,
+        stay: &Stay,
+        epoch: u64,
+    ) -> Result<Effect, Error> {
+        let (h, at) = {
+            let held = stay.sought.borrow();
+            let sought = held.as_ref().ok_or(Error::Closed)?;
+            (sought.matches, sought.at)
+        };
+        let len = u32::try_from(READ * ENTRY).unwrap_or(u32::MAX);
+        match ops::read(ctx, h, at, len) {
+            Ok(bytes) if bytes.is_empty() => {
+                Ok(self.answered(epoch, &[], Filled::Whole))
+            }
+            Ok(bytes) => {
+                onward(stay, bytes.len());
+                Ok(self.answered(epoch, &listed(&bytes), Filled::More))
+            }
+            Err(Error::Busy) => Ok(self.answered(epoch, &[], Filled::More)),
+            Err(error @ (Error::NoSpace | Error::Invalid)) => {
+                let kept = ops::read(ctx, h, at, len).unwrap_or_default();
+                onward(stay, kept.len());
+                Ok(self.answered(epoch, &listed(&kept), refused(error)))
+            }
+            Err(error) => {
+                self.answered(epoch, &[], Filled::Refused);
+                Err(error)
+            }
+        }
+    }
+
+    /// What `matched` made of one read.
+    fn answered(
+        &self,
+        epoch: u64,
+        found: &[(usize, usize)],
+        filled: Filled,
+    ) -> Effect {
+        self.vim.borrow_mut().matched(epoch, found, filled)
+    }
+
+    /// What a frame wants once its keys have run: the view of an
+    /// epoch that has gone closed, and the list `hlsearch` shows
+    /// read on at most `READS` times.
+    fn wanted(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let stay = self.stay()?;
+        let epoch = self.vim.borrow().epoch();
+        let gone = stay
+            .sought
+            .borrow()
+            .as_ref()
+            .is_some_and(|sought| sought.want.epoch != epoch);
+        if gone {
+            unsought(ctx, &stay);
+        }
+        let mut left = READS;
+        while left > 0 && self.filling(ctx)? {
+            left -= 1;
+        }
+        Ok(())
+    }
+
+    /// One read for the list `hlsearch` shows, `false` where a frame
+    /// wants none: the marks are off, the list is as full as it will
+    /// get, or `:noh` hid it.
+    fn filling(&self, ctx: &dyn Calls) -> Result<bool, Error> {
+        let wanted = self.vim.borrow_mut().wants();
+        let Some(want) = wanted else { return Ok(false) };
+        let effect = self.sought(ctx, &want)?;
+        self.act(ctx, effect)?;
+        Ok(true)
     }
 
     /// `Effect::Goto`'s own arm, apart for clippy's nesting bound. A
@@ -1864,6 +2112,7 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     }
     let keymap = read(home, "keymap", one)?;
     let point = read(home, "point", one)?;
+    let search = read(home, "search", one)?;
     let bin = read(home, "bin", held)?;
     for (name, decl) in bins::declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
@@ -1879,6 +2128,7 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
         options,
         keymap,
         point,
+        search,
         bin,
     })
 }
@@ -2056,11 +2306,11 @@ mod macro_queue_tests {
         let editor = Editor::default();
         editor.spent.set(BUDGET - 3);
         editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
-        editor.replayed(alloc::vec![Key::Char('@'); 100]);
-        editor.replayed(alloc::vec![Key::Char('a'); 100]);
+        editor.replayed(alloc::vec![Key::Char('@'); 100], false);
+        editor.replayed(alloc::vec![Key::Char('a'); 100], false);
         let queue = editor.queue.borrow();
         assert_eq!(
-            queue.iter().filter(|q| matches!(q, Queued::Fed(_))).count(),
+            queue.iter().filter(|q| matches!(q, Queued::Fed(..))).count(),
             4,
             "only the remaining budget and its sentinel"
         );
@@ -2073,8 +2323,8 @@ mod macro_queue_tests {
         editor.vim.borrow_mut().bind("xy", "nohlsearch");
         editor.spent.set(BUDGET - 4);
         let mut queue = editor.queue.borrow_mut();
-        queue.push_back(Queued::Fed(Key::Char('x')));
-        queue.push_back(Queued::Fed(Key::Char('p')));
+        queue.push_back(Queued::Fed(Key::Char('x'), false));
+        queue.push_back(Queued::Fed(Key::Char('p'), false));
         drop(queue);
         let ctx = host.own();
         while editor.step(&ctx).unwrap() {}
@@ -2228,7 +2478,7 @@ mod macro_queue_tests {
             opening: Some(clipboard),
             lookup: None,
         };
-        editor.replayed("\"+yyx".chars().map(Key::Char).collect());
+        editor.replayed("\"+yyx".chars().map(Key::Char).collect(), false);
         for _ in 0..3 {
             assert_eq!(editor.step(&refused), Ok(true));
         }

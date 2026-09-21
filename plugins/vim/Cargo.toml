@@ -15,12 +15,14 @@ reovim-kernel-interface = { path = "../../kernel/interface" }
 reovim-client-sh = { path = "../../clients/sh" }
 reovim-pattern = { path = "../../lib/pattern" }
 reovim-sdk = { path = "../../sdk/rust" }
+reovim-search-api = { path = "../../modules/search/api" }
 reovim-text-api = { path = "../../modules/text/api" }
 
 [dev-dependencies]
 reovim-client = { path = "../../clients/core" }
 reovim-client-tui = { path = "../../clients/tui" }
 reovim-module-coreutils = { path = "../../modules/coreutils" }
+reovim-module-search = { path = "../../modules/search" }
 reovim-rig = { path = "../../clients/rig" }
 
 [lints]

@@ -82,6 +82,7 @@ fn one_editor_started_twice_serves_every_cell() {
             "options",
             "keymap",
             "point",
+            "search",
             "bin"
         ]
     );

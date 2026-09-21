@@ -17,14 +17,34 @@ pub fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
 }
 
 /// Every key of `text` in Vim notation; the last effect. What a
-/// failed prefix let go runs again, as the Plugin's queue runs it.
+/// failed prefix let go runs again, and what `.` answered runs as a
+/// repeat's, both as the Plugin's queue runs them.
 pub fn typed(vim: &mut Vim, text: &str) -> Effect {
     let mut last = Effect::Nothing;
     for key in keys(text).unwrap() {
         let effect = vim.key(key);
-        last = drained(vim, effect);
+        last = ran(vim, effect);
     }
     last
+}
+
+/// The queue's own two turns around one effect: the keys a failed
+/// prefix let go, and the keys `.` answered, each through the door
+/// the Plugin puts them through. A repeat is answered as the edits
+/// its keys made, which is what one `.` did.
+fn ran(vim: &mut Vim, effect: Effect) -> Effect {
+    let last = drained(vim, effect);
+    let Effect::Repeat(keys) = last else { return last };
+    let mut edits = Vec::new();
+    for key in keys {
+        let effect = vim.fed(key, true);
+        match drained(vim, effect) {
+            Effect::Edit(edit) => edits.push(edit),
+            Effect::Edits(more) => edits.extend(more),
+            _ => {}
+        }
+    }
+    if edits.is_empty() { Effect::Nothing } else { Effect::Edits(edits) }
 }
 
 /// What `released()` holds, each through `past` and at the front, so
@@ -40,11 +60,13 @@ fn drained(vim: &mut Vim, mut last: Effect) -> Effect {
     last
 }
 
-/// Every key of `text`; every edit they made, in order.
+/// Every key of `text`; every edit they made, in order, a repeat's
+/// keys run as the queue runs them.
 pub fn edits(vim: &mut Vim, text: &str) -> Vec<Edit> {
     let mut all = Vec::new();
     for key in keys(text).unwrap() {
-        match vim.key(key) {
+        let effect = vim.key(key);
+        match ran(vim, effect) {
             Effect::Edit(edit) => all.push(edit),
             Effect::Edits(more) => all.extend(more),
             _ => {}

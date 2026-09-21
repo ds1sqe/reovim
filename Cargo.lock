@@ -357,9 +357,11 @@ dependencies = [
  "reovim-client-tui",
  "reovim-kernel-interface",
  "reovim-module-coreutils",
+ "reovim-module-search",
  "reovim-pattern",
  "reovim-rig",
  "reovim-sdk",
+ "reovim-search-api",
  "reovim-text-api",
 ]
 
@@ -376,6 +378,7 @@ dependencies = [
  "reovim-kernel-runtime",
  "reovim-module-coreutils",
  "reovim-module-fs",
+ "reovim-module-search",
  "reovim-module-sysutils",
  "reovim-module-text",
  "reovim-sdk",

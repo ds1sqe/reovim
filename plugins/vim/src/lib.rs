@@ -41,6 +41,7 @@ pub use marks::Pos;
 pub use operator::Motion;
 pub use plugin::Editor;
 pub use reovim_client_api::{Key, notation};
+pub use search::{Filled, Want};
 pub use visual::Visual;
 
 use jumps::{Jump, Jumps};
@@ -50,7 +51,7 @@ use operator::{Find, Operator};
 use reovim_client_api::{BAR, BLOCK, MATCH, NONE, SELECTION, window};
 use reovim_client_sh::{Line, Shell};
 use reovim_kernel_interface::{Handle, Rd};
-use search::Search;
+use search::{Found, SPANS, Search};
 use visual::{BlockInsert, Selection};
 
 /// One behaviour reovim's default has of its own, where nvim has
@@ -117,6 +118,20 @@ pub enum Effect {
     ///     Effect::Replay(vec![Key::Char('x')]));
     /// ```
     Replay(Vec<Key>),
+    /// `.`: the last change's keys, for the queue to run as a
+    /// repeat's. The engine replays nothing itself, so a key of them
+    /// that cannot be answered in its turn is an `Effect` like any
+    /// other.
+    ///
+    /// ```
+    /// use reovim_plugin_vim::{Effect, Key, Vim, notation};
+    /// let mut vim = Vim::default();
+    /// vim.loaded(b"abc\n");
+    /// for key in notation::keys("x").unwrap() { vim.key(key); }
+    /// assert_eq!(vim.key(Key::Char('.')),
+    ///     Effect::Repeat(vec![Key::Char('x')]));
+    /// ```
+    Repeat(Vec<Key>),
     Nothing,
     /// The cursor or the mode moved; the text did not.
     Moved,
@@ -170,6 +185,10 @@ pub enum Effect {
     Complete(String),
     /// A put wants the clipboard's text: `pasted` finishes it.
     Clipboard,
+    /// A search key the list Vim holds cannot answer: the list to
+    /// fill, which the Plugin opens over its draft and reads.
+    /// `matched` finishes it, running the motion that waited again.
+    Search(Want),
     /// A file mark or a jump list entry whose source is not the
     /// loaded Buffer's: the source to show here instead, and the
     /// position and how it lands, for the Plugin to read into
@@ -319,6 +338,11 @@ struct Repeat {
     last: Vec<Key>,
     /// `.` is feeding keys back in.
     replaying: bool,
+    /// A repeat's keys are at the queue's front and none of them has
+    /// edited yet: the first that does pushes the undo cursor, as a
+    /// typed change's first edit does. One stay's, cleared by
+    /// `leave()`.
+    first: bool,
 }
 
 /// A put waiting for the clipboard's text.
@@ -433,6 +457,9 @@ pub struct Vim {
     /// The keys a binding may still be, and the keys a failed prefix
     /// let go for the host's queue to run again.
     held: Held,
+    /// What Vim has read of one view's `matches`, and the motion
+    /// waiting on it.
+    found: Found,
     /// The next insert edit joins the revision under way.
     joining: bool,
     /// The last key kept `want` rather than setting it.
@@ -470,6 +497,11 @@ pub struct Vim {
 
     // One Buffer, in a `Place`.
     text: String,
+    /// The bytes the draft held were not UTF-8, so `text` is what
+    /// `from_utf8_lossy` made of them: nothing is searched over it,
+    /// the Module reading the draft's own bytes and not this. Set at
+    /// the head of `loaded`, so `opened` sets it again.
+    lossy: bool,
     cursor: usize,
     top: usize,
     undone: Undone,
@@ -672,8 +704,9 @@ impl Vim {
     /// A change is being made: the cursor kept for undo, with the
     /// `a`-`z` marks as they stood; what stood undone is forgotten,
     /// as a new change ends redo. Every edit the effect made moves
-    /// the marks in order, [`Self::marked`] being the one door,
-    /// unless a replay is putting them through `key` a second time.
+    /// the marks in order, [`Self::marked`] being the one door, a
+    /// repeat's keys included: they come through the queue once, and
+    /// there is no second pass over them.
     /// `typed` is whether the mode this key (or `pasted`, `did`) found
     /// Vim in was Insert, before the key itself may have left it: a
     /// block insert's Esc is still typed on its way out; a `c` that
@@ -692,14 +725,16 @@ impl Vim {
             Effect::Redo => return self.undone.walking = Some(true),
             _ => {}
         }
-        if self.repeat.replaying {
-            return;
-        }
         let own = effect_edits(effect).first().is_some_and(|e| !e.join);
         self.continued(effect);
         let edits = effect_edits(effect);
         let starting = edits.first().is_some_and(|e| !e.join);
-        if starting {
+        // A repeat's keys come through the queue, so there is no
+        // outer pass to take the snapshot: its own first edit takes
+        // it, exactly as a typed change's first edit does.
+        let first =
+            !edits.is_empty() && core::mem::take(&mut self.repeat.first);
+        if starting && (!self.repeat.replaying || first) {
             self.snapshot(before);
         }
         for edit in edits {
@@ -743,6 +778,14 @@ impl Vim {
     /// `undone_cursor`, and stops there: a reload is not a change,
     /// and sets no `[`, `]` or `.`.
     fn marked(&mut self, edit: &Edit) {
+        // The one door positions move through is the one door the
+        // list is dropped at: it is never patched, and the fill
+        // begins again for whoever asks next.
+        self.found.epoch += 1;
+        self.found.key = None;
+        self.found.after.clear();
+        self.found.before.clear();
+        self.found.filled = Filled::More;
         let source = self.source;
         self.marks.moved(
             edit,
@@ -1028,7 +1071,14 @@ impl Vim {
     }
 
     /// `motion` `n` times for the cursor, or for the operator waiting.
+    ///
+    /// A search the list cannot answer leaves from here, before
+    /// anything is taken: `pending` stands through the wait, so the
+    /// operator is still the operator when the motion runs again.
     fn motion(&mut self, motion: Motion, n: usize) -> Effect {
+        if let Some(effect) = self.wanting(motion, n) {
+            return effect;
+        }
         let effect = match self.pending.operator.take() {
             Some((op, count)) => {
                 self.operate(op, count.saturating_mul(n), motion)
@@ -1056,23 +1106,22 @@ impl Vim {
         }
     }
 
-    /// `.`: the last change's keys fed back in, its count replaced
-    /// by `count` when there is one; every edit they make, in order.
+    /// `.`: the last change's keys for the queue to run, its count
+    /// replaced by `count` when there is one.
     fn replay(&mut self, count: usize) -> Effect {
         self.repeat.record.clear();
         let mut keys: Vec<Key> = self.repeat.last.clone();
+        if keys.is_empty() {
+            return Effect::Nothing;
+        }
         if count > 0 {
             let digits = keys.iter().take_while(|k| is_digit(**k)).count();
             keys.drain(..digits);
             let count = alloc::format!("{count}");
             keys.splice(0..0, count.chars().map(Key::Char));
         }
-        let mut edits = Vec::new();
-        for key in keys {
-            let effect = self.fed(key, true);
-            collect(&mut edits, effect);
-        }
-        if edits.is_empty() { Effect::Nothing } else { Effect::Edits(edits) }
+        self.repeat.first = true;
+        Effect::Repeat(keys)
     }
 
     fn insert(&mut self, key: Key) -> Effect {
@@ -1245,6 +1294,7 @@ impl Vim {
     /// splits one, so the edit's own `at` is always a boundary.
     pub fn loaded(&mut self, bytes: &[u8]) -> bool {
         let text = String::from_utf8_lossy(bytes);
+        self.lossy = matches!(text, alloc::borrow::Cow::Owned(_));
         let walking = self.undone.walking.take();
         if text == self.text {
             return false;
@@ -1619,7 +1669,7 @@ impl Vim {
         // the way out, still read as typed; a `c` that enters Insert
         // is still Normal here, so its own delete does not.
         let typed = self.mode == Mode::Insert;
-        let mut effect = match self.mode {
+        let effect = match self.mode {
             Mode::Normal => self.normal(key),
             Mode::Insert => self.insert(key),
             Mode::Command => self.command(key),
@@ -1629,6 +1679,23 @@ impl Vim {
                 effect
             }
         };
+        self.around(before, typed, effect)
+    }
+
+    /// The bookkeeping around one act: the change it made, the column
+    /// a vertical motion will want, and the end a selection reaches.
+    /// `before` and `typed` are read before the act, the key being
+    /// free to leave the mode it was read in.
+    ///
+    /// Both doors into the engine's work come through here: a key
+    /// through `acted`, and a motion that waited for its list through
+    /// `matched`.
+    pub(crate) fn around(
+        &mut self,
+        before: (usize, usize),
+        typed: bool,
+        mut effect: Effect,
+    ) -> Effect {
         self.changing(before, &mut effect, typed);
         if !core::mem::take(&mut self.keep_want) {
             self.want = self.wanted();
@@ -1816,6 +1883,7 @@ impl Vim {
         self.pending = Pending::default();
         self.joining = false;
         self.held = Held::default();
+        self.found = Found::default();
         self.macros.fed = false;
         self.macros.joined = false;
         self.bell = false;
@@ -1830,6 +1898,7 @@ impl Vim {
         self.wild = None;
         self.message.clear();
         self.repeat.record.clear();
+        self.repeat.first = false;
         self.prompt.at = char::default();
         self.prompt.before = Mode::default();
         self.prompt.ex.put(0, "");
@@ -1879,7 +1948,8 @@ impl Vim {
             Mode::Visual(kind) => self.selection_spans(kind, self.top, height),
             _ => Vec::new(),
         };
-        let marks = self.search_spans(self.top, height);
+        let room = SPANS - selected.len().min(SPANS);
+        let marks = self.search_spans(self.top, height, room);
         // A match first, a selection last: the selection is on top
         // where the two overlap, whole even where it begins inside a
         // match.

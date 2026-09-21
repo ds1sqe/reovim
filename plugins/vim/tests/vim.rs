@@ -6,7 +6,10 @@ use std::fmt::Write as _;
 
 use common::{edit, on, typed};
 use reovim_client_api::{BAR, BLOCK};
-use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit};
+use reovim_plugin_vim::notation::keys;
+use reovim_plugin_vim::{
+    Edit, Effect, Ex, Filled, Key, Mode, Quit, Stroke, Vim, Want,
+};
 
 /// The `:` line `keys` left for the Client to run: the range it read
 /// off the front, and the rest of it as it was typed.
@@ -444,7 +447,7 @@ fn a_motion_before_the_first_fed_edit_does_not_join_prior_typing() {
 
 #[test]
 fn errors_ring_but_permitted_stationary_commands_do_not() {
-    for input in ["h", "j", "fz", "%", "/z<CR>n", "'a"] {
+    for input in ["h", "j", "fz", "%", "'a"] {
         let mut vim = on("abc\n");
         typed(&mut vim, input);
         assert!(vim.rung(), "{input}");
@@ -581,4 +584,240 @@ fn maximum_height_is_safe_with_visual_selection_after_scrolling() {
             && span.to == end
             && span.style == reovim_client_api::SELECTION));
     }
+}
+
+#[test]
+fn dot_is_keys_for_the_queue() {
+    let mut vim = on("abcdef\n");
+    assert_eq!(vim.key(Key::Char('.')), Effect::Nothing, "no last change");
+    assert_eq!(typed(&mut vim, "x"), edit(0, 1, "", false));
+    // The engine replays nothing itself: `.` answers the keys, and
+    // the Plugin's queue runs them as a repeat's.
+    assert_eq!(vim.key(Key::Char('.')), Effect::Repeat(vec![Key::Char('x')]));
+    assert_eq!(vim.text(), "bcdef\n", "the engine ran none of them");
+    vim.key(Key::Char('3'));
+    assert_eq!(
+        vim.key(Key::Char('.')),
+        Effect::Repeat(vec![Key::Char('3'), Key::Char('x')]),
+        "a count typed before `.` leads the keys it answers"
+    );
+}
+
+#[test]
+fn a_repeats_first_edit_pushes_the_undo_cursor() {
+    let mut vim = on("abc\nabc\n");
+    typed(&mut vim, "A!<Esc>j0.");
+    assert_eq!(vim.text(), "abc!\nabc!\n");
+    assert_eq!(typed(&mut vim, "u"), Effect::Undo);
+    // What the Plugin reads back once the history has walked.
+    vim.loaded(b"abc!\nabc\n");
+    assert_eq!(
+        vim.position(),
+        (1, 2),
+        "the undo cursor is where the repeat's first edit began"
+    );
+}
+
+/// What the door asks for over `pattern`, a list begun at `from`.
+fn want(vim: &Vim, pattern: &str, from: u64) -> Effect {
+    Effect::Search(Want {
+        pattern: pattern.into(),
+        ignorecase: false,
+        smartcase: false,
+        from,
+        epoch: vim.epoch(),
+    })
+}
+
+#[test]
+fn a_search_asks_and_lands_when_answered() {
+    let mut vim = on("ab\ncd\n");
+    let epoch = vim.epoch();
+    // Nothing of the text is scanned here: the key asks, and the
+    // cursor stands until the entries come back.
+    assert_eq!(typed(&mut vim, "/cd<CR>"), want(&vim, "cd", 0));
+    assert_eq!(vim.position(), (0, 0), "nothing moved while it waits");
+    // An answer for a list that has gone is nobody's.
+    assert_eq!(
+        vim.matched(epoch + 9, &[(0, 2)], Filled::Whole),
+        Effect::Nothing
+    );
+    assert_eq!(vim.position(), (0, 0), "and still nothing moved");
+    assert_eq!(vim.matched(epoch, &[(3, 2)], Filled::Whole), Effect::Moved);
+    assert_eq!(vim.position(), (1, 0));
+}
+
+#[test]
+fn an_operator_waits_with_its_search() {
+    let mut vim = on("ab\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "d/b<CR>"), want(&vim, "b", 0));
+    assert_eq!(vim.showcmd(), "d", "the operator stands through the wait");
+    assert_eq!(
+        vim.matched(epoch, &[(1, 1)], Filled::Whole),
+        edit(0, 1, "", false)
+    );
+    assert_eq!(vim.text(), "b\n");
+    assert_eq!(vim.showcmd(), "");
+    assert_eq!(
+        vim.key(Key::Char('.')),
+        Effect::Repeat(keys("d/b<CR>").unwrap()),
+        "the record stood through the wait, so `.` is the four keys"
+    );
+}
+
+#[test]
+fn a_list_not_whole_answers_from_its_run_and_asks_for_the_rest() {
+    let mut vim = on("ab\nxb\ncb\n");
+    typed(&mut vim, "j");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 3));
+    // An entry after the cursor in the cursor's own run is final as
+    // read, though the fill has more to give: the fill goes in order,
+    // so it found everything between the two.
+    assert_eq!(
+        vim.matched(epoch, &[(4, 1), (7, 1)], Filled::More),
+        Effect::Moved
+    );
+    assert_eq!(vim.position(), (1, 1));
+    assert_eq!(typed(&mut vim, "n"), Effect::Moved, "answered from the run");
+    assert_eq!(vim.position(), (2, 1));
+    // The wrap's own run, which nobody waited for.
+    assert_eq!(vim.matched(epoch, &[(1, 1)], Filled::More), Effect::Nothing);
+    // An entry past the cursor's own run is not final until the list
+    // is whole, though it is already read: it asks again, and for the
+    // list it began, not for one from the cursor.
+    typed(&mut vim, "ggl");
+    assert_eq!(typed(&mut vim, "n"), want(&vim, "b", 3));
+    assert_eq!(vim.matched(epoch, &[], Filled::Whole), Effect::Moved);
+    assert_eq!(vim.position(), (1, 1));
+}
+
+#[test]
+fn a_match_on_a_lines_end_is_passed_by_a_cursor_beside_it() {
+    let mut vim = on("ab\ncd\n");
+    typed(&mut vim, "G$");
+    assert_eq!(vim.position(), (1, 1));
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/$<CR>"), want(&vim, "$", 4));
+    assert_eq!(
+        vim.matched(epoch, &[(2, 0), (5, 0)], Filled::Whole),
+        Effect::Moved
+    );
+    assert_eq!(
+        vim.position(),
+        (0, 1),
+        "the entry beside the cursor is passed; the landing is the last char"
+    );
+}
+
+#[test]
+fn a_word_takes_the_operator_and_the_record() {
+    let mut vim = on("ab cd ef\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "d/\\(<CR>"), want(&vim, "\\(", 0));
+    vim.matched(epoch, &[], Filled::Refused);
+    assert_eq!(vim.status(), "E486: Pattern not found: \\(");
+    assert!(vim.rung(), "the word rings, so a run ends at it");
+    assert_eq!(vim.showcmd(), "", "the operator went with the motion");
+    assert_eq!(typed(&mut vim, "w"), Effect::Moved);
+    assert_eq!(vim.text(), "ab cd ef\n", "the text is whole");
+    assert_eq!(vim.position(), (0, 3));
+
+    let mut vim = on("ab cd ef\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "d/zzz<CR>"), want(&vim, "zzz", 0));
+    vim.matched(epoch, &[], Filled::Whole);
+    assert_eq!(vim.status(), "E486: Pattern not found: zzz");
+    assert_eq!(typed(&mut vim, "w"), Effect::Moved);
+    assert_eq!(vim.text(), "ab cd ef\n");
+
+    let mut vim = on("abcd\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/\\(<CR>"), want(&vim, "\\(", 0));
+    vim.matched(epoch, &[], Filled::Refused);
+    typed(&mut vim, "x.");
+    assert_eq!(vim.text(), "cd\n", "the record the word cleared is the `x`'s");
+}
+
+#[test]
+fn entries_before_a_spent_offset_are_landed_on() {
+    let text = format!("x\nb\n{}\n", "a".repeat(30));
+    let mut vim = on(&text);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/\\(a*\\)*b<CR>"), want(&vim, "\\(a*\\)*b", 0));
+    // What the slice found before it spent its budget comes first.
+    assert_eq!(vim.matched(epoch, &[(2, 1)], Filled::More), Effect::Moved);
+    assert_eq!(vim.position(), (1, 0));
+    assert_eq!(vim.matched(epoch, &[], Filled::Spent), Effect::Nothing);
+    assert_eq!(vim.status(), "", "the landing said nothing");
+    assert_eq!(typed(&mut vim, "n"), Effect::Moved, "the message is a change");
+    assert!(vim.status().starts_with("E363"), "{}", vim.status());
+}
+
+#[test]
+fn a_spent_list_nobody_waits_for_goes_stale() {
+    let mut vim = on("abc\nabc\n");
+    assert_eq!(vim.set("hls"), Effect::Moved);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 0));
+    assert_eq!(
+        vim.matched(epoch, &[(1, 1), (5, 1)], Filled::Whole),
+        Effect::Moved
+    );
+    assert!(vim.wants().is_none(), "a whole list wants nothing more");
+    typed(&mut vim, "x");
+    let asked = vim.wants().expect("the edit dropped the list");
+    assert_eq!(vim.matched(asked.epoch, &[], Filled::Spent), Effect::Nothing);
+    assert!(vim.wants().is_none(), "stale: no frame pays the offset again");
+    typed(&mut vim, "x");
+    assert!(vim.wants().is_none(), "nor after another edit");
+}
+
+#[test]
+fn a_landing_where_the_cursor_stands_pushes_no_jump() {
+    let mut vim = on("ab\ncd\n");
+    typed(&mut vim, "G$");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/$<CR>"), want(&vim, "$", 4));
+    assert_eq!(vim.matched(epoch, &[(5, 0)], Filled::Whole), Effect::Moved);
+    assert_eq!(vim.position(), (1, 1), "the landing is where it stood");
+    // `'` is set where a jump is pushed, and neither happened here:
+    // it still answers the default place a Buffer opens at.
+    typed(&mut vim, "``");
+    assert_eq!(vim.position(), (0, 0));
+}
+
+#[test]
+fn a_wait_runs_again_as_its_key_came() {
+    // A macro's `<CR>`, let go by a failed prefix and run again by
+    // `past`: the landing's edit joins the run it came from.
+    let mut vim = on("ab\nxb\n");
+    vim.fed(Key::Char('x'), false);
+    for key in keys("d/b").unwrap() {
+        vim.fed(key, false);
+    }
+    let epoch = vim.epoch();
+    let asked = vim.past(Stroke { key: Key::Enter, fed: true });
+    assert_eq!(asked, want(&vim, "b", 0));
+    assert_eq!(
+        vim.matched(epoch, &[(0, 1), (3, 1)], Filled::Whole),
+        edit(0, 3, "", true)
+    );
+
+    // A repeat's `<CR>`: the re-run is a repeat's still, so it sets
+    // no new last change of its own.
+    let mut vim = on("ab\nxb\n");
+    typed(&mut vim, "x");
+    for key in keys("d/b").unwrap() {
+        vim.fed(key, true);
+    }
+    let epoch = vim.epoch();
+    assert_eq!(vim.fed(Key::Enter, true), want(&vim, "b", 0));
+    vim.matched(epoch, &[(0, 1), (3, 1)], Filled::Whole);
+    assert_eq!(
+        vim.key(Key::Char('.')),
+        Effect::Repeat(vec![Key::Char('x')]),
+        "the repeat's own re-run left the last change alone"
+    );
 }

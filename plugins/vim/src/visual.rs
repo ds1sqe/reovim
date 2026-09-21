@@ -169,6 +169,11 @@ impl Vim {
     /// A motion moves the cursor end of the selection; `$` takes the
     /// line's end itself, newline included.
     fn visual_motion(&mut self, motion: Motion, n: usize) -> Effect {
+        // The same door `motion` opens with: a search that cannot be
+        // answered leaves before the selection moves at all.
+        if let Some(effect) = self.wanting(motion, n) {
+            return effect;
+        }
         if motion == Motion::LineEnd {
             self.repeat(n - 1, |v| v.vertical(true));
             let effect = self.go(self.line_end(self.cursor));

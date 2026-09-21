@@ -53,7 +53,7 @@ fn work(test: &str) -> Rig {
 /// An editor over `d/note` and the Host it stands in, which is how
 /// anything else at this Client reads the tree it registered in.
 fn hosted(rig: &Rig, seen: &Seen) -> (Rc<Host>, Editor) {
-    let host = rig.host();
+    let host = rig.searching(None);
     let tui =
         opened(&host, table(seen), Clip::none(), "d", Some("d/note"), None)
             .unwrap();

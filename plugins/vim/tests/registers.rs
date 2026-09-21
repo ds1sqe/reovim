@@ -7,7 +7,7 @@ use common::{cat, on, one, typed as engine_keys};
 use reovim_client::dev::Clip;
 use reovim_client_api::{Key, window};
 use reovim_plugin_vim::Editor;
-use reovim_rig::{Rig, listed, opened, said, typed};
+use reovim_rig::{Rig, lines, listed, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
 
@@ -43,14 +43,27 @@ fn a_small_delete_leaves_one_and_a_big_one_leaves_the_small() {
     assert_eq!(vim.stored('0'), "first\n");
 }
 
+/// A search is the search Module's, so this case is over a Client
+/// that has loaded it, where the engine's own cases are not.
 #[test]
 fn a_delete_by_search_or_star_writes_both() {
-    for keys in ["d*", "2wd#", "/one<CR>ggdn"] {
-        let mut vim = on("one two one three\nlast\n");
-        engine_keys(&mut vim, keys);
-        assert_eq!(vim.stored('1'), "one two ", "{keys}");
-        assert_eq!(vim.stored('-'), "one two ", "{keys}");
-        assert_eq!(vim.text(), "one three\nlast\n");
+    for (n, keys) in ["d*", "2wd#", "/one<CR>ggdn"].iter().enumerate() {
+        let rig = Rig::new(&format!("registers-search-{n}"));
+        rig.file("file", b"one two one three\nlast\n");
+        let host = rig.searching(None);
+        let mut tui = opened(
+            &host,
+            one(Editor::new()),
+            Clip::none(),
+            "",
+            Some("file"),
+            None,
+        )
+        .unwrap();
+        typed(&mut tui, keys);
+        assert_eq!(cat(&host, "registers/1"), "one two ", "{keys}");
+        assert_eq!(cat(&host, "registers/-"), "one two ", "{keys}");
+        assert_eq!(lines(&mut tui), ["one three", "last"], "{keys}");
     }
 }
 

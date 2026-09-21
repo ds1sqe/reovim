@@ -305,7 +305,7 @@ mod tests {
         vim.key(Key::Char('x'));
         vim.macros.fed = true;
         let effect = vim.fed(Key::Char('.'), false);
-        assert!(matches!(effect, Effect::Edits(_)));
+        assert!(matches!(effect, Effect::Repeat(_)), "keys for the queue");
         assert!(vim.macros.fed);
         assert!(!vim.repeat.replaying);
     }

@@ -124,6 +124,7 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
             "options",
             "keymap",
             "point",
+            "search",
             "bin"
         ]
     );

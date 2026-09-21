@@ -5,6 +5,7 @@ use std::rc::{Rc, Weak};
 use reovim_client::{Carrier, Client, Clip, Fault, Host, Rvm, bin};
 use reovim_host::{clock, mem};
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
+use reovim_module_search::Search;
 use reovim_sdk::ops;
 
 /// The process heap as the host counts it, in the Kernel's own shape.
@@ -149,6 +150,26 @@ impl Rig {
         let host = Rc::new(Host::over(self.client(), clock::now));
         bin::boot(&host, Rvm::none()).unwrap();
         self.hosts.borrow_mut().push(Rc::downgrade(&host));
+        host
+    }
+
+    /// A Client of its own with the search Module loaded under
+    /// `/self`, as the app's Client loads it: what a case over a
+    /// Plugin that searches comes by. `budget` is the work one slice
+    /// may spend, `None` being the Module's own.
+    ///
+    /// [`Self::host`] stands as it is: seven cases of clients/core
+    /// assert what `/self` lists, and nothing that does not search
+    /// needs the Module.
+    ///
+    /// # Panics
+    /// As [`Self::host`], and when the Module refuses to load.
+    #[must_use]
+    pub fn searching(&self, budget: Option<usize>) -> Rc<Host> {
+        let host = self.host();
+        let search =
+            Rc::new(budget.map_or_else(Search::new, Search::with_budget));
+        host.load("search", search.clone(), vec![search]).unwrap();
         host
     }
 

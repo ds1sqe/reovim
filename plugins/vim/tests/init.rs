@@ -92,7 +92,7 @@ fn a_failed_line_rings_nothing_into_the_next() {
 #[test]
 fn set_runs_as_typed() {
     let rig = rig("init-set");
-    let mut tui = editor(&rig.host(), "set ic scs\n", "a");
+    let mut tui = editor(&rig.searching(None), "set ic scs\n", "a");
     typed(&mut tui, "/two<CR>x");
     assert_eq!(lines(&mut tui), ["one", "wo"]);
 }
@@ -159,7 +159,7 @@ fn a_line_that_leaves_ends_the_run() {
 #[test]
 fn a_failed_set_keeps_the_effects_of_its_valid_options() {
     let rig = rig("init-partial-set");
-    let host = rig.host();
+    let host = rig.searching(None);
     let mut tui = editor(&host, "set ic nosuch\n", "a");
     typed(&mut tui, "/two<CR>x");
     assert_eq!(lines(&mut tui), ["one", "wo"]);

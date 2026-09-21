@@ -232,3 +232,16 @@ fn e_takes_what_another_client_did() {
     assert_eq!(lines(&mut tui), ["one", "two"]);
     assert_eq!(said(&mut tui), "");
 }
+
+/// Every op a search makes is under `/self` — the draft, the Module
+/// and Vim all being there — so no key of one reaches the server.
+#[test]
+fn each_key_of_a_search_costs_an_idle_frame() {
+    let rig = Rig::new("draft-search");
+    rig.file("note", b"x\nx\nx\n");
+    let host = rig.searching(None);
+    let mut tui = editor(&host, "note");
+    typed(&mut tui, ":set hls<CR>");
+    let alone = idle(&rig, &mut tui);
+    assert_eq!(cost(&rig, &mut tui, "/x<CR>nnN"), vec![alone; 6]);
+}

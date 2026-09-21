@@ -34,7 +34,7 @@ fn over(test: &str) -> (Rig, Editor) {
     rig.file("d/alpha", b"");
     rig.file("d/note", b"one\ntwo\n");
     rig.file("d/sub/deep", b"");
-    let host = rig.host();
+    let host = rig.searching(None);
     let tui = opened(&host, table(), Clip::none(), "d", Some("d/note"), None)
         .unwrap();
     (rig, tui)

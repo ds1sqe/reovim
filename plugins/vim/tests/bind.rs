@@ -216,6 +216,7 @@ fn the_five_option_cells() {
             "options",
             "keymap",
             "point",
+            "search",
             "bin"
         ]
     );

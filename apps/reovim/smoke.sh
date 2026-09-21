@@ -469,6 +469,18 @@ keys new / f r e s h Enter
     || fail "a search match is not underlined: $(painted)"
 [[ "$(captured)" == "$("${TMUX[@]}" capture-pane -p -t new)" ]] \
     || fail "a search match changes the plain capture: $(captured)"
+
+# What anybody outside sees of Vim's search: the cell names the view
+# it holds open, and that view stands under the Client's own
+# `/self/search`, where Chrome finds its `progress`.
+held="$("$BIN" cli cat /session/1/client/1/self/vim/search \
+    | od -An -tu8 | tr -d ' \n')"
+[[ -n "$held" && "$held" != 18446744073709551615 ]] \
+    || fail "self/vim/search names no view: ${held:-nothing}"
+sought="$("$BIN" cli ls /session/1/client/1/self/search)"
+[[ "$sought" == *open* ]] || fail "self/search lists no open: $sought"
+[[ "$(wc -l <<< "$sought")" -ge 2 ]] \
+    || fail "self/search names no view: $sought"
 keys new : n o h Enter
 
 # --- 08.2: `reovim view`, the reader that knows it shows a display ---
