@@ -12,8 +12,8 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::Rd;
 
-use crate::Edit;
 use crate::jumps::Jump;
+use crate::{Edit, counted};
 
 /// A line and a column, both from 0, the column in bytes.
 ///
@@ -69,10 +69,11 @@ fn line_of(starts: &[usize], at: usize) -> usize {
 /// the merge arm below.
 fn move_one(index: Index<'_>, pos: Pos, edit: &Edit) -> Option<Pos> {
     let (starts, length) = index;
+    let (at, len) = (counted(edit.at), counted(edit.len));
     let Some(&start) = starts.get(pos.line) else { return Some(pos) };
     let end = starts.get(pos.line + 1).copied().unwrap_or(length);
-    let reach = edit.at + edit.len;
-    if end <= edit.at {
+    let reach = at + len;
+    if end <= at {
         return Some(pos);
     }
     // Past the edit: a line whose own start the edit does not reach,
@@ -80,13 +81,10 @@ fn move_one(index: Index<'_>, pos: Pos, edit: &Edit) -> Option<Pos> {
     // forward, never merges into); a removal that reaches exactly to
     // a line's start takes the `\n` before it and must reach the
     // merge arm below instead.
-    if start > reach || (edit.len == 0 && start == reach) {
+    if start > reach || (len == 0 && start == reach) {
         let inserted = edit.text.matches('\n').count();
-        let removed = starts
-            .iter()
-            .skip(1)
-            .filter(|&&s| edit.at < s && s <= reach)
-            .count();
+        let removed =
+            starts.iter().skip(1).filter(|&&s| at < s && s <= reach).count();
         let new_line = (pos.line + inserted).saturating_sub(removed);
         return Some(Pos { line: new_line, ..pos });
     }
@@ -94,23 +92,23 @@ fn move_one(index: Index<'_>, pos: Pos, edit: &Edit) -> Option<Pos> {
     // the text does not end in one, the one case with no `starts`
     // entry after its own.
     let taken = if pos.line + 1 < starts.len() {
-        edit.at <= start && end <= reach
+        at <= start && end <= reach
     } else {
-        edit.at < start && end <= reach
+        at < start && end <= reach
     };
     if taken {
         return None;
     }
-    if start <= edit.at {
+    if start <= at {
         return Some(pos);
     }
     let inserted = edit.text.matches('\n').count();
-    let start_line = line_of(starts, edit.at);
+    let start_line = line_of(starts, at);
     // `prefix` is the edit's own start line's own bytes before it,
     // only real when the merged line stays that one: a `\n` inside
     // `edit.text` starts a line of its own, with no bytes of the
     // edit's start line before it at all.
-    let prefix = if inserted == 0 { edit.at - starts[start_line] } else { 0 };
+    let prefix = if inserted == 0 { at - starts[start_line] } else { 0 };
     let boundary = reach.saturating_sub(start);
     let tail = edit
         .text
@@ -137,7 +135,7 @@ fn retain_local(
     if name.is_ascii_lowercase() {
         return false;
     }
-    pos.line = line_of(index.0, edit.at);
+    pos.line = line_of(index.0, counted(edit.at));
     true
 }
 
@@ -173,24 +171,25 @@ fn retain_files(
 /// Move the sorted run once per edit, counting its newlines only once.
 fn move_lines(index: Index<'_>, lines: &mut VecDeque<usize>, edit: &Edit) {
     let (starts, length) = index;
-    let first = line_of(starts, edit.at);
-    let reach = edit.at + edit.len;
+    let (at, len) = (counted(edit.at), counted(edit.len));
+    let first = line_of(starts, at);
+    let reach = at + len;
     let removed = starts.partition_point(|&s| s <= reach) - first - 1;
     let inserted = edit.text.matches('\n').count();
     lines.retain_mut(|line| {
         let start = starts[*line];
         let end = starts.get(*line + 1).copied().unwrap_or(length);
         let whole = if *line + 1 < starts.len() {
-            edit.at <= start && end <= reach
+            at <= start && end <= reach
         } else {
-            edit.at < start && end <= reach
+            at < start && end <= reach
         };
-        if whole && edit.len > 0 {
+        if whole && len > 0 {
             return false;
         }
-        if start > reach || (edit.len == 0 && start == reach) {
+        if start > reach || (len == 0 && start == reach) {
             *line = (*line + inserted).saturating_sub(removed);
-        } else if start > edit.at {
+        } else if start > at {
             *line = first + inserted;
         }
         true
@@ -233,15 +232,15 @@ impl Marks {
     /// always here, a final `\n` included, so nothing is ever
     /// rebuilt from scratch after this.
     fn reindex_after(&mut self, edit: &Edit) {
-        let at = edit.at;
+        let (at, len) = (counted(edit.at), counted(edit.len));
         let mut next: Vec<usize> =
             self.starts.iter().copied().take_while(|&s| s <= at).collect();
         let inserted = edit.text.match_indices('\n').map(|(i, _)| at + i + 1);
         next.extend(inserted);
-        let tail = self.starts.iter().copied().filter(|&s| s > at + edit.len);
-        next.extend(tail.map(|s| s - edit.len + edit.text.len()));
+        let tail = self.starts.iter().copied().filter(|&s| s > at + len);
+        next.extend(tail.map(|s| s - len + edit.text.len()));
         self.starts = next;
-        self.length = self.length - edit.len + edit.text.len();
+        self.length = self.length - len + edit.text.len();
     }
 }
 
@@ -255,11 +254,11 @@ mod tests {
     use reovim_kernel_interface::Rd;
 
     use super::{Marks, Pos, move_one};
-    use crate::Edit;
     use crate::jumps::Jump;
+    use crate::{Edit, counted};
 
     fn edit(at: usize, len: usize, text: &str) -> Edit {
-        Edit { at, len, text: String::from(text), join: false }
+        crate::edited(at, len, String::from(text), false)
     }
 
     /// The starts and length `text` has, built fresh from it, the
@@ -306,7 +305,8 @@ mod tests {
         let mut jumps = Vec::new();
         marks.moved(edit, &mut files, &mut jumps, None, &mut VecDeque::new());
         let mut after = String::from(text);
-        after.replace_range(edit.at..edit.at + edit.len, &edit.text);
+        let at = counted(edit.at);
+        after.replace_range(at..at + counted(edit.len), &edit.text);
         let want = fresh(&after);
         assert_eq!(
             (marks.starts.clone(), marks.length),

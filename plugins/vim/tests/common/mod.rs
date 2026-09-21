@@ -9,7 +9,7 @@ use reovim_client::dev::Table;
 use reovim_client_api::keyboard::Press;
 use reovim_client_api::{NONE, origin, resolver::Input};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Edit, Editor, Effect, Key, Vim, keyed};
+use reovim_plugin_vim::{Edit, Editor, Effect, Fed, Key, Vim, edited, keyed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
@@ -20,8 +20,15 @@ const fn stamped(n: u64) -> Press {
     Press { key: 0, when: n, source: NONE }
 }
 
+/// The keys an `Effect::Fed` carries, as the record spells them:
+/// codes, which the host makes its inputs of.
+pub fn fed(keys: &[Key], repeat: bool) -> Effect {
+    let keys = keys.iter().map(|key| key.code()).collect();
+    Effect::Fed(Fed { keys, repeat })
+}
+
 pub fn edit(at: usize, len: usize, text: &str, join: bool) -> Effect {
-    Effect::Edit(Edit { at, len, text: text.to_string(), join })
+    Effect::Edits(vec![edited(at, len, text.to_string(), join)])
 }
 
 /// Every key of `text` in Vim notation, each an input of a press of
@@ -40,6 +47,13 @@ pub fn typed(vim: &mut Vim, text: &str) -> Effect {
 /// One input of `key` in `origin`, its press the `n`th of this run.
 fn input(key: Key, origin: u64, n: usize) -> Input {
     keyed(key, origin, &stamped(n as u64 + 1))
+}
+
+/// One input of the key `code` names, as the host makes one of the
+/// codes a `Fed` carries.
+const fn coded(code: u64, origin: u64, n: usize) -> Input {
+    let press = Press { key: code, ..stamped(n as u64 + 1) };
+    Input { press, origin, released: false }
 }
 
 /// One key typed, for a test that hands the engine its inputs itself.
@@ -65,14 +79,15 @@ pub fn let_go(key: Key, origin: u64) -> Input {
 /// its keys made, which is what one `.` did.
 fn ran(vim: &mut Vim, effect: Effect) -> Effect {
     let last = drained(vim, effect);
-    let Effect::Fed(keys, true) = last else { return last };
+    let Effect::Fed(fed) = &last else { return last };
+    if !fed.repeat {
+        return last;
+    }
     let mut edits = Vec::new();
-    for (n, key) in keys.into_iter().enumerate() {
-        let effect = vim.key(input(key, origin::REPEAT, n));
-        match drained(vim, effect) {
-            Effect::Edit(edit) => edits.push(edit),
-            Effect::Edits(more) => edits.extend(more),
-            _ => {}
+    for (n, code) in fed.keys.clone().into_iter().enumerate() {
+        let effect = vim.key(coded(code, origin::REPEAT, n));
+        if let Effect::Edits(more) = drained(vim, effect) {
+            edits.extend(more);
         }
     }
     if edits.is_empty() { Effect::Nothing } else { Effect::Edits(edits) }
@@ -99,10 +114,8 @@ pub fn edits(vim: &mut Vim, text: &str) -> Vec<Edit> {
     let mut all = Vec::new();
     for (n, key) in keys(text).unwrap().into_iter().enumerate() {
         let effect = vim.key(input(key, origin::TYPED, n));
-        match ran(vim, effect) {
-            Effect::Edit(edit) => all.push(edit),
-            Effect::Edits(more) => all.extend(more),
-            _ => {}
+        if let Effect::Edits(more) = ran(vim, effect) {
+            all.extend(more);
         }
     }
     all

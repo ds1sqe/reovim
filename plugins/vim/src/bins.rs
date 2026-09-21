@@ -18,7 +18,7 @@ use alloc::vec::Vec;
 use reovim_kernel_interface::{Calls, Decl, Error, Rd, Ty};
 
 use crate::plugin::{Editor, named};
-use crate::{Effect, Quit, Switch, Vim};
+use crate::{Effect, Quit, Switch, Vim, asked};
 
 reovim_sdk::declare! {
     /// A name that reads nothing after it: `wq`, `xit`, `cquit`,
@@ -279,9 +279,9 @@ impl file::Api for Editor {
         let effect = match named(ctx, rd)?.as_str() {
             "write" if held => Effect::SaveAs(path, bang),
             "write" => Effect::Save(bang),
-            "edit" if held => Effect::Open(path, bang),
+            "edit" if held => Effect::Open(asked(path, bang)),
             "edit" => Effect::Reload(bang),
-            "explore" => Effect::Explore(held.then_some(path), bang),
+            "explore" => Effect::Explore(asked(path, bang)),
             _ => return Err(Error::Unsupported),
         };
         self.did(ctx, rd, |_| effect)

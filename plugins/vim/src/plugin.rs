@@ -37,9 +37,12 @@ use alloc::vec::Vec;
 use core::cell::{Cell, Ref, RefCell};
 use core::fmt::Write as _;
 
+use reovim_client_api::keyboard;
 use reovim_client_api::origin::TYPED;
 use reovim_client_api::resolver::Input;
-use reovim_client_api::{NONE, buffers, draft, open, origin, part};
+use reovim_client_api::{
+    NONE, buffers, draft, filled, open, origin, part, reply, resolver,
+};
 use reovim_client_region::{Region, Surface, count, drafted};
 use reovim_client_sh::{self as sh, Ran, Shell};
 use reovim_kernel_interface::{
@@ -56,10 +59,7 @@ use reovim_text_api::{history, publish, text};
 use crate::command::{Typed, options, typed};
 use crate::keymap::Held;
 use crate::macros::BUDGET;
-use crate::{
-    E32, Edit, Effect, Ex, Filled, Key, Land, Mode, Pos, Quit, Switch, Vim,
-    Want, bins, keyed,
-};
+use crate::{E32, Edit, Effect, Ex, Key, Mode, Quit, Switch, Vim, Want, bins};
 
 /// How many entries one read of `matches` asks for. The 48 KiB they
 /// come to is no multiple of the 64 KiB a local read copies, and
@@ -70,13 +70,35 @@ const READ: usize = 2048;
 /// is `hlsearch`'s. Four slices of 2^14 are 14 to 24 ms.
 const READS: usize = 4;
 
-/// The entries `bytes` holds, as the engine counts them.
-fn listed(bytes: &[u8]) -> Vec<(usize, usize)> {
-    let counted = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
+/// One key a macro or a `.` feeds, as the record spells it: a code,
+/// carrying the press of the key that asked for it. The engine reads
+/// a `Key` of it at its own entry, and the host reads none.
+const fn fed(key: u64, origin: u64, from: &keyboard::Press) -> Input {
+    let press = keyboard::Press { key, when: from.when, source: from.source };
+    Input { press, origin, released: false }
+}
+
+/// The entries `bytes` holds, as the records carry them: one `at`
+/// and one `len` each, which is what a `MATCHED` reply hands on.
+fn listed(bytes: &[u8]) -> Vec<resolver::Entry> {
     entries(bytes)
         .into_iter()
-        .map(|one| (counted(one.at), counted(one.len)))
+        .map(|one| resolver::Entry { at: one.at, len: one.len })
         .collect()
+}
+
+/// A reply with nothing in it: what every kind but the one being
+/// made leaves where it was. The records declare no default.
+const fn blank_reply() -> resolver::Reply {
+    resolver::Reply {
+        continuation: 0,
+        kind: reply::PASTED,
+        text: String::new(),
+        place: resolver::Place { cursor: 0, top: 0 },
+        entries: Vec::new(),
+        filled: filled::ABSENT,
+        error: 0,
+    }
 }
 
 /// A view held open and its `matches` found, as the opener holds
@@ -118,10 +140,10 @@ fn onward(stay: &Stay, read: usize) {
 
 /// What a refusal of the Module's says: the two causes it does not
 /// tell apart are the engine's to word.
-const fn refused(error: Error) -> Filled {
+const fn refused(error: Error) -> u64 {
     match error {
-        Error::NoSpace => Filled::Spent,
-        _ => Filled::Refused,
+        Error::NoSpace => filled::SPENT,
+        _ => filled::REFUSED,
     }
 }
 
@@ -134,7 +156,7 @@ const EDIT: &str = "edit";
 /// belongs to somebody else and ends the editor.
 const fn asked(effect: &Effect) -> Option<&'static str> {
     match effect {
-        Effect::Edit(_) | Effect::Edits(_) => Some(EDIT),
+        Effect::Edits(_) => Some(EDIT),
         Effect::Undo => Some("undo"),
         Effect::Redo => Some("redo"),
         Effect::Save(_) | Effect::SaveAs(..) | Effect::SaveAll => Some("write"),
@@ -186,6 +208,22 @@ pub struct Editor {
     closing: Cell<Option<(Rd, Option<Rd>)>>,
     /// Captured startup lines, taken once at the first Vim frame.
     init: RefCell<Option<String>>,
+    /// Where the Client started, under the root: what the announce
+    /// says a new file's name by, and nothing else.
+    dir: RefCell<String>,
+    /// The mirror's own root, where a leading `/` starts, and where
+    /// the editor stands, which `:cd` moves: both `None` until the
+    /// first `start` has found them.
+    root: Cell<Option<Rd>>,
+    cwd: Cell<Option<Rd>>,
+    /// Where a line of the shell's typed on the `:` line stands: the
+    /// mirror of the directory the Client started in, which `:cd`
+    /// moves and `:pwd` says.
+    shell: RefCell<Shell>,
+    /// `/self/dev/clipboard`, when the Client serves one.
+    clip: Cell<Option<Rd>>,
+    /// What a stay left for the next one to say in its opening row.
+    greeting: RefCell<Option<String>>,
 }
 
 /// A source-backed draft, in the Client's listing order.
@@ -202,6 +240,13 @@ struct Listed {
 /// answered, and dropped at `stop`.
 struct Stay {
     surface: Surface,
+    /// The draft this stay is over, READ and WRITE: every read and
+    /// write of the Buffer goes through it, and its close is the
+    /// stay's end.
+    h: Handle,
+    /// The file a Buffer over nothing was opened for while there is
+    /// no such file: what its first write makes.
+    name: Option<String>,
     /// The search Module's own `open`, where this Client serves one:
     /// what a list is opened through. `None` leaves every search
     /// saying so.
@@ -341,7 +386,7 @@ impl Module for Editor {
     /// local it became, never `opened`'s to see.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
         let closing = self.closing.take();
-        let greeting = self.vim.borrow_mut().greeting.take();
+        let greeting = self.greeting.borrow_mut().take();
         let arrive = self.vim.borrow_mut().arrive.take();
         if let Some((draft, source)) = closing {
             let list = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
@@ -361,12 +406,14 @@ impl Module for Editor {
         let buffer = drafted(ctx, source)?;
         let rights = Rights::READ.union(Rights::WRITE);
         let h = ctx.open(buffer, rights)?;
-        let fresh = self.vim.borrow().root.is_none();
+        let fresh = self.root.get().is_none();
         let kept = fresh.then(|| kept_of(ctx, region)).transpose()?;
         let rows = count(region.size(ctx)?.rows);
         let bytes = ops::whole(ctx, h)?;
         let stay = Stay {
             surface,
+            h,
+            name: (!ask.name.is_empty()).then(|| ask.name.clone()),
             search: cell::resolve(ctx, ROOT, "/self/search/open").ok(),
             sought: RefCell::new(None),
             reads: Cell::new(0),
@@ -379,24 +426,24 @@ impl Module for Editor {
         *self.stay.borrow_mut() = Some(Rc::new(stay));
         let mut vim = self.vim.borrow_mut();
         vim.arrived(source);
-        vim.greeting = greeting;
         vim.buffer = Some(buffer);
-        vim.h = Some(h);
         vim.source = source;
-        vim.name = (!ask.name.is_empty()).then(|| ask.name.clone());
-        if let Some(kept) = kept {
-            vim.dir = kept.dir;
-            vim.root = Some(kept.root);
-            vim.cwd = Some(kept.cwd);
-            vim.shell = kept.shell;
-            vim.clip = kept.clip;
-        }
         vim.rows = rows;
         vim.opened(&bytes, ask.line, arrive);
+        if let Some(greeting) = greeting {
+            vim.message = greeting;
+        }
         if !ask.locator.is_empty() {
             vim.goto(&ask.locator);
         }
         drop(vim);
+        if let Some(kept) = kept {
+            self.dir.replace(kept.dir);
+            self.root.set(Some(kept.root));
+            self.cwd.set(Some(kept.cwd));
+            self.shell.replace(kept.shell);
+            self.clip.set(kept.clip);
+        }
         self.announce(ctx)?;
         if self.spent.get() >= BUDGET {
             self.says(&format!("@: stopped after {BUDGET} keys"));
@@ -712,7 +759,7 @@ impl Editor {
     /// `repeat` is whether these are the keys `.` answered, which run
     /// as a repeat's: the queue carries that as far as `Vim::fed`, so
     /// a `.` inside `@a` ends where its own keys end.
-    fn replayed(&self, mut keys: Vec<Key>, repeat: bool) {
+    fn replayed(&self, mut keys: Vec<u64>, repeat: bool) {
         let capacity = (BUDGET + 1).saturating_sub(self.spent.get());
         keys.truncate(capacity);
         let mut spare = capacity - keys.len();
@@ -732,7 +779,7 @@ impl Editor {
             keep
         });
         for key in keys.into_iter().rev() {
-            queue.push_front(keyed(key, origin, &maker.press));
+            queue.push_front(fed(key, origin, &maker.press));
         }
     }
 
@@ -786,9 +833,15 @@ impl Editor {
     /// refusal runs, as at any other failed key.
     fn balked(&self, ctx: &dyn Calls, what: &str) -> Result<(), Error> {
         self.reload(ctx, true)?;
-        self.fails(&format!("E: {what} refused: no space"));
+        let answer = resolver::Reply {
+            kind: reply::REFUSED,
+            text: String::from(what),
+            error: Error::NoSpace as u64,
+            ..blank_reply()
+        };
+        let effect = self.vim.borrow_mut().reply(&answer);
+        self.act(ctx, effect)?;
         self.queue.borrow_mut().clear();
-        self.vim.borrow_mut().held = Held::default();
         Ok(())
     }
 
@@ -809,7 +862,7 @@ impl Editor {
 
     /// The Buffer `start` opened; `Closed` before it has.
     fn handle(&self) -> Result<Handle, Error> {
-        self.vim.borrow().h.ok_or(Error::Closed)
+        Ok(self.stay()?.h)
     }
 
     /// `message` until the next key.
@@ -828,11 +881,10 @@ impl Editor {
         let asked = asked(&effect);
         self.stale(ctx, asked, |ctx| match effect {
             Effect::Nothing | Effect::Moved => Ok(()),
-            Effect::Fed(keys, repeat) => {
-                self.replayed(keys, repeat);
+            Effect::Fed(fed) => {
+                self.replayed(fed.keys, fed.repeat);
                 Ok(())
             }
-            Effect::Edit(edit) => self.send(ctx, edit),
             Effect::Edits(edits) => self.send_each(ctx, edits),
             Effect::Undo => self.walk(ctx, true),
             Effect::Redo => self.walk(ctx, false),
@@ -840,17 +892,18 @@ impl Editor {
             Effect::SaveAs(name, bang) => {
                 self.save_as(ctx, &name, bang).map(|_| ())
             }
-            Effect::Clipboard => self.pasting(ctx),
+            Effect::Clipboard(continuation) => self.pasting(ctx, continuation),
             Effect::Search(want) => self.searching(ctx, want),
             Effect::Quit(how) => self.quit(ctx, how),
             Effect::Switch(to) => self.switched(ctx, to),
             Effect::Close(name, bang) => self.closed(ctx, &name, bang),
             Effect::List => self.list(ctx),
             Effect::SaveAll => self.save_all(ctx).map(drop),
-            Effect::Explore(name, bang) => {
-                self.explore(ctx, name.as_deref(), bang)
+            Effect::Explore(open) => {
+                let name = (!open.path.is_empty()).then_some(open.path);
+                self.explore(ctx, name.as_deref(), open.bang)
             }
-            Effect::Open(name, bang) => self.edited(ctx, &name, bang),
+            Effect::Open(open) => self.edited(ctx, &open.path, open.bang),
             Effect::Reload(bang) => self.reload(ctx, bang),
             Effect::Line(ex) => self.ran(ctx, &ex),
             Effect::Cli(bang) => self.cli(ctx, bang),
@@ -858,7 +911,7 @@ impl Editor {
             // The empty name, as `edited` uses: the Client's table
             // answers by the rd's shape, there being no second Vim to
             // ask for by name; see `arrive` for the rest.
-            Effect::Goto(rd, pos, land) => self.arriving(ctx, rd, pos, land),
+            Effect::Goto(goto) => self.arriving(ctx, goto),
         })
     }
 
@@ -890,16 +943,16 @@ impl Editor {
         }
         stay.reads.set(made + 1);
         let Some(open) = stay.search else {
-            return Ok(self.answered(want.epoch, &[], Filled::Absent));
+            return Ok(self.answered(want.epoch, Vec::new(), filled::ABSENT));
         };
         let Err(error) = self.viewing(ctx, &stay, open, want) else {
             return self.reading(ctx, &stay, want.epoch);
         };
         let filled = refused(error);
-        let effect = self.answered(want.epoch, &[], filled);
+        let effect = self.answered(want.epoch, Vec::new(), filled);
         // `open`'s own two causes are the engine's to word; anything
         // else goes up, the wait already ended.
-        let its_own = filled == Filled::Spent || error == Error::Invalid;
+        let its_own = filled == filled::SPENT || error == Error::Invalid;
         if its_own { Ok(effect) } else { Err(error) }
     }
 
@@ -951,28 +1004,28 @@ impl Editor {
         };
         let len = u32::try_from(READ * ENTRY).unwrap_or(u32::MAX);
         let (found, filled) = match ops::read(ctx, h, at, len) {
-            Ok(bytes) if bytes.is_empty() => (Vec::new(), Filled::Whole),
+            Ok(bytes) if bytes.is_empty() => (Vec::new(), filled::WHOLE),
             Ok(bytes) => {
                 onward(stay, bytes.len());
-                (listed(&bytes), Filled::More)
+                (listed(&bytes), filled::MORE)
             }
-            Err(Error::Busy) => (Vec::new(), Filled::More),
+            Err(Error::Busy) => (Vec::new(), filled::MORE),
             Err(error @ (Error::NoSpace | Error::Invalid)) => {
                 let kept = ops::read(ctx, h, at, len).unwrap_or_default();
                 onward(stay, kept.len());
                 (listed(&kept), refused(error))
             }
             Err(error) => {
-                self.answered(epoch, &[], Filled::Refused);
+                self.answered(epoch, Vec::new(), filled::REFUSED);
                 return Err(error);
             }
         };
         // The row's three numbers, while there is more to come. Both
         // reads are of a local rd and crank nothing.
-        if filled == Filled::More {
+        if filled == filled::MORE {
             self.told(ctx, progress)?;
         }
-        Ok(self.answered(epoch, &found, filled))
+        Ok(self.answered(epoch, found, filled))
     }
 
     /// How far the fill has gone, for the row: the two numbers the
@@ -988,14 +1041,22 @@ impl Editor {
         Ok(())
     }
 
-    /// What `matched` made of one read.
+    /// What the engine made of one read: a `MATCHED` reply of the
+    /// continuation this list was asked for with.
     fn answered(
         &self,
-        epoch: u64,
-        found: &[(usize, usize)],
-        filled: Filled,
+        continuation: u64,
+        entries: Vec<resolver::Entry>,
+        filled: u64,
     ) -> Effect {
-        self.vim.borrow_mut().matched(epoch, found, filled)
+        let answer = resolver::Reply {
+            continuation,
+            kind: reply::MATCHED,
+            entries,
+            filled,
+            ..blank_reply()
+        };
+        self.vim.borrow_mut().reply(&answer)
     }
 
     /// What a frame wants once its keys have run: the view of an
@@ -1036,12 +1097,10 @@ impl Editor {
     fn arriving(
         &self,
         ctx: &dyn Calls,
-        rd: Rd,
-        pos: Pos,
-        land: Land,
+        goto: crate::Goto,
     ) -> Result<(), Error> {
-        if self.shown(ctx, rd, "", false, "", "")? {
-            self.vim.borrow_mut().arrive = Some((rd, pos, land));
+        if self.shown(ctx, goto.over, "", false, "", "")? {
+            self.vim.borrow_mut().arrive = Some(goto);
         }
         Ok(())
     }
@@ -1106,10 +1165,9 @@ impl Editor {
         ctx: &dyn Calls,
         relative: bool,
     ) -> Result<Option<String>, Error> {
-        let (source, root, cwd) = {
-            let vim = self.vim.borrow();
-            (vim.source, vim.root.unwrap_or(ROOT), vim.cwd.unwrap_or(ROOT))
-        };
+        let source = self.vim.borrow().source;
+        let (root, cwd) =
+            (self.root.get().unwrap_or(ROOT), self.cwd.get().unwrap_or(ROOT));
         let Some(source) = source else { return Ok(None) };
         let root = ops::where_is(ctx, root)?;
         let under = |rd| -> Result<String, Error> {
@@ -1199,7 +1257,7 @@ impl Editor {
         if !join {
             self.sync(ctx)?;
         }
-        let edit = text::Edit { at: at as u64, len: len as u64, text };
+        let edit = text::Edit { at, len, text };
         text::Call(&mut ctx, self.handle()?).replace(edit)
     }
 
@@ -1237,11 +1295,9 @@ impl Editor {
     /// the first frame, as nvim does; the directory it is to go in is
     /// not there either when it says `[New DIRECTORY]`.
     fn announce(&self, ctx: &dyn Calls) -> Result<(), Error> {
-        let (name, dir) = {
-            let vim = self.vim.borrow();
-            (vim.name.clone(), vim.dir.clone())
-        };
+        let name = self.stay()?.name.clone();
         let Some(name) = name else { return Ok(()) };
+        let dir = self.dir.borrow().clone();
         // The ask's name is under the mirror's own root, wherever the
         // editor stands, so it is read from there.
         let at = rooted(name.rsplit_once('/').map_or("", |(at, _)| at));
@@ -1256,10 +1312,8 @@ impl Editor {
     /// the file it was opened for, and has no file name without one.
     /// False when it said why it did not write.
     fn save(&self, mut ctx: &dyn Calls, bang: bool) -> Result<bool, Error> {
-        let (source, name) = {
-            let vim = self.vim.borrow();
-            (vim.source, vim.name.clone())
-        };
+        let source = self.vim.borrow().source;
+        let name = self.stay()?.name.clone();
         if source.is_some() {
             self.fixing(ctx)?;
             publish::Call(&mut ctx, self.handle()?).save()?;
@@ -1337,18 +1391,27 @@ impl Editor {
         edit.map_or(Ok(()), |edit| self.send(ctx, edit))
     }
 
-    /// A put waiting for the clipboard: what it holds, then the put
-    /// itself, which is an effect like any other.
-    fn pasting(&self, ctx: &dyn Calls) -> Result<(), Error> {
-        let text = self.clipboard(ctx)?;
-        let effect = self.vim.borrow_mut().pasted(text);
+    /// A put waiting for the clipboard: what it holds, answered to
+    /// the continuation the put asked with, and the put itself, which
+    /// is an effect like any other. No clipboard at all is a refusal,
+    /// which the engine words.
+    fn pasting(&self, ctx: &dyn Calls, continuation: u64) -> Result<(), Error> {
+        let held = self.clipboard(ctx)?;
+        let kind = if held.is_some() { reply::PASTED } else { reply::REFUSED };
+        let answer = resolver::Reply {
+            continuation,
+            kind,
+            text: held.unwrap_or_default(),
+            ..blank_reply()
+        };
+        let effect = self.vim.borrow_mut().reply(&answer);
         self.act(ctx, effect)
     }
 
     /// What the clipboard holds, through its rd; `None` when the
     /// Client serves no cell or the machine has no tool.
     fn clipboard(&self, ctx: &dyn Calls) -> Result<Option<String>, Error> {
-        let Some(rd) = self.vim.borrow().clip else { return Ok(None) };
+        let Some(rd) = self.clip.get() else { return Ok(None) };
         match ops::bytes(ctx, rd) {
             Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
             Err(Error::Unsupported | Error::Busy) => Ok(None),
@@ -1359,10 +1422,7 @@ impl Editor {
     /// What a `"+` yank left for the clipboard, written to its rd; no
     /// cell or no tool is a message.
     fn write_clipped(&self, ctx: &dyn Calls) -> Result<(), Error> {
-        let (text, clip) = {
-            let mut vim = self.vim.borrow_mut();
-            (vim.clipped(), vim.clip)
-        };
+        let (text, clip) = (self.vim.borrow_mut().clipped(), self.clip.get());
         let Some(text) = text else { return Ok(()) };
         let unsupported = Err(Error::Unsupported);
         let written =
@@ -1424,10 +1484,8 @@ impl Editor {
     /// List only drafts that expose an actual source identity: one
     /// whose `source` is not there ([`missing`]) is passed over.
     fn listed(&self, ctx: &dyn Calls) -> Result<Vec<Listed>, Error> {
-        let (root, dir) = {
-            let vim = self.vim.borrow();
-            (vim.root.unwrap_or(ROOT), vim.dir.clone())
-        };
+        let (root, dir) =
+            (self.root.get().unwrap_or(ROOT), self.dir.borrow().clone());
         let root = format!("{}/", ops::where_is(ctx, root)?);
         let list = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
         let mut listed = Vec::new();
@@ -1514,7 +1572,7 @@ impl Editor {
         );
         self.fails(&message);
         if follow && self.shown(ctx, other.source, "", true, "", "")? {
-            self.vim.borrow_mut().greets(message);
+            *self.greeting.borrow_mut() = Some(message);
         }
         Ok(true)
     }
@@ -1621,10 +1679,8 @@ impl Editor {
         if draft != current {
             return Self::wrote(ctx, draft).map(|()| true);
         }
-        let unnamed = {
-            let vim = self.vim.borrow();
-            vim.source.is_none() && vim.name.is_none()
-        };
+        let unnamed =
+            self.vim.borrow().source.is_none() && self.stay()?.name.is_none();
         if unnamed {
             self.fails(&format!(
                 "E141: No file name for buffer {}",
@@ -1807,8 +1863,7 @@ impl Editor {
         }
         let base = ops::where_is(ctx, from)?;
         let path = reovim_sdk::path::under(&base, rest);
-        let root = self.vim.borrow().root.unwrap_or(ROOT);
-        let root = ops::where_is(ctx, root)?;
+        let root = ops::where_is(ctx, self.root.get().unwrap_or(ROOT))?;
         let prefix = format!("{}/", root.trim_start_matches('/'));
         Ok(path
             .strip_prefix(&prefix)
@@ -1836,7 +1891,7 @@ impl Editor {
     /// line's own lines stand, the Shell's cwd, so `:cd` moves what
     /// `:cli` opens over as it moves what `:ls` lists.
     fn cli(&self, ctx: &dyn Calls, bang: bool) -> Result<(), Error> {
-        let cwd = self.vim.borrow().shell.cwd();
+        let cwd = self.shell.borrow().cwd();
         self.shown(ctx, cwd, "cli", bang, "", "").map(drop)
     }
 
@@ -1905,7 +1960,7 @@ impl Editor {
         let Some(name) = self.expanded(ctx, name)? else {
             return self.shelled(ctx, &ex.line);
         };
-        let mut shell = self.vim.borrow().shell.clone();
+        let mut shell = self.shell.borrow().clone();
         ranged(&mut shell, ex.from, ex.to, bang, ex.ranged);
         // The rest of the line fills this name's own positionals: a
         // token each at blanks and the last taking the rest, by Vim's
@@ -1942,11 +1997,11 @@ impl Editor {
     fn shelled(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
         // The borrow is gone before the line runs: a Driver of this
         // Client's own may come back in here.
-        let mut shell = core::mem::take(&mut self.vim.borrow_mut().shell);
+        let mut shell = core::mem::take(&mut *self.shell.borrow_mut());
         let was = shell.cwd();
         let outcome = sh::run(ctx, &mut shell, line);
         let moved = shell.cwd();
-        self.vim.borrow_mut().shell = shell;
+        *self.shell.borrow_mut() = shell;
         match outcome {
             Ok(ran) => {
                 self.says(printed(ctx, ran).lines().next().unwrap_or_default());
@@ -1963,13 +2018,13 @@ impl Editor {
     /// completes there. A cwd outside the mirror leaves it where it
     /// was, no file of the editor's being under one.
     fn rebased(&self, ctx: &dyn Calls, cwd: Rd) -> Result<(), Error> {
-        let root = self.vim.borrow().root.unwrap_or(ROOT);
+        let root = self.root.get().unwrap_or(ROOT);
         let mut at = cwd;
         while at != root && at != ROOT {
             at = ops::parent(ctx, at)?;
         }
         if at == root {
-            self.vim.borrow_mut().cwd = Some(cwd);
+            self.cwd.set(Some(cwd));
         }
         Ok(())
     }
@@ -1985,7 +2040,7 @@ impl Editor {
     /// all; a line no name of Vim's begins is the shell's, which
     /// completes it from where the Shell stands.
     fn completing(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
-        let shell = self.vim.borrow().shell.clone();
+        let shell = self.shell.borrow().clone();
         let Some((first, rest)) = line.split_once(' ') else {
             let found = sh::complete(ctx, &shell, line);
             let alone = match &found.candidates[..] {
@@ -2032,10 +2087,8 @@ impl Editor {
     /// Where `:explore` with no name looks: the directory the Buffer's
     /// source is in, or, over nothing, the one the editor stands in.
     fn here(&self, ctx: &dyn Calls) -> Result<Rd, Error> {
-        let (source, cwd) = {
-            let vim = self.vim.borrow();
-            (vim.source, vim.cwd.unwrap_or(ROOT))
-        };
+        let source = self.vim.borrow().source;
+        let cwd = self.cwd.get().unwrap_or(ROOT);
         source.map_or(Ok(cwd), |source| ops::parent(ctx, source))
     }
 
@@ -2053,11 +2106,10 @@ impl Editor {
     /// mirror's own root for a leading `/`, where `:w /NAME` writes
     /// and not the tree's, else where the editor stands.
     fn from<'a>(&self, path: &'a str) -> (Rd, &'a str) {
-        let vim = self.vim.borrow();
-        let (from, rest) =
-            path.strip_prefix('/').map_or((vim.cwd, path), |rest| {
-                (vim.root, rest.trim_start_matches('/'))
-            });
+        let (from, rest) = path.strip_prefix('/').map_or_else(
+            || (self.cwd.get(), path),
+            |rest| (self.root.get(), rest.trim_start_matches('/')),
+        );
         (from.unwrap_or(ROOT), rest)
     }
 
@@ -2459,8 +2511,8 @@ mod macro_queue_tests {
         editor.vim.borrow_mut().key(tapped(Key::Esc, TYPED));
         editor.spent.set(BUDGET - 3);
         editor.queue.borrow_mut().push_back(tapped(Key::Char('x'), TYPED));
-        editor.replayed(alloc::vec![Key::Char('@'); 100], false);
-        editor.replayed(alloc::vec![Key::Char('a'); 100], false);
+        editor.replayed(alloc::vec![Key::Char('@').code(); 100], false);
+        editor.replayed(alloc::vec![Key::Char('a').code(); 100], false);
         let queue = editor.queue.borrow();
         assert_eq!(
             queue.iter().filter(|q| q.origin == origin::FED).count(),
@@ -2523,7 +2575,7 @@ mod macro_queue_tests {
         queue.push_back(released.clone());
         queue.push_back(tapped(Key::Char('l'), origin::FED));
         drop(queue);
-        editor.replayed(alloc::vec![Key::Char('j')], false);
+        editor.replayed(alloc::vec![Key::Char('j').code()], false);
         let queue = editor.queue.borrow();
         assert_eq!(
             queue.iter().skip(1).collect::<Vec<_>>(),
@@ -2780,7 +2832,7 @@ mod macro_queue_tests {
         let (_rig, editor, host, _tui) = scene("macro-clipboard-failure");
         let ctx = host.own();
         let clipboard = Rd(u64::MAX);
-        editor.vim.borrow_mut().clip = Some(clipboard);
+        editor.clip.set(Some(clipboard));
         let refused = Refused {
             calls: &ctx,
             info: None,
@@ -2790,7 +2842,8 @@ mod macro_queue_tests {
         // The press its keys carry: the input the engine is running,
         // which here is one key a person typed and nothing else.
         editor.vim.borrow_mut().key(tapped(Key::Esc, TYPED));
-        editor.replayed("\"+yyx".chars().map(Key::Char).collect(), false);
+        let run = "\"+yyx".chars().map(|c| Key::Char(c).code()).collect();
+        editor.replayed(run, false);
         for _ in 0..3 {
             assert_eq!(editor.step(&refused), Ok(true));
         }
@@ -2807,11 +2860,11 @@ mod macro_queue_tests {
         {
             let mut vim = editor.vim.borrow_mut();
             vim.bind("dx", "nohlsearch");
-            // A clipboard write waiting on an rd the tree does not
-            // hold: the step after this one fails, whatever its key.
-            vim.clip = Some(Rd(u64::MAX));
             vim.clipboard = Some(String::from("held"));
         }
+        // A clipboard write waiting on an rd the tree does not hold:
+        // the step after this one fails, whatever its key.
+        editor.clip.set(Some(Rd(u64::MAX)));
         editor.queue.borrow_mut().push_back(tapped(Key::Char('d'), TYPED));
         assert!(editor.step(&ctx).is_err(), "the clipboard write failed");
 
@@ -2826,7 +2879,7 @@ mod macro_queue_tests {
         let (_rig, editor, host, mut tui) =
             scene(&format!("buffers-lookup-{error:?}"));
         let ctx = host.own();
-        let cwd = editor.vim.borrow().cwd.unwrap();
+        let cwd = editor.cwd.get().unwrap();
         let refused = Refused {
             calls: &ctx,
             info: None,

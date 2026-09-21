@@ -11,7 +11,21 @@ use core::fmt::Write as _;
 
 use reovim_search_api::LINE;
 
-use crate::{Effect, Motion, Pending, Vim};
+use reovim_client_api::filled;
+
+use crate::{Effect, Motion, Pending, Reply, Vim, Want, counted};
+
+/// How far a reply says the fill got, as the list holds it: a number
+/// the reply does not declare fills nothing.
+const fn how(filled: u64) -> Filled {
+    match filled {
+        filled::MORE => Filled::More,
+        filled::WHOLE => Filled::Whole,
+        filled::SPENT => Filled::Spent,
+        filled::REFUSED => Filled::Refused,
+        _ => Filled::Absent,
+    }
+}
 
 /// The most spans a `View` carries (clients/core/api's declaration).
 pub const SPANS: usize = 4096;
@@ -39,21 +53,6 @@ pub struct Search {
     pub forward: bool,
     pub stale: bool,
     pub options: Options,
-}
-
-/// What Vim asks the search Module for: the key of a list, and where
-/// that list was begun.
-///
-/// `from` is the list's own, not the cursor's: a list begun at one
-/// place and read on from there stays one list, so the run the
-/// lookup reads an entry out of is the run it was filled into.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Want {
-    pub pattern: String,
-    pub ignorecase: bool,
-    pub smartcase: bool,
-    pub from: u64,
-    pub epoch: u64,
 }
 
 /// How far the list goes, as the last read of `matches` left it.
@@ -481,20 +480,21 @@ impl Vim {
     /// the entries join their runs, and the motion that waited runs
     /// again — whatever `filled` says, since the door reads it and
     /// answers again or lets the word be said.
-    pub fn matched(
-        &mut self,
-        epoch: u64,
-        entries: &[(usize, usize)],
-        filled: Filled,
-    ) -> Effect {
-        if epoch != self.found.epoch {
+    pub(crate) fn matched(&mut self, reply: &Reply) -> Effect {
+        if reply.continuation != self.found.epoch {
             return Effect::Nothing;
         }
+        let entries: Vec<(usize, usize)> = reply
+            .entries
+            .iter()
+            .map(|entry| (counted(entry.at), counted(entry.len)))
+            .collect();
         let start = self.found.start(&self.text);
         let after = entries.iter().filter(|entry| entry.0 >= start);
         self.found.after.extend(after.copied());
         let before = entries.iter().filter(|entry| entry.0 < start);
         self.found.before.extend(before.copied());
+        let filled = how(reply.filled);
         self.found.filled = filled;
         if filled == Filled::Whole {
             let passed = self.skipping();
@@ -767,7 +767,7 @@ impl Vim {
             self.error("E446: No file name under cursor");
             return Effect::Nothing;
         };
-        Effect::Open(name, false)
+        Effect::Open(crate::asked(name, false))
     }
 
     /// The run of file-name chars at or after the cursor, on its line

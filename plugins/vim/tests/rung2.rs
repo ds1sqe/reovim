@@ -20,10 +20,8 @@ fn register(text: &str, kind: Kind) -> Register {
 /// business (tests/ex.rs), and this is the work.
 fn subst(vim: &mut Vim, from: usize, to: usize, spec: &str) -> Vec<Edit> {
     let mut all = Vec::new();
-    match vim.substitute((from, to), spec) {
-        Effect::Edit(edit) => all.push(edit),
-        Effect::Edits(more) => all.extend(more),
-        _ => {}
+    if let Effect::Edits(more) = vim.substitute((from, to), spec) {
+        all.extend(more);
     }
     all
 }

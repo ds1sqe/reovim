@@ -5,7 +5,7 @@
 //! Arbitrary constructed Unicode Ctrl values are outside this spelling,
 //! not additional control characters promised to round-trip.
 
-use crate::{Edit, Effect, Key, Kind, Register, Vim};
+use crate::{Effect, Fed, Key, Kind, Register, Vim};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -129,7 +129,8 @@ impl Vim {
         };
         let keys = decode(head.chars().chain(text.chars()).chain(tail.chars()));
         let len = keys.len().saturating_mul(count).min(BUDGET + 1);
-        Effect::Fed(keys.iter().copied().cycle().take(len).collect(), false)
+        let keys = keys.iter().copied().cycle().take(len).collect::<Vec<_>>();
+        Effect::Fed(Fed { keys: crate::coded(&keys), repeat: false })
     }
 
     pub(crate) const fn ring(&mut self) {
@@ -160,11 +161,7 @@ impl Vim {
 
     /// Edits of a fed or global run share its first revision.
     pub(crate) fn continued(&mut self, effect: &mut Effect) {
-        let edits: &mut [Edit] = match effect {
-            Effect::Edit(edit) => core::slice::from_mut(edit),
-            Effect::Edits(edits) => edits,
-            _ => return,
-        };
+        let Effect::Edits(edits) = effect else { return };
         if !(self.macros.fed || self.global.busy) {
             return;
         }
@@ -181,7 +178,12 @@ mod tests {
 
     use reovim_client_api::origin::{FED, TYPED};
 
-    use crate::{Effect, Key, Vim, tapped};
+    use crate::{Effect, Fed, Key, Vim, coded, tapped};
+
+    /// The keys a run answers with, as the record spells them.
+    fn replayed(keys: &[Key]) -> Effect {
+        Effect::Fed(Fed { keys: coded(keys), repeat: false })
+    }
 
     #[test]
     fn decoding_stops_at_the_key_budget_without_reading_the_tail() {
@@ -209,41 +211,35 @@ mod tests {
         );
         assert_eq!(
             vim.macro_run('a', 2),
-            Effect::Fed(
-                alloc::vec![
-                    Key::Char('x'),
-                    Key::Ctrl('j'),
-                    Key::Char('x'),
-                    Key::Ctrl('j'),
-                ],
-                false
-            )
+            replayed(&[
+                Key::Char('x'),
+                Key::Ctrl('j'),
+                Key::Char('x'),
+                Key::Ctrl('j'),
+            ])
         );
         vim.macros.last_ex = String::from("write");
         assert_eq!(
             vim.macro_run(':', 1),
-            Effect::Fed(
-                alloc::vec![
-                    Key::Char(':'),
-                    Key::Char('w'),
-                    Key::Char('r'),
-                    Key::Char('i'),
-                    Key::Char('t'),
-                    Key::Char('e'),
-                    Key::Enter,
-                ],
-                false
-            )
+            replayed(&[
+                Key::Char(':'),
+                Key::Char('w'),
+                Key::Char('r'),
+                Key::Char('i'),
+                Key::Char('t'),
+                Key::Char('e'),
+                Key::Enter,
+            ])
         );
         vim.registers.get_mut(&'a').unwrap().text = "x".repeat(BUDGET + 2);
         assert_eq!(
             vim.macro_run('a', 2),
-            Effect::Fed(alloc::vec![Key::Char('x'); BUDGET + 1], false)
+            replayed(&alloc::vec![Key::Char('x'); BUDGET + 1])
         );
         vim.macros.last_ex = "x".repeat(BUDGET + 2);
         let mut expected = alloc::vec![Key::Char('x'); BUDGET + 1];
         expected[0] = Key::Char(':');
-        assert_eq!(vim.macro_run(':', 2), Effect::Fed(expected, false));
+        assert_eq!(vim.macro_run(':', 2), replayed(&expected));
     }
 
     #[test]

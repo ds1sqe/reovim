@@ -6,7 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::operator::{Extent, Operator, Span, Took};
-use crate::{Edit, Effect, Key, Kind, Mode, Motion, Put, Register, Vim};
+use crate::{Effect, Key, Kind, Mode, Motion, Put, Register, Vim, edited};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Visual {
@@ -355,7 +355,7 @@ impl Vim {
             let (a, b, text) = self.block_shift_at(from, right, 8 * times);
             self.text.replace_range(a..b, &text);
             let join = !edits.is_empty();
-            edits.push(Edit { at: a, len: b - a, text, join });
+            edits.push(edited(a, b - a, text, join));
         }
         let start = self.line_at(self.position_of(ranges[0].0).0).unwrap_or(0);
         self.cursor = self.at_column(start, left);
@@ -443,12 +443,8 @@ impl Vim {
             let mut text = with(&self.text[from..to]);
             self.owed_eol(from, to - from, &mut text);
             self.text.replace_range(from..to, &text);
-            edits.push(Edit {
-                at: from,
-                len: to - from,
-                text,
-                join: !edits.is_empty(),
-            });
+            let join = !edits.is_empty();
+            edits.push(edited(from, to - from, text, join));
         }
         self.joining = true;
         Effect::Edits(edits)
@@ -495,8 +491,10 @@ impl Vim {
     /// comes, on lines of its own when it is linewise.
     fn visual_paste(&mut self, kind: Visual) -> Effect {
         let Some(register) = self.fetch() else {
-            self.put = Some(Put { after: true, count: 1, over: Some(kind) });
-            return Effect::Clipboard;
+            let continuation = self.continuing();
+            let over = Some(kind);
+            self.put = Some(Put { after: true, count: 1, over, continuation });
+            return Effect::Clipboard(continuation);
         };
         self.paste_over(kind, register)
     }
@@ -626,7 +624,7 @@ impl Vim {
         let mut edits = Vec::new();
         for at in columns {
             self.text.insert_str(at, &typed);
-            edits.push(Edit { at, len: 0, text: typed.clone(), join: true });
+            edits.push(edited(at, 0, typed.clone(), true));
         }
         if edits.is_empty() { Effect::Moved } else { Effect::Edits(edits) }
     }

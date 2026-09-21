@@ -9,7 +9,8 @@ use reovim_kernel_interface::Rd;
 
 use crate::jumps::Jump;
 use crate::{
-    Edit, Effect, Key, Kind, Land, Mode, Pos, Put, Register, Vim, Visual, moved,
+    Effect, Key, Kind, Mode, Pos, Put, Register, Vim, Visual, edited, going,
+    land, moved,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -495,28 +496,28 @@ impl Vim {
             self.error("E20: Mark not set");
             return Effect::Nothing;
         };
-        let land = if exact { Land::Exact } else { Land::Line };
+        let land = if exact { land::EXACT } else { land::LINE };
         let Some(rd) = elsewhere else { return self.jump_to(pos, land) };
         if self.pending.running {
             return Effect::Nothing;
         }
-        Effect::Goto(rd, pos, land)
+        Effect::Goto(going(rd, pos, land))
     }
 
-    /// `pos`, landed as `land` says (see that type).
-    pub(crate) fn jump_to(&mut self, pos: Pos, land: Land) -> Effect {
-        if land != Land::Walked {
+    /// `pos`, landed as `land` says (see [`crate::Effect::Goto`]).
+    pub(crate) fn jump_to(&mut self, pos: Pos, land: u64) -> Effect {
+        if land != land::WALKED {
             self.set_previous();
         }
         let at = self.byte_at(pos);
-        let to = if land == Land::Line { self.first_non_blank(at) } else { at };
+        let to = if land == land::LINE { self.first_non_blank(at) } else { at };
         self.go_clamped(to)
     }
 
     /// `<C-o>` (`back`) and `<Tab>`, `n` at a time: `Jumps::walk` does
     /// the walking; `None` moves nothing. An entry of another source
-    /// asks the Client to arrive there (`Effect::Goto`, `Land::
-    /// Walked`); one of this source lands here (`landed`). `'` is set
+    /// asks the Client to arrive there (`Effect::Goto`, `WALKED`);
+    /// one of this source lands here (`landed`). `'` is set
     /// to where the walk stood if it began at the newest end.
     pub(crate) fn jumped(&mut self, back: bool, n: usize) -> Effect {
         let here = Jump { source: self.source, pos: self.pos_at(self.cursor) };
@@ -531,7 +532,7 @@ impl Vim {
         let effect =
             jump.source.filter(|_| jump.source != self.source).map_or_else(
                 || self.landed(jump.pos),
-                |source| Effect::Goto(source, jump.pos, Land::Walked),
+                |source| Effect::Goto(going(source, jump.pos, land::WALKED)),
             );
         self.settle(&effect);
         effect
@@ -544,7 +545,7 @@ impl Vim {
             self.error("E19: Mark has invalid line number");
             return Effect::Nothing;
         }
-        self.jump_to(pos, Land::Walked)
+        self.jump_to(pos, land::WALKED)
     }
 
     /// The span `motion` covers from the cursor, `n` times, for an
@@ -829,7 +830,7 @@ impl Vim {
             let text = String::from("\n");
             self.text.clone_from(&text);
             self.joining = false;
-            Effect::Edit(Edit { at: 0, len, text, join: false })
+            Effect::Edits(alloc::vec![edited(0, len, text, false)])
         } else {
             self.remove(at, len)
         };
@@ -1016,8 +1017,9 @@ impl Vim {
     /// register goes on lines of its own.
     pub(crate) fn paste(&mut self, after: bool, n: usize) -> Effect {
         let Some(register) = self.fetch() else {
-            self.put = Some(Put { after, count: n, over: None });
-            return Effect::Clipboard;
+            let continuation = self.continuing();
+            self.put = Some(Put { after, count: n, over: None, continuation });
+            return Effect::Clipboard(continuation);
         };
         self.paste_register(register, after, n)
     }
@@ -1093,7 +1095,7 @@ impl Vim {
             let (at, text) =
                 self.block_piece(line + i, column, piece, width.unwrap_or(0));
             self.text.insert_str(at, &text);
-            edits.push(Edit { at, len: 0, text, join: i > 0 });
+            edits.push(edited(at, 0, text, i > 0));
         }
         let start = self.line_at(line).unwrap_or(0);
         self.cursor = self.at_column(start, column);
@@ -1160,7 +1162,7 @@ impl Vim {
             let len = 1 + blanks;
             self.text.replace_range(at..at + len, &text);
             seam = at;
-            edits.push(Edit { at, len, text, join: i > 0 });
+            edits.push(edited(at, len, text, i > 0));
         }
         self.cursor = seam;
         self.clamp();
@@ -1170,9 +1172,9 @@ impl Vim {
 }
 
 /// The bytes an edit put in.
-const fn effect_len(effect: &Effect) -> usize {
+fn effect_len(effect: &Effect) -> usize {
     match effect {
-        Effect::Edit(edit) => edit.text.len(),
+        Effect::Edits(edits) => edits.iter().map(|e| e.text.len()).sum(),
         _ => 0,
     }
 }
