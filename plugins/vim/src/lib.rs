@@ -460,6 +460,9 @@ pub struct Vim {
     /// What Vim has read of one view's `matches`, and the motion
     /// waiting on it.
     found: Found,
+    /// The `/` or `?` line's preview, while one of the two is open:
+    /// the origin every way out goes back to, and the entry shown.
+    preview: Option<search::Preview>,
     /// The next insert edit joins the revision under way.
     joining: bool,
     /// The last key kept `want` rather than setting it.
@@ -1330,7 +1333,7 @@ impl Vim {
     /// The cursor onto a char boundary, then Normal mode's clamp: what
     /// `loaded` leaves the cursor at, and what a `Place` restored by
     /// `opened` is put through too.
-    fn resettled(&mut self) {
+    pub(crate) fn resettled(&mut self) {
         while !self.text.is_char_boundary(self.cursor) {
             self.cursor -= 1;
         }
@@ -1675,7 +1678,12 @@ impl Vim {
             self.repeat.record.push(key);
         }
         self.undone.walking = None;
-        let before = self.position();
+        // While a `/` or `?` line is open the cursor stands on what
+        // the preview found; the change the line runs begins where
+        // the line was opened, which is where undo belongs.
+        let origin =
+            self.preview.map_or_else(|| self.cursor, |preview| preview.cursor);
+        let before = self.position_of(self.inside(origin));
         // Caught before the mode this key leaves: a block insert's
         // Esc is still Insert here, so `finish_block`'s own edits, on
         // the way out, still read as typed; a `c` that enters Insert
@@ -1896,6 +1904,7 @@ impl Vim {
         self.joining = false;
         self.held = Held::default();
         self.found = Found::default();
+        self.preview = None;
         self.macros.fed = false;
         self.macros.joined = false;
         self.bell = false;
@@ -1956,7 +1965,13 @@ impl Vim {
         self.rows = rows;
         self.scrolled(rows);
         let height = rows.max(1);
-        let selected = match self.mode {
+        // A `/` or `?` line opened from visual draws its selection
+        // still, stretched to the entry the preview shows.
+        let mode = match self.mode {
+            Mode::Command if self.preview.is_some() => self.prompt.before,
+            mode => mode,
+        };
+        let selected = match mode {
             Mode::Visual(kind) => self.selection_spans(kind, self.top, height),
             _ => Vec::new(),
         };

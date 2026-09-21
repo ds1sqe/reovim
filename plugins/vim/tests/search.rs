@@ -14,7 +14,7 @@ use common::{cat, one};
 use reovim_client::dev::Clip;
 use reovim_client::{Host, Rd, Rvm, SELF, bin};
 use reovim_client_api::notation::keys;
-use reovim_client_api::{Key, MATCH, NONE, window};
+use reovim_client_api::{MATCH, NONE, window};
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{
     Calls, Driver, Error, Hash, Module, Reply, Rights,
@@ -329,10 +329,11 @@ fn an_error_of_no_cause_ends_the_wait() {
     let denying = Watched::new(true, None);
     let (_rig, host, vim, mut tui) =
         wrapped("search-denied", b"ab\n", &denying);
-    for key in keys("d/b").unwrap() {
-        tui.key(key).unwrap();
-    }
-    assert!(tui.key(Key::Enter).is_err(), "the refusal goes up");
+    // One write, so the whole line runs in one frame and the read
+    // refused is the Enter's own search, not a preview's: a key of
+    // the line asks for its own list, and this Driver denies that too.
+    together(&host, "d/b<CR>");
+    assert!(tui.tick().is_err(), "the refusal goes up");
     // The frame it refused drew nothing, so the row is the next
     // frame's; nothing of the search is read on it.
     tui.tick().unwrap();
@@ -709,7 +710,11 @@ fn a_new_list_clears_the_skip_the_last_pattern_left() {
         "none of the five line ends x* also matches"
     );
 
-    typed(&mut tui, "/$<CR>");
+    // One write, so the whole line runs in one frame: a key of the
+    // line asks for its own list, and a preview frame for `$` would
+    // have filled it before the Enter ever read it.
+    together(&host, "/$<CR>");
+    tui.tick().unwrap();
     assert_eq!(vim.engine().counted(), None, "$'s own list is still filling");
     assert_eq!(
         marks(&host),
@@ -724,4 +729,144 @@ fn a_new_list_clears_the_skip_the_last_pattern_left() {
         [(2, 3), (5, 6), (7, 8), (9, 10), (11, 12)],
         "every line end, $ skipping none of its own"
     );
+}
+/// Sixty lines, `fx` on line 10 and `foo` on line 40: a typed `f`
+/// finds the near one, `fo` the far one, which is past the window.
+fn apart() -> String {
+    let mut text = String::new();
+    for n in 1..=60u32 {
+        let line = match n {
+            10 => String::from("fx"),
+            40 => String::from("foo"),
+            _ => format!("line {n}"),
+        };
+        text.push_str(&line);
+        text.push('\n');
+    }
+    text
+}
+
+/// `held`'s answer kept where it is one this run has not seen: how
+/// many views the line has opened so far.
+fn noted(host: &Rc<Host>, seen: &mut Vec<Vec<u8>>) {
+    let now = held(host);
+    if !seen.contains(&now) {
+        seen.push(now);
+    }
+}
+
+#[test]
+fn the_match_follows_each_key() {
+    let text = apart();
+    let near = text.find("fx").unwrap() as u64;
+    let (_rig, host, vim, mut tui) = over("inc-follows", text.as_bytes());
+    typed(&mut tui, "/");
+    assert_eq!(vim.engine().position(), (0, 0), "an empty line moves none");
+    typed(&mut tui, "f");
+    assert_eq!(vim.engine().position(), (9, 0), "the near one");
+    assert_eq!(
+        marks(&host),
+        [(near, near + 1)],
+        "one MATCH span, `hlsearch` off"
+    );
+    assert_eq!(lines(&mut tui)[0], "line 1", "the window has not moved");
+    typed(&mut tui, "o");
+    assert_eq!(vim.engine().position(), (39, 0), "the far one");
+    assert_eq!(marks(&host).len(), 1, "and the mark with it");
+    assert_ne!(lines(&mut tui)[0], "line 1", "the window followed");
+    typed(&mut tui, "<BS>");
+    assert_eq!(vim.engine().position(), (9, 0), "the near one again");
+    assert_eq!(lines(&mut tui)[0], "line 1", "and the window back");
+    typed(&mut tui, "<Esc>");
+    assert_eq!(vim.engine().position(), (0, 0), "the origin");
+    assert_eq!(marks(&host), Vec::new(), "and no mark");
+    assert_eq!(lines(&mut tui)[0], "line 1");
+}
+
+#[test]
+fn a_key_opens_a_view_and_a_frame_of_keys_opens_one() {
+    let (_rig, host, _vim, mut tui) = over("inc-views", b"abc\nfoo bar\n");
+    let mut seen = vec![held(&host)];
+    for key in ["/", "f", "o"] {
+        typed(&mut tui, key);
+        noted(&host, &mut seen);
+    }
+    assert_eq!(seen.len(), 3, "a view a key that changed the line");
+    typed(&mut tui, "<Esc>");
+    noted(&host, &mut seen);
+    let opened = seen.len();
+    together(&host, "/foo<CR>");
+    tui.tick().unwrap();
+    noted(&host, &mut seen);
+    assert_eq!(seen.len(), opened + 1, "a frame of keys opens one");
+}
+
+#[test]
+fn a_macro_of_a_search_opens_one_view() {
+    // The macro's own line first: `"ayy` holds `/foo`, and its
+    // newline is the `<CR>`.
+    let (_rig, host, vim, mut tui) = over("inc-macro", b"/foo\nabc\nfoo\n");
+    let mut seen = vec![held(&host)];
+    typed(&mut tui, "\"ayy");
+    noted(&host, &mut seen);
+    assert_eq!(seen.len(), 1, "nothing has searched yet");
+    typed(&mut tui, "@a");
+    noted(&host, &mut seen);
+    assert_eq!(seen.len(), 2, "one view for the whole run");
+    assert_eq!(vim.engine().position(), (0, 1), "and it landed");
+}
+
+#[test]
+fn typing_never_waits_and_enter_does() {
+    let (_rig, _host, vim, mut tui) = spending("inc-no-wait", &long(), 64);
+    for key in ["/", "z", "z", "z"] {
+        typed(&mut tui, key);
+        assert!(!vim.engine().waiting(), "{key}: typing never waits");
+    }
+    assert_eq!(said(&mut tui), "/zzz", "the status holds the line");
+    assert_eq!(vim.engine().position(), (0, 0), "nothing found yet");
+    typed(&mut tui, "<CR>");
+    assert!(vim.engine().waiting(), "the Enter does");
+    landed(&mut tui, &vim);
+    assert_eq!(
+        vim.engine().position(),
+        (2047, 0),
+        "where the whole search lands"
+    );
+}
+
+#[test]
+fn an_open_line_is_idle_once_answered() {
+    let counting = Watched::new(false, None);
+    let (_rig, _host, _vim, mut tui) =
+        wrapped("inc-idle", b"abc\nfoo bar\n", &counting);
+    for keys in ["/fo", "<Esc>:set hls<CR>/fo"] {
+        typed(&mut tui, keys);
+        let reads = counting.reads.get();
+        for _ in 0..10 {
+            assert_eq!(tui.tick().unwrap(), Step::Same, "{keys}: it stands");
+        }
+        assert_eq!(counting.reads.get(), reads, "{keys}: nothing is read");
+    }
+}
+
+#[test]
+fn hlsearch_marks_every_match_of_the_line_so_far() {
+    let (_rig, host, _vim, mut tui) = over("inc-hls", b"ab\nb\nfb\nfc\n");
+    // No pattern has been run yet, so what the marks are of is the
+    // line and nothing else.
+    typed(&mut tui, ":set hls<CR>/f");
+    assert_eq!(marks(&host), [(5, 6), (5, 6), (8, 9)], "the line's own");
+    typed(&mut tui, "<Esc>");
+    assert_eq!(marks(&host), Vec::new(), "and gone with the line");
+    typed(&mut tui, "/b<CR>");
+    assert_eq!(marks(&host), [(1, 2), (3, 4), (6, 7)], "the last pattern's");
+    typed(&mut tui, "/f");
+    assert_eq!(
+        marks(&host),
+        [(5, 6), (5, 6), (8, 9)],
+        "every match of the line so far, the preview's own once more"
+    );
+    typed(&mut tui, "<Esc>");
+    assert_eq!(marks(&host), [(1, 2), (3, 4), (6, 7)], "the last pattern's");
 }

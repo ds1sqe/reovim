@@ -483,6 +483,28 @@ sought="$("$BIN" cli ls /session/1/client/1/self/search)"
     || fail "self/search names no view: $sought"
 keys new : n o h Enter
 
+# --- the match follows the pattern as it is typed --------------------
+# Incremental search is always on: the entry the line has found so far
+# is marked whatever `hlsearch` and `:noh` say, the cursor stands on
+# it, and Esc puts the cursor back where the line was opened.
+at() {
+    "${TMUX[@]}" display -p -t new '#{cursor_x},#{cursor_y}'
+}
+keys new : s e t " " n o h l s Enter
+keys new '$'
+was="$(at)"
+[[ "$was" != 0,0 ]] || fail "the cursor is at the match before the line"
+keys new / f r
+[[ "$(painted)" == *$'\x1b[4mfr\x1b[0m'* ]] \
+    || fail "the typed pattern is not underlined: $(painted)"
+keys new e s h
+[[ "$(painted)" == *$'\x1b[4mfresh\x1b[0m'* ]] \
+    || fail "the pattern typed on is not underlined: $(painted)"
+[[ "$(at)" == 0,0 ]] || fail "the cursor is not on the match: $(at)"
+keys new Escape
+[[ "$(at)" == "$was" ]] || fail "the cursor did not come back: $(at)"
+[[ "$(painted)" != *$'\x1b[4m'* ]] || fail "a mark outlived the line"
+
 # --- 08.2: `reovim view`, the reader that knows it shows a display ---
 # `screen` still names `new`'s own display, at 80x24 with "fresh" its
 # whole text. tmux trims a captured row's own trailing spaces, so a
@@ -1304,7 +1326,21 @@ editing long big
 lastrow() {
     "${TMUX[@]}" capture-pane -p -t long | tail -n 1
 }
-keys long / z z z q Enter
+# The line stands in the row as it is typed, a key at a time: typing
+# asks for the line's own list and never waits, however long the fill
+# of it is. The Enter is the wait, and the row says how far.
+keys long /
+shown long '  /$'
+line=
+for key in z z z q; do
+    keys long "$key"
+    line="$line$key"
+    shown long "  /$line\$"
+done
+keys long Enter
+# The Enter's own frame is the one that waits; the row it draws is
+# waited for, not read off the frame the line was still open in.
+shown long '%'
 first="$(lastrow)"
 [[ "$first" == *%* ]] || fail "the row says no percent: $first"
 lself=/session/1/client/1/self

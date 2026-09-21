@@ -16,6 +16,11 @@ impl Vim {
     /// `:`, `/` or `?`: the prompt opens over an empty line of the
     /// two, the mode to return to kept, and the want with it: nvim's
     /// `nv_colon` and `nv_search` leave `curswant` alone.
+    ///
+    /// A `/` or `?` line opens a preview with it, which holds the
+    /// cursor and the first line shown as they stand now: every way
+    /// out of the line puts them back, and the match the line finds
+    /// as it is typed moves them meanwhile. A `:` line has none.
     pub(crate) fn prompt(&mut self, prompt: char, count: usize) -> Effect {
         self.keep_want = true;
         self.prompt.at = prompt;
@@ -35,6 +40,11 @@ impl Vim {
             self.keep_want = false;
             self.prompt.line().put(0, "'<,'>");
         }
+        self.preview = (prompt != ':').then_some(crate::search::Preview {
+            cursor: self.cursor,
+            top: self.top,
+            at: None,
+        });
         self.prompt.before = self.mode;
         self.mode = Mode::Command;
         self.pending.count = count;
@@ -68,6 +78,9 @@ impl Vim {
         let key = if key == Key::Ctrl('j') { Key::Enter } else { key };
         match self.prompt.line().key(key) {
             Act::Nothing | Act::Clear => Effect::Nothing,
+            // The text or the cursor of a `/` or `?` line moved, so
+            // the preview follows what stands on it now.
+            Act::Redraw if self.prompt.at != ':' => self.previewed(),
             Act::Redraw => Effect::Moved,
             Act::Complete => self.complete(),
             Act::Submit(line) => self.run(line),
@@ -163,10 +176,12 @@ impl Vim {
         parts.join("  ")
     }
 
-    /// Esc, Ctrl-C, or Backspace on an empty line: the prompt goes and
-    /// the mode it was opened from comes back.
+    /// Esc, Ctrl-C, or Backspace on an empty line: the prompt goes,
+    /// the mode it was opened from comes back, and a `/` or `?`
+    /// line's cursor and window go back where it was opened.
     fn leave_prompt(&mut self) -> Effect {
         self.leave_command();
+        self.unpreviewed();
         Effect::Moved
     }
 
@@ -180,8 +195,13 @@ impl Vim {
     }
 
     /// The line run: a search for `/` and `?`, else a command.
+    ///
+    /// A `/` or `?` line's preview goes first, cursor and window with
+    /// it, so the motion below starts where the line was opened. The
+    /// list the preview began stands, so the motion asks for no other.
     fn run(&mut self, line: String) -> Effect {
         self.mode = self.prompt.before;
+        self.unpreviewed();
         let count = core::mem::take(&mut self.pending.count);
         if self.prompt.at != ':' {
             let forward = self.prompt.at == '/';

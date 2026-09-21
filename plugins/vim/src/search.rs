@@ -83,6 +83,20 @@ pub struct Waiting {
     pub fed: (bool, bool),
 }
 
+/// The `/` or `?` line's own preview: where the line was opened, and
+/// the entry it shows now.
+///
+/// `cursor` and `top` are the origin every way out of the line goes
+/// back to, `<CR>` included, so the motion it runs starts where the
+/// key that opened the line stood. `at` is the entry the line's
+/// pattern found, `(at, len)`, `None` while nothing is shown.
+#[derive(Clone, Copy, Debug)]
+pub struct Preview {
+    pub cursor: usize,
+    pub top: usize,
+    pub at: Option<(usize, usize)>,
+}
+
 /// The list Vim has read of one view's `matches`, and nothing more.
 ///
 /// It is never patched: [`Vim::marked`] drops it where positions
@@ -341,7 +355,7 @@ impl Vim {
     /// `Some((0, 0))`, as nvim's is.
     #[must_use]
     pub fn counted(&self) -> Option<(usize, usize)> {
-        if self.found.key.as_ref() != Some(&self.keyed()) {
+        if self.found.key.as_ref() != Some(&self.seeking()) {
             return None;
         }
         self.found.rank(self.cursor)
@@ -374,10 +388,19 @@ impl Vim {
             && !self.text[from..at].contains('\n')
     }
 
-    /// The key of the list the options and the pattern name now.
-    fn keyed(&self) -> (String, bool, bool) {
+    /// The key of the list Vim wants now: the `/` or `?` line's own
+    /// text while one is open and holds any, else the last pattern,
+    /// each under today's `ignorecase` and `smartcase`.
+    ///
+    /// The one place the two are told apart. The last pattern, its
+    /// direction, `stale` and the line's history stand untouched
+    /// until `<CR>` runs the line.
+    fn seeking(&self) -> (String, bool, bool) {
         let Search { pattern, options, .. } = &self.search;
-        (pattern.clone(), options.ignorecase, options.smartcase)
+        let line = self.prompt.text();
+        let typing = self.preview.is_some() && !line.is_empty();
+        let pattern = if typing { String::from(line) } else { pattern.clone() };
+        (pattern, options.ignorecase, options.smartcase)
     }
 
     /// A list of `key` begun at `from`: nothing read yet, and more to
@@ -435,7 +458,7 @@ impl Vim {
         if self.lossy || self.search.pattern.is_empty() {
             return None;
         }
-        let key = self.keyed();
+        let key = self.seeking();
         if self.found.key.as_ref() != Some(&key) {
             self.begun(key, self.cursor);
         }
@@ -483,7 +506,9 @@ impl Vim {
             self.search.stale = true;
         }
         let Some(waiting) = self.found.waiting.take() else {
-            return Effect::Nothing;
+            // Nobody waited: an open line's own list, which the
+            // preview reads, or a fill nothing but the marks want.
+            return self.previewed();
         };
         self.turned(waiting)
     }
@@ -523,19 +548,115 @@ impl Vim {
         if self.found.waiting.is_some() || row {
             return Some(self.asking());
         }
-        let Search { pattern, options, stale, .. } = &self.search;
-        if !options.hlsearch || *stale || pattern.is_empty() || self.lossy {
+        let key = self.seeking();
+        // An open line's own list comes next, before `hlsearch`'s.
+        if let Some(preview) = self.preview
+            && !self.lossy
+            && !self.prompt.text().is_empty()
+        {
+            return self.previewing(preview, key);
+        }
+        let Search { options, stale, .. } = &self.search;
+        if !options.hlsearch || *stale || key.0.is_empty() || self.lossy {
             return None;
         }
         if self.found.filled != Filled::More {
             return None;
         }
-        let key = self.keyed();
         if self.found.key.as_ref() != Some(&key) {
             let top = self.line_at(self.top).unwrap_or(0);
             self.begun(key, top);
         }
         Some(self.asking())
+    }
+
+    /// What the open `/` or `?` line wants for its preview: a list of
+    /// another key, begun where the line was opened, or the list's
+    /// own while the preview has nothing to show and there is more to
+    /// come.
+    ///
+    /// A list `Whole`, `Refused`, `Spent` or `Absent` is asked for no
+    /// more, so a pattern that does not parse yet is one refused
+    /// `open` and silence.
+    fn previewing(
+        &mut self,
+        preview: Preview,
+        key: (String, bool, bool),
+    ) -> Option<Want> {
+        if self.found.key.as_ref() != Some(&key) {
+            self.begun(key, preview.cursor);
+            return Some(self.asking());
+        }
+        let more = preview.at.is_none() && self.found.filled == Filled::More;
+        more.then(|| self.asking())
+    }
+
+    /// The `/` or `?` line's preview moved, which is the one place it
+    /// moves anything: back to the origin, then onto the entry the
+    /// line's own list names.
+    ///
+    /// It says nothing, rings nothing, pushes no jump and shows no
+    /// row. A line with nothing on it, and a list that is of another
+    /// key, end at the origin; the frame's own ask fills the rest.
+    pub(crate) fn previewed(&mut self) -> Effect {
+        let Some(preview) = self.preview else {
+            return Effect::Nothing;
+        };
+        self.cursor = self.inside(preview.cursor);
+        self.top = preview.top;
+        self.preview = Some(Preview { at: None, ..preview });
+        let key = self.seeking();
+        if self.prompt.text().is_empty()
+            || self.found.key.as_ref() != Some(&key)
+        {
+            return Effect::Moved;
+        }
+        let forward = self.prompt.at == '/';
+        let n = self.pending.count.max(1);
+        let Looked::At(at) =
+            self.found.nth(self.cursor, forward, n, &self.text)
+        else {
+            return Effect::Moved;
+        };
+        let entry = self
+            .found
+            .before
+            .iter()
+            .chain(&self.found.after)
+            .find(|(start, _)| *start == at)
+            .copied();
+        let to = self.landing(at);
+        self.go(to);
+        if let Some(shown) = self.preview.as_mut() {
+            shown.at = entry;
+        }
+        Effect::Moved
+    }
+
+    /// The cursor and the window back where the `/` or `?` line was
+    /// opened, and the preview with them: every way out of the line
+    /// goes through it, `<CR>` included, so the motion the line runs
+    /// starts at the origin.
+    ///
+    /// The text may have been loaded again under the line, so the
+    /// cursor is resettled as a reload leaves one.
+    pub(crate) fn unpreviewed(&mut self) {
+        let Some(preview) = self.preview.take() else { return };
+        self.cursor = preview.cursor;
+        self.top = preview.top;
+        self.resettled();
+    }
+
+    /// A preview's origin held inside the text it names, on a char
+    /// boundary: an edit from elsewhere may have loaded another text
+    /// under the open line, and the origin is not moved through
+    /// `marked` — the line puts it back and the text holds it.
+    pub(crate) fn inside(&self, at: usize) -> usize {
+        let mut at = at.min(self.bound());
+        while !self.text.is_char_boundary(at) {
+            at -= 1;
+        }
+        at
     }
 
     /// `/` or `?` run, or `n` and `N`: the cursor onto the entry the
@@ -573,15 +694,21 @@ impl Vim {
     /// running, which is where nvim shows the landing. The previous
     /// place is set where the landing, not the entry, is elsewhere.
     fn onto(&mut self, at: usize) -> Effect {
-        let ends = at >= self.text.len() || self.text.as_bytes()[at] == b'\n';
-        let to =
-            if ends && !self.pending.running { self.last_char(at) } else { at };
+        let to = self.landing(at);
         self.search.stale = false;
         if to != self.cursor {
             self.set_previous();
         }
         self.go(to);
         Effect::Moved
+    }
+
+    /// Where the landing for the entry at `at` is: the entry itself,
+    /// or the last char of its line where the entry is that line's
+    /// end and no operator is running, which is where nvim shows it.
+    fn landing(&self, at: usize) -> usize {
+        let ends = at >= self.text.len() || self.text.as_bytes()[at] == b'\n';
+        if ends && !self.pending.running { self.last_char(at) } else { at }
     }
 
     /// The word for a list that cannot answer, the number being the
@@ -679,19 +806,28 @@ impl Vim {
     /// `skipped` is empty while the list fills, so a run still filling
     /// marks everything it holds; `begun` is the door that keeps it
     /// so, clearing it with the runs it begins again.
+    ///
+    /// The list shown is the one [`Self::seeking`] names, so a `/` or
+    /// `?` line marks its own as it is typed, and the entry that line
+    /// has found is one span more, whatever `hlsearch` and `:noh` say.
     pub(crate) fn search_spans(
         &self,
         top: usize,
         height: usize,
         room: usize,
     ) -> Vec<(usize, usize)> {
-        let Search { pattern, options, stale, .. } = &self.search;
-        if !options.hlsearch || *stale || pattern.is_empty() {
-            return Vec::new();
-        }
-        let from = self.line_at(top).unwrap_or(0);
-        let upto =
-            self.line_at(top.saturating_add(height)).unwrap_or(self.text.len());
+        let Search { options, stale, .. } = &self.search;
+        let key = self.seeking();
+        let marking = options.hlsearch && !*stale && !key.0.is_empty();
+        // The window's own bytes are walked for the marks alone: a
+        // frame that shows none walks nothing, and the empty bound it
+        // leaves holds no entry.
+        let (from, upto) = if marking {
+            let last = self.line_at(top.saturating_add(height));
+            (self.line_at(top).unwrap_or(0), last.unwrap_or(self.text.len()))
+        } else {
+            (0, 0)
+        };
         let skipped = &self.found.skipped;
         let shown = |run: &Vec<(usize, usize)>| {
             let first = run.partition_point(|(at, _)| *at < from);
@@ -702,7 +838,11 @@ impl Vim {
                 .filter(|(at, _)| skipped.binary_search(at).is_err())
                 .collect::<Vec<_>>()
         };
-        let mut marks = shown(&self.found.before);
+        // The entry the typed line found is marked whatever
+        // `hlsearch` and `:noh` say: it is what the line is showing.
+        let mut marks: Vec<(usize, usize)> =
+            self.preview.and_then(|preview| preview.at).into_iter().collect();
+        marks.extend(shown(&self.found.before));
         marks.extend(shown(&self.found.after));
         marks.truncate(room.min(SPANS));
         marks

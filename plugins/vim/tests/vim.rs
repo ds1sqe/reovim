@@ -5,10 +5,10 @@ mod common;
 use std::fmt::Write as _;
 
 use common::{edit, on, typed};
-use reovim_client_api::{BAR, BLOCK};
+use reovim_client_api::{BAR, BLOCK, MATCH, SELECTION};
 use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{
-    Edit, Effect, Ex, Filled, Key, Mode, Quit, Stroke, Vim, Want,
+    Edit, Effect, Ex, Filled, Key, Mode, Quit, Stroke, Vim, Visual, Want,
 };
 
 /// The `:` line `keys` left for the Client to run: the range it read
@@ -1095,4 +1095,209 @@ fn the_count_is_unknown_until_whole_and_under_another_key() {
     assert_eq!(vim.counted(), Some((2, 4)));
     assert_eq!(vim.set("ic"), Effect::Moved);
     assert_eq!(vim.counted(), None, "the list is of another key now");
+}
+
+/// The text 02.5's cases stand on: `foo` on line 2 and `foo` again on
+/// line 3, so a typed pattern has two entries to choose between.
+const T: &str = "abc\nfoo bar\nbaz foo\n";
+
+/// Every entry of `o` in [`T`], in the text's order.
+const OS: [(usize, usize); 4] = [(5, 1), (6, 1), (17, 1), (18, 1)];
+
+/// The list the open line asks for, answered whole with `entries`.
+/// `None` where the line asked for none: a list Vim still holds
+/// under the line's own key is not asked for again.
+fn answering(vim: &mut Vim, entries: &[(usize, usize)]) -> Option<Want> {
+    let asked = vim.wants()?;
+    vim.matched(asked.epoch, entries, Filled::Whole);
+    Some(asked)
+}
+
+#[test]
+fn a_typed_pattern_is_wanted_and_the_cursor_follows() {
+    let mut vim = on(T);
+    assert_eq!(typed(&mut vim, "/"), Effect::Moved);
+    assert!(vim.wants().is_none(), "an empty line wants nothing");
+    assert_eq!(typed(&mut vim, "f"), Effect::Moved);
+    let asked = vim.wants();
+    assert_eq!(
+        asked.map(Effect::Search),
+        Some(want(&vim, "f", 0)),
+        "the line so far, begun where it was opened"
+    );
+    assert_eq!(
+        vim.matched(vim.epoch(), &[(4, 1), (16, 1)], Filled::Whole),
+        Effect::Moved
+    );
+    assert_eq!(vim.position(), (1, 0), "the cursor on the first entry");
+    let spans = vim.view(10).spans;
+    let marks: Vec<(u64, u64)> = spans
+        .iter()
+        .filter(|span| span.style == MATCH)
+        .map(|span| (span.from, span.to))
+        .collect();
+    assert_eq!(marks, [(4, 5)], "one MATCH span, `hlsearch` off");
+    assert!(vim.wants().is_none(), "an answered line wants no more");
+
+    assert_eq!(typed(&mut vim, "o"), Effect::Moved);
+    assert_eq!(vim.position(), (0, 0), "back at the origin until answered");
+    let asked = vim.wants();
+    assert_eq!(asked.map(Effect::Search), Some(want(&vim, "fo", 0)));
+    vim.matched(vim.epoch(), &[(4, 2), (16, 2)], Filled::Whole);
+    assert_eq!(vim.position(), (1, 0));
+
+    typed(&mut vim, "<BS><BS>");
+    assert_eq!(vim.position(), (0, 0), "the empty line is the origin");
+    assert!(vim.wants().is_none(), "and wants nothing");
+
+    // An entry on a line's end is shown at that line's last char,
+    // which is where a landing puts the cursor.
+    let mut vim = on(T);
+    typed(&mut vim, "/$");
+    answering(&mut vim, &[(3, 0), (11, 0), (19, 0)]);
+    assert_eq!(vim.position(), (0, 2), "the last char, not the end");
+
+    // `?` looks the way the line it was opened with says: back to
+    // the entry before the origin, where `/` would take the one after.
+    let mut vim = on(T);
+    typed(&mut vim, "G?foo");
+    answering(&mut vim, &[(4, 3), (16, 3)]);
+    assert_eq!(vim.position(), (1, 0), "the entry before the last line");
+}
+
+#[test]
+fn every_way_out_puts_the_cursor_and_the_top_back() {
+    let mut text = String::new();
+    for n in 1..=60 {
+        let _ = writeln!(text, "{}", if n == 55 { "foo" } else { "line" });
+    }
+    let at = text.find("foo").unwrap();
+    let mut vim = on(&text);
+    assert_eq!(vim.view(10).top, 0);
+    for out in ["<Esc>", "<C-c>", "<BS><BS><BS><BS>"] {
+        typed(&mut vim, "/foo");
+        answering(&mut vim, &[(at, 3)]);
+        assert_eq!(vim.position(), (54, 0), "{out}: the match");
+        assert!(vim.view(10).top > 0, "{out}: the window followed it");
+        assert_eq!(typed(&mut vim, out), Effect::Moved);
+        assert_eq!(vim.mode(), Mode::Normal, "{out}: the prompt is gone");
+        assert_eq!(vim.position(), (0, 0), "{out}: the cursor is back");
+        assert_eq!(vim.view(10).top, 0, "{out}: and the window with it");
+    }
+
+    // The text loaded again under the open line: the origin the way
+    // out goes back to is resettled, as a reload leaves a cursor.
+    typed(&mut vim, "G$/foo");
+    assert!(vim.loaded(b"ab\n"), "the text is another");
+    typed(&mut vim, "o");
+    assert_eq!(vim.position(), (0, 2), "the origin is held inside it");
+    typed(&mut vim, "<Esc>");
+    assert_eq!(vim.position(), (0, 1), "and comes back onto a char of it");
+}
+
+#[test]
+fn no_entry_and_a_refused_pattern_say_nothing() {
+    let mut vim = on(T);
+    typed(&mut vim, "/zzz");
+    let asked = answering(&mut vim, &[]).expect("the typed line is wanted");
+    assert_eq!(asked.pattern, "zzz");
+    assert_eq!(vim.position(), (0, 0), "nothing found, nothing moved");
+    assert_eq!(vim.status(), "/zzz", "the status is the line");
+    assert!(!vim.rung());
+    assert!(vim.wants().is_none(), "a whole list is asked for no more");
+
+    typed(&mut vim, "<Esc>/\\(");
+    let asked = vim.wants().expect("a pattern that does not parse is asked");
+    vim.matched(asked.epoch, &[], Filled::Refused);
+    assert_eq!(vim.position(), (0, 0));
+    assert_eq!(vim.status(), "/\\(");
+    assert!(!vim.rung(), "a refused open is silence");
+    assert!(vim.wants().is_none(), "one refusal is enough");
+    assert_eq!(typed(&mut vim, "<CR>"), Effect::Moved, "the word is a change");
+    assert_eq!(vim.status(), "E486: Pattern not found: \\(");
+    assert!(vim.rung(), "the word rings");
+    assert!(vim.wants().is_none(), "and asks for nothing");
+}
+
+#[test]
+fn enter_lands_from_the_origin() {
+    let mut vim = on(T);
+    typed(&mut vim, "3/o");
+    answering(&mut vim, &OS);
+    assert_eq!(vim.position(), (2, 5), "the third entry, unanswered before");
+    assert_eq!(typed(&mut vim, "<CR>"), Effect::Moved);
+    assert_eq!(vim.position(), (2, 5), "where the preview stood");
+    typed(&mut vim, "``");
+    assert_eq!(vim.position(), (0, 0), "one jump, pushed from the origin");
+
+    let mut vim = on(T);
+    typed(&mut vim, "d/foo");
+    let asked = answering(&mut vim, &[(4, 3), (16, 3)]).expect("it is wanted");
+    assert_eq!(asked.from, 0, "the list was begun where the line opened");
+    assert_eq!(vim.position(), (1, 0), "the match under a waiting operator");
+    assert_eq!(typed(&mut vim, "<CR>"), edit(0, 4, "", false));
+    assert_eq!(vim.text(), "foo bar\nbaz foo\n", "deleted from the origin");
+
+    let mut vim = on(T);
+    typed(&mut vim, "/foo");
+    answering(&mut vim, &[(4, 3), (16, 3)]);
+    typed(&mut vim, "<CR>gg/ba");
+    answering(&mut vim, &[(8, 2), (12, 2)]);
+    assert_eq!(vim.position(), (1, 4), "the typed line's own match");
+    assert_eq!(typed(&mut vim, "<Esc>"), Effect::Moved);
+    assert_eq!(vim.position(), (0, 0));
+    assert_eq!(typed(&mut vim, "n"), want(&vim, "foo", 0), "the old pattern");
+    vim.matched(vim.epoch(), &[(4, 3), (16, 3)], Filled::Whole);
+    assert_eq!(vim.position(), (1, 0));
+}
+
+#[test]
+fn a_selection_follows_the_typed_pattern() {
+    let mut vim = on(T);
+    typed(&mut vim, "v/foo");
+    answering(&mut vim, &[(4, 3), (16, 3)]);
+    assert_eq!(vim.position(), (1, 0));
+    let spans = vim.view(10).spans;
+    let selected: Vec<(u64, u64)> = spans
+        .iter()
+        .filter(|span| span.style == SELECTION)
+        .map(|span| (span.from, span.to))
+        .collect();
+    assert_eq!(
+        (selected.first().map(|s| s.0), selected.last().map(|s| s.1)),
+        (Some(0), Some(5)),
+        "the selection stretches to the match: {selected:?}"
+    );
+    assert_eq!(typed(&mut vim, "<Esc>"), Effect::Moved);
+    assert_eq!(vim.mode(), Mode::Visual(Visual::Char), "visual stands");
+    assert_eq!(vim.position(), (0, 0), "at the origin");
+}
+
+#[test]
+fn enter_before_the_answer_waits() {
+    let mut vim = on(T);
+    typed(&mut vim, "/foo");
+    let asked = vim.wants().expect("the typed line is wanted");
+    assert_eq!(vim.matched(asked.epoch, &[], Filled::More), Effect::Moved);
+    assert_eq!(vim.position(), (0, 0), "nothing found yet");
+    assert_eq!(typed(&mut vim, "<CR>"), want(&vim, "foo", 0));
+    assert!(vim.waiting(), "the Enter waits on the list the preview began");
+    assert_eq!(
+        vim.matched(vim.epoch(), &[(4, 3), (16, 3)], Filled::Whole),
+        Effect::Moved
+    );
+    assert_eq!(vim.position(), (1, 0));
+}
+
+#[test]
+fn ctrl_g_and_ctrl_t_do_nothing() {
+    let mut vim = on(T);
+    typed(&mut vim, "/foo");
+    answering(&mut vim, &[(4, 3), (16, 3)]);
+    assert_eq!(vim.position(), (1, 0));
+    for key in ["<C-g>", "<C-t>"] {
+        assert_eq!(typed(&mut vim, key), Effect::Nothing, "{key}");
+        assert_eq!(vim.status(), "/foo", "{key}: the line stands");
+        assert_eq!(vim.position(), (1, 0), "{key}: and the match with it");
+    }
 }
