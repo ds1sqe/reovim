@@ -892,6 +892,11 @@ listed="$("$BIN" cli ls "$buffers")"
 keys several : c l i Enter
 keys several l s " " / s e l f / d e v / b u f f e r s Enter
 shown several '^1  2  3$'
+# The cli buffer came after the listing this shell took: the Client
+# says a name came under `buffers`, so the mirror lists it too.
+listed="$("$BIN" cli ls "$buffers")"
+[[ "$listed" == $'1\n2\n3' ]] \
+    || fail "after :cli the listing is $(tr '\n' ' ' <<< "$listed"), not 1 2 3"
 keys several C-d
 keys several : q Enter
 ended several

@@ -446,8 +446,9 @@ fn children(k: &Kernel, caller: Caller, rd: Rd) -> Answer {
 }
 
 /// The cache of `rd`'s children full or not. An rd that went while its
-/// Driver ran has no cache left to mark.
-fn mark(k: &Kernel, rd: Rd, full: bool) {
+/// Driver ran has no cache left to mark. The proxy marks a mirrored
+/// row not full when its Client says a name came under it.
+pub fn mark(k: &Kernel, rd: Rd, full: bool) {
     if let Ok(entry) = k.state.borrow_mut().table.get_mut(rd) {
         entry.listed = full;
     }

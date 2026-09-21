@@ -51,9 +51,12 @@ pub enum Op {
     /// at either end. Or it went: `Gone` for an rd the caller
     /// unregistered, watched or not, which is `Calls::unregister` on
     /// the mirror's row for it, so what is under it goes with it and
-    /// its parent lists what the caller lists. A name that came is not
-    /// announced; the mirror learns it when somebody walks again. Like
-    /// `Done` it never reaches the Kernel's dispatch.
+    /// its parent lists what the caller lists. Or a name came under
+    /// it: `Create` for an rd the caller registered a child of, once
+    /// however many came, which unmarks the mirror row's listing so
+    /// the next `Children` asks the caller again; the rows that stand
+    /// keep their rds. Like `Done` it never reaches the Kernel's
+    /// dispatch.
     Changed { rd: Rd, kind: Kind },
 }
 

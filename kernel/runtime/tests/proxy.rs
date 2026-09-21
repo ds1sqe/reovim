@@ -21,6 +21,9 @@ const SELF: Rd = Rd(BASE);
 const DEV: Rd = Rd(BASE + 1);
 const CWD: Rd = Rd(BASE + 2);
 const MODE: Rd = Rd(BASE + 3);
+/// A cell the Client has and lists under nothing until it registers
+/// it: what a name that came looks like.
+const MORE: Rd = Rd(BASE + 4);
 
 /// One node of the Client's own tree.
 struct Node {
@@ -41,6 +44,7 @@ fn node(rd: Rd) -> Result<Node, Error> {
         DEV => ("dev", dir, vec![CWD], b""),
         CWD => ("cwd", cell, Vec::new(), b"/tmp"),
         MODE => ("mode", cell, Vec::new(), b"normal"),
+        MORE => ("more", cell, Vec::new(), b"more"),
         _ => return Err(Error::Invalid),
     };
     Ok(Node { name, flags, children, bytes })
@@ -107,6 +111,9 @@ struct Client {
     /// The rds it unregistered, which it answers nothing for and lists
     /// no more, as the Host's own tree does.
     gone: Vec<Rd>,
+    /// The rds it registered since, each under its parent, which it
+    /// lists and finds from then on.
+    added: Vec<(Rd, Rd)>,
 }
 
 impl Client {
@@ -138,15 +145,37 @@ impl Client {
         self.changed(kernel, rd, Kind::Gone)
     }
 
+    /// The Client registers `rd` under `parent` and says so, which is
+    /// `Calls::register` as it goes out: one `Create` on the parent.
+    fn register(&mut self, kernel: &Kernel, parent: Rd, rd: Rd) -> Reply<Out> {
+        self.added.push((parent, rd));
+        self.changed(kernel, parent, Kind::Create)
+    }
+
     /// The node at `rd` as this Client holds it now: none for one it
-    /// took out, and a listing without the ones it took out.
+    /// took out, and a listing without the ones it took out and with
+    /// the ones it registered since.
     fn node(&self, rd: Rd) -> Result<Node, Error> {
         if self.gone.contains(&rd) {
             return Err(Error::Invalid);
         }
         let mut node = node(rd)?;
         node.children.retain(|child| !self.gone.contains(child));
+        let under = self.added.iter().filter(|(at, _)| *at == rd);
+        node.children.extend(under.map(|(_, child)| *child));
         Ok(node)
+    }
+
+    /// The root's `self` is the one name known without a lookup; every
+    /// other is a child of the node it is asked under, as this Client
+    /// holds it now.
+    fn found(&self, rd: Rd, name: &str) -> Outcome {
+        if rd == ROOT && name == "self" {
+            return Ok(Out::Rd(SELF));
+        }
+        let named = |child: &Rd| node(*child).is_ok_and(|n| n.name == name);
+        let found = self.node(rd)?.children.into_iter().find(named);
+        found.map(Out::Rd).ok_or(Error::Invalid)
     }
 
     /// How many ops it has been asked, which a case snapshots around
@@ -169,7 +198,7 @@ impl Client {
     fn run(&mut self, op: Op) -> Outcome {
         self.asked.push(op.clone());
         match op {
-            Op::Lookup { rd, name } => found(rd, &name),
+            Op::Lookup { rd, name } => self.found(rd, &name),
             Op::Children { rd } => Ok(Out::Rds(self.node(rd)?.children)),
             Op::Info { rd } => {
                 self.node(rd)?;
@@ -206,17 +235,6 @@ impl Client {
         let end = at.saturating_add(len as usize).min(bytes.len());
         Ok(Out::Bytes(bytes[at..end].to_vec()))
     }
-}
-
-/// The root's `self` is the one name known without a lookup; every
-/// other is a child of the node it is asked under.
-fn found(rd: Rd, name: &str) -> Outcome {
-    if rd == ROOT && name == "self" {
-        return Ok(Out::Rd(SELF));
-    }
-    let named = |child: &Rd| node(*child).is_ok_and(|n| n.name == name);
-    let found = node(rd)?.children.into_iter().find(named);
-    found.map(Out::Rd).ok_or(Error::Invalid)
 }
 
 fn info(rd: Rd) -> Result<Info, Error> {
@@ -736,11 +754,11 @@ fn a_change_the_mirror_cannot_place_is_answered_and_dropped() {
     // A Client may say anything and the Kernel believes none of it: a
     // kind the mirror does not place, and an rd the mirror has no row
     // for, are answered `Unit` and change nothing.
-    for kind in [Kind::Create, Kind::Delete, Kind::Move] {
+    for kind in [Kind::Delete, Kind::Move] {
         let said = rig.client.changed(&rig.kernel, MODE, kind);
         assert_eq!(said, Reply::ok(Out::Unit), "{kind:?}");
     }
-    for kind in [Kind::Modify, Kind::Gone] {
+    for kind in [Kind::Modify, Kind::Create, Kind::Gone] {
         let stranger = rig.client.changed(&rig.kernel, Rd(BASE + 99), kind);
         assert_eq!(stranger, Reply::ok(Out::Unit), "{kind:?}");
     }
@@ -837,4 +855,38 @@ fn an_op_queued_on_a_row_that_goes_answers_gone_and_holds_up_nothing() {
     let cwd = rig.waited(behind);
     assert!(matches!(cwd, Ok(Out::Rd(_))), "{cwd:?}");
     assert_eq!(rig.client.since(at), "Lookup Info", "the one behind it");
+}
+
+#[test]
+fn a_row_the_client_registers_after_a_listing_reaches_the_next_listing() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let dev = rig.lookup(root, "dev");
+    let listed = rig.rds(dev);
+    assert_eq!(rig.names(&listed), vec!["cwd"]);
+    let cwd = listed[0];
+
+    // The Client registers `more` under `dev` and says so, as
+    // `Calls::register` does: one `Create` on the parent. The next
+    // listing asks the Client again and is one longer; the row that
+    // stood keeps its rd and costs no message, the one that came is
+    // shaped, and an op on it is forwarded as on any other.
+    let said = rig.client.register(&rig.kernel, DEV, MORE);
+    assert_eq!(said, Reply::ok(Out::Unit));
+    let at = rig.client.served();
+    let again = rig.rds(dev);
+    assert_eq!(rig.names(&again), vec!["cwd", "more"], "one longer");
+    assert_eq!(again[0], cwd, "the row that stood keeps its rd");
+    assert_eq!(rig.client.since(at), "Children Info", "the new row alone");
+    let more = again[1];
+    assert_eq!(rig.lookup(dev, "more"), more, "the table holds it now");
+    let h = rig.opened(more);
+    let read = Op::Read { h, at: 0, len: 64 };
+    assert_eq!(rig.ask(read), Ok(Out::Bytes(b"more".to_vec())));
+
+    // Listed once more, the table answers and the Client is asked
+    // nothing: the mark stands until the next name comes.
+    let at = rig.client.served();
+    assert_eq!(rig.rds(dev), again);
+    assert_eq!(rig.client.since(at), "", "the Client was asked");
 }

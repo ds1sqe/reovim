@@ -20,9 +20,10 @@ use reovim_kernel_interface::{
     Op, Out, Outcome, Rd, Reply, Rights, Token,
 };
 
+use crate::dispatch::mark;
 use crate::kernel::{Kernel, kind_name};
 use crate::log::DEBUG;
-use crate::table::ROOT;
+use crate::table::{Owner, ROOT};
 
 /// Ops one link holds: made and not sent, plus sent and not answered.
 /// The bound is the Driver's own (01-core-runtime.md:120-122) and it
@@ -334,12 +335,14 @@ impl Proxy {
 
     /// A change the Client announced, put on the mirror row for the rd
     /// it named: the Kernel emits to whoever watches and the remote's
-    /// next `Since` carries it. `Gone` is the one kind that is more
-    /// than an event: the Client unregistered the rd, so the row
-    /// retires with what is under it. An rd this mirror has no row
-    /// for, and a kind neither `Calls::changed` nor `retire` takes,
-    /// are one `debug` line and nothing else — a Client may say
-    /// anything and none of it is believed.
+    /// next `Since` carries it. Two kinds are more than an event:
+    /// `Gone`, the Client unregistered the rd, so the row retires with
+    /// what is under it; `Create`, the Client registered a name under
+    /// the rd, so the row's listing is unmarked and the next
+    /// `Children` asks the Client again. An rd this mirror has no row
+    /// for, and a kind none of the three takes, are one `debug` line
+    /// and nothing else — a Client may say anything and none of it is
+    /// believed.
     pub(crate) fn changed(
         &self,
         kernel: &Kernel,
@@ -350,6 +353,7 @@ impl Proxy {
         let row = self.state.borrow().to_server.get(&rd).copied();
         let told = row.map(|row| match kind {
             Kind::Gone => self.retire(kernel, id, row),
+            Kind::Create => unlist(kernel, id, row),
             kind => kernel.calls(id).changed(row, kind),
         });
         if matches!(told, Some(Ok(()))) {
@@ -563,6 +567,28 @@ impl Driver for Proxy {
         self.own(Op::Close { h: Handle(h) }, Then::Drop);
         Reply::ok(())
     }
+}
+
+/// The Client registered a name under the rd behind the mirror row
+/// `row`: the listing the Kernel's table holds for it is no longer the
+/// Client's, so the mark `dispatch::children` answers from goes back
+/// and the next `Children` asks the Client again. The walk that
+/// answers it makes a row for the name that came and finds every row
+/// that stands in `to_server` (`known`), so no rd a remote holds
+/// moves and no row is made twice. The one row in `to_server` that is
+/// not this proxy's is the Kernel's root, which the mirror is born
+/// bound to; it is nobody's to unmark.
+///
+/// # Errors
+/// `Invalid` for a row the table no longer holds, `Denied` for one
+/// that is not this proxy's.
+fn unlist(kernel: &Kernel, id: ModuleId, row: Rd) -> Result<(), Error> {
+    let owner = kernel.state.borrow().table.get(row)?.owner;
+    if !matches!(owner, Owner::Driver { module, .. } if module == id) {
+        return Err(Error::Denied);
+    }
+    mark(kernel, row, false);
+    Ok(())
 }
 
 /// The rows `below` out of the mirror's maps, and out of the queue

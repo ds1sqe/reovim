@@ -262,6 +262,40 @@ fn a_row_a_client_unregisters_goes_from_the_listing_a_remote_took() {
     assert_eq!(a.serve(), 0, "a served an op nobody asked of it");
 }
 
+#[test]
+fn a_row_a_client_registers_after_a_listing_reaches_the_listing_again() {
+    let rig = Rig::new("wire-create");
+    let a = rig.host();
+    let cells = Rc::new(Cells);
+    let id = a.load("cells", cells.clone(), vec![cells]).unwrap();
+    let b = rig.host();
+    let theirs = b.own();
+    let path = "/session/1/client/1/self/cells";
+    let home = cell::resolve(&theirs, ROOT, path).unwrap();
+    let listed = ops::children(&theirs, home).unwrap();
+    assert_eq!(listed.len(), 2, "one and two");
+    let here = cell::resolve(&a.own(), ROOT, "/self/cells").unwrap();
+
+    // a registers two more under `cells`, which b listed: the next
+    // sweep says so in one message, the parent's and not one a row,
+    // and the listing b takes again is two longer, the rows that stood
+    // keeping their rds. A name b walks to is one of the new rows.
+    let mine = a.calls(id);
+    let before = rig.sent();
+    for name in ["three", "four"] {
+        let rd = mine.register(DriverId(0), here, Some(name)).unwrap();
+        mine.report(rd, Flags::READ, &[]).unwrap();
+    }
+    a.serve();
+    assert_eq!(rig.sent(), before + 1, "one message a parent");
+    let again = ops::children(&theirs, home).unwrap();
+    assert_eq!(again.len(), 4, "one, two, three and four");
+    assert_eq!(again[..2], listed[..], "the rows that stood keep their rds");
+    let four = cell::resolve(&theirs, ROOT, &format!("{path}/four")).unwrap();
+    assert_eq!(four, again[3]);
+    assert_eq!(a.serve(), 0, "a served an op nobody asked of it");
+}
+
 /// Changes made with nobody serving: more than the Host's ring holds
 /// (`RING`, clients/core/src/host.rs), so the sweep's own cursor falls
 /// off the front of it.

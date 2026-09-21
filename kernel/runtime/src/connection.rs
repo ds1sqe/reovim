@@ -185,9 +185,10 @@ impl Connection {
     }
 
     /// A change the Client announced on one of its own rds. It is
-    /// always `Unit`: what the mirror can place becomes an event, or
-    /// retires the row for a `Gone`, and what it cannot is one `debug`
-    /// line at the proxy, a Client being believed about nothing.
+    /// always `Unit`: what the mirror can place becomes an event,
+    /// retires the row for a `Gone` or unmarks its listing for a
+    /// `Create`, and what it cannot is one `debug` line at the proxy,
+    /// a Client being believed about nothing.
     fn changed(&self, kernel: &Kernel, rd: Rd, kind: Kind) -> Reply<Out> {
         if let Some((proxy, id)) = &self.proxy {
             proxy.changed(kernel, *id, rd, kind);

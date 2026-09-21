@@ -14,7 +14,7 @@
 //! call. `submit` takes what it needs, drops the borrow, calls the
 //! slot, and takes it again to record.
 
-use alloc::collections::{BTreeMap, VecDeque};
+use alloc::collections::{BTreeMap, BTreeSet, VecDeque};
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
@@ -195,12 +195,20 @@ struct State {
     /// else. A served `Op::Close` takes one out, as the Host's own
     /// `close` takes the slot.
     remote: BTreeMap<Handle, Rd>,
-    /// The rds `unregister` took out and the sweep has not said `Gone`
-    /// of yet, the root of each subtree and not what stood under it:
-    /// what retires their rows from the Kernel's mirror. A Client does
-    /// not know which of its rds a remote mirrored, so every one is
-    /// said and the mirror drops what it has no row for.
-    gone: Vec<Rd>,
+    /// The rds a served `Op::Children` listed: what the Kernel's
+    /// mirror answers listings of from its own table until told a
+    /// name came, and so the one thing a `register` here is announced
+    /// under. A served `Op::Watch` is to `remote` as a served
+    /// `Op::Children` is to this.
+    shown: BTreeSet<Rd>,
+    /// What the sweep has not said yet, watched or not: `Gone` for the
+    /// root of each subtree `unregister` took out, which retires its
+    /// rows from the Kernel's mirror, and `Create` once for each rd in
+    /// `shown` a name came under, which makes the mirror list it
+    /// again. A Client does not know which of its rds a remote
+    /// mirrored, so every `Gone` is said and the mirror drops what it
+    /// has no row for.
+    unsaid: Vec<(Rd, Kind)>,
     /// The names [`Host::unload`] refuses: the Host's own row and the
     /// Modules a Client is nothing without.
     kept: Vec<String>,
@@ -276,10 +284,20 @@ impl State {
         rd
     }
 
+    /// A name came under `parent`, said to the sweep once however many
+    /// come before it, and only where a remote has listed `parent`:
+    /// the mirror of one it has not asks when it does.
+    fn came(&mut self, parent: Rd) {
+        let said = (parent, Kind::Create);
+        if self.shown.contains(&parent) && !self.unsaid.contains(&said) {
+            self.unsaid.push(said);
+        }
+    }
+
     /// `rd` and its subtree gone, deepest first, `Delete` on `parent`,
     /// and `rd` kept for the sweep to say `Gone` of.
     fn unregister(&mut self, rd: Rd, parent: Rd) {
-        self.gone.push(rd);
+        self.unsaid.push((rd, Kind::Gone));
         let mut order = alloc::vec![rd];
         let mut at = 0;
         while let Some(next) = order.get(at).copied() {
@@ -289,6 +307,7 @@ impl State {
         for gone in order.into_iter().rev() {
             self.emit(gone, Kind::Gone, None);
             self.nodes.remove(&gone);
+            self.shown.remove(&gone);
         }
         if let Some(node) = self.nodes.get_mut(&parent) {
             node.children.retain(|child| *child != rd);
@@ -464,7 +483,8 @@ impl Host {
             events: VecDeque::new(),
             next_seq: 1,
             remote: BTreeMap::new(),
-            gone: Vec::new(),
+            shown: BTreeSet::new(),
+            unsaid: Vec::new(),
             // The row below stands under no Module, so `unload` finds
             // none to take out: the name is refused and not mistaken
             // for one nobody loaded.
@@ -503,10 +523,11 @@ impl Host {
     /// nothing rather than a panic. The list itself rides a `Since`
     /// the loop already makes, so serving nothing costs no message.
     ///
-    /// With nobody watching, the sweep walks an empty map and sends
-    /// nothing, and the Host's own `emit` kept no event for it to walk
-    /// in the first place: nothing crosses while nobody reads, and it
-    /// is those two gates and no third.
+    /// With nobody watching or listing, the sweep walks empty maps and
+    /// sends nothing, and the Host's own `emit` kept no event for it to
+    /// walk in the first place: nothing crosses while nobody reads. A
+    /// row that went is the one thing said whether anybody read it,
+    /// a mirror row nobody watches standing for it all the same.
     pub fn serve(&self) -> usize {
         if self.depth.get() != 0 {
             return 0;
@@ -530,13 +551,19 @@ impl Host {
 
     /// What a served op does to the rds this Client announces for: an
     /// `Op::Watch` that answered puts its handle's rd in or takes it
-    /// out, and an `Op::Close` takes it out whatever it answered, the
-    /// handle being gone either way. Every other op leaves it alone.
+    /// out, an `Op::Close` takes it out whatever it answered, the
+    /// handle being gone either way, and an `Op::Children` that
+    /// answered puts its rd among the shown. Every other op leaves
+    /// both alone.
     fn noted(&self, op: &Op, answer: &Answer) {
         let mut s = self.state.borrow_mut();
         let on = match (op, answer) {
             (Op::Close { h }, _) | (Op::Watch { h, on: false }, Ok(_)) => {
                 s.remote.remove(h);
+                return;
+            }
+            (Op::Children { rd }, Ok(_)) => {
+                s.shown.insert(*rd);
                 return;
             }
             (Op::Watch { h, on: true }, Ok(_)) => *h,
@@ -547,10 +574,11 @@ impl Host {
     }
 
     /// One `Op::Changed` per change on an rd a remote watches, from
-    /// this Host's own place in its own ring, and then one `Gone` per
-    /// rd `unregister` took out since the last sweep, watched or not.
-    /// Everything else the ring holds is somebody's local business and
-    /// is passed over.
+    /// this Host's own place in its own ring, and then what the ring
+    /// does not carry: one `Gone` per rd `unregister` took out since
+    /// the last sweep, watched or not, and one `Create` per rd a
+    /// remote listed that a name came under. Everything else the ring
+    /// holds is somebody's local business and is passed over.
     ///
     /// A ring that ran past this place is one `Overflow`, which
     /// `Op::Changed` cannot carry: a change is `Modify` or `Attrib`
@@ -564,8 +592,7 @@ impl Host {
             let mut s = self.state.borrow_mut();
             let (mut said, cursor) = s.owed(self.said.get());
             self.said.set(cursor);
-            let gone = core::mem::take(&mut s.gone);
-            said.extend(gone.into_iter().map(|rd| (rd, Kind::Gone)));
+            said.append(&mut s.unsaid);
             said
         };
         for (rd, kind) in said {
@@ -602,6 +629,7 @@ impl Host {
             let name = name.to_string();
             s.modules.push(Some(Loaded { name, module }));
             s.emit(SELF, Kind::Create, Some(home));
+            s.came(SELF);
             (id, home)
         };
         if let Err(error) = starter.start(&self.calls(id), home) {
@@ -776,6 +804,7 @@ impl Calls for HostCalls<'_> {
         let owner = Owner::Driver { module: self.module, driver };
         let rd = s.insert(parent, name, owner, Flags::empty(), now);
         s.emit(parent, Kind::Create, Some(rd));
+        s.came(parent);
         Ok(rd)
     }
 
