@@ -288,7 +288,7 @@ impl Vim {
             Motion::ScreenDown => self.repeat(n, |v| v.vertical(true)),
             Motion::ScreenUp => self.repeat(n, |v| v.vertical(false)),
             Motion::Line(line) => self.jump(line),
-            Motion::Find(kind, c) => self.repeat_find(n, kind, c),
+            Motion::Find(kind, c) => self.repeat_find(n, kind, c, true),
             Motion::FindAgain { reversed } => self.find_again(n, reversed),
             Motion::Percent => self.percent(),
             Motion::Mark { name, exact } => self.go_to_mark(name, exact),
@@ -349,48 +349,91 @@ impl Vim {
         self.go_clamped(self.at_screen_column(start, self.want))
     }
 
+    /// `;` and `,`: the last find again, reversed for `,`.
+    ///
+    /// nvim forces the pair to move: a `t` or `T` repeated without a
+    /// count of its own passes over the char it is already sitting
+    /// beside, which is the one place `stop` is false.
     fn find_again(&mut self, n: usize, reversed: bool) -> Effect {
         let Some((kind, c)) = self.find else {
             self.ring();
             return Effect::Nothing;
         };
         let kind = if reversed { kind.reversed() } else { kind };
-        self.repeat_find(n, kind, c)
+        self.repeat_find(n, kind, c, !(n == 1 && kind.before()))
     }
 
-    fn repeat_find(&mut self, n: usize, kind: Find, c: char) -> Effect {
-        self.repeat(n, |v| {
-            v.found(kind, c).map_or(Effect::Nothing, |to| v.go(to))
+    /// `f`, `t`, `F` or `T` with its count: the whole run or none of
+    /// it.
+    ///
+    /// `repeat`'s partial run is right for `5l`, which goes as far as
+    /// it can; a find that cannot reach its count moves nothing, so
+    /// `d3fa` over one `a` changes no text.
+    fn repeat_find(
+        &mut self,
+        n: usize,
+        kind: Find,
+        c: char,
+        stop: bool,
+    ) -> Effect {
+        let Some(to) = self.found(n, kind, c, stop) else {
+            self.ring();
+            return Effect::Nothing;
+        };
+        self.go(to);
+        // A `t` already sitting before its char finds it and stays:
+        // the find succeeded, so `dta` still has its span, which
+        // `go`'s own `Nothing` for a cursor that did not move would
+        // have thrown away.
+        Effect::Moved
+    }
+
+    /// Where the `n`th `c` on the cursor's line in `kind`'s direction
+    /// leaves the cursor, or `None` for a line that holds fewer.
+    ///
+    /// nvim's `searchc`: the count is walked char by char and only
+    /// the last landing steps back for a `t` or `T`, so `2ta` on
+    /// `xaxa` counts the `a` next to the cursor and stops before the
+    /// second one. `stop` false passes over that first char without
+    /// counting it.
+    fn found(
+        &self,
+        n: usize,
+        kind: Find,
+        c: char,
+        mut stop: bool,
+    ) -> Option<usize> {
+        let (start, end) =
+            (self.line_start(self.cursor), self.line_end(self.cursor));
+        let (mut at, mut left) = (self.cursor, n);
+        while left > 0 {
+            at = self.stepped(at, start, end, kind.forward())?;
+            left -= usize::from(stop && self.text[at..].starts_with(c));
+            stop = true;
+        }
+        Some(match (kind.before(), kind.forward()) {
+            (false, _) => at,
+            (true, true) => self.prev_char(at),
+            (true, false) => self.forward_char(at),
         })
     }
 
-    /// Where `c` is on the cursor's line in `kind`'s direction; for
-    /// `t` and `T` the char before it, skipping one already adjacent.
-    fn found(&self, kind: Find, c: char) -> Option<usize> {
-        if kind.forward() {
-            self.found_forward(kind.before(), c)
+    /// One char on from `at` in the find's direction, or `None` at
+    /// the line's own end: `searchc` walks a line and never leaves
+    /// it, which is why a find fails where a search would wrap.
+    fn stepped(
+        &self,
+        at: usize,
+        start: usize,
+        end: usize,
+        forward: bool,
+    ) -> Option<usize> {
+        if forward {
+            let next = self.forward_char(at);
+            (next < end).then_some(next)
         } else {
-            self.found_back(kind.before(), c)
+            (at != start).then(|| self.prev_char(at))
         }
-    }
-
-    fn found_forward(&self, before: bool, c: char) -> Option<usize> {
-        let end = self.line_end(self.cursor);
-        let from = self.forward_char(self.cursor).min(end);
-        let adjacent = before && self.text[from..end].starts_with(c);
-        let from =
-            if adjacent { self.forward_char(from).min(end) } else { from };
-        let at = from + self.text[from..end].find(c)?;
-        Some(if before { self.prev_char(at) } else { at })
-    }
-
-    fn found_back(&self, before: bool, c: char) -> Option<usize> {
-        let start = self.line_start(self.cursor);
-        let adjacent = before && self.text[start..self.cursor].ends_with(c);
-        let to =
-            if adjacent { self.prev_char(self.cursor) } else { self.cursor };
-        let at = start + self.text[start..to].rfind(c)?;
-        Some(if before { self.forward_char(at) } else { at })
     }
 
     /// `%`: from the first bracket at or after the cursor on its line

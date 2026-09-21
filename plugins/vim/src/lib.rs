@@ -1143,20 +1143,10 @@ impl Vim {
         if let Some(motion) = Motion::of(key, count) {
             return self.motion(motion, n);
         }
+        if let Some(first) = self.opens(key) {
+            return self.wait(first, count);
+        }
         let effect = match key {
-            Key::Char(
-                first @ ('g' | 'f' | 't' | 'F' | 'T' | '"' | '\'' | '`' | 'm'),
-            ) => {
-                return self.wait(first, count);
-            }
-            Key::Char(first @ ('i' | 'a'))
-                if self.pending.operator.is_some() =>
-            {
-                return self.wait(first, count);
-            }
-            Key::Char('Z') if self.pending.operator.is_none() => {
-                return self.wait('Z', count);
-            }
             Key::Char('d') => return self.operator(Operator::Delete, count),
             Key::Char('c') => return self.operator(Operator::Change, count),
             Key::Char('y') => return self.operator(Operator::Yank, count),
@@ -1229,6 +1219,23 @@ impl Vim {
         effect
     }
 
+    /// The first key of a pair, if `key` is one: `g`, a find, a
+    /// register, a mark, and `Z` and `r`, which no operator may be
+    /// waiting on — `dZ` and `dr` abort the operator as nvim has
+    /// them — against an object's `i` or `a`, which only an operator
+    /// takes. `q` and `@` are not here: an operator swallows them
+    /// first, which their own arms in [`Self::normal`] read.
+    const fn opens(&self, key: Key) -> Option<char> {
+        let Key::Char(c) = key else { return None };
+        let operator = self.pending.operator.is_some();
+        match c {
+            'g' | 'f' | 't' | 'F' | 'T' | '"' | '\'' | '`' | 'm' => Some(c),
+            'i' | 'a' if operator => Some(c),
+            'Z' | 'r' if !operator => Some(c),
+            _ => None,
+        }
+    }
+
     /// The second key of a pair: `gg`, `dd`, `ZZ`, `fx` and the like.
     fn second(&mut self, first: char, key: Key, count: usize) -> Effect {
         let n = count.max(1);
@@ -1251,6 +1258,11 @@ impl Vim {
             }
             ('@', Key::Char(name @ ('a'..='z' | 'A'..='Z' | '@' | ':'))) => {
                 self.macro_run(name, n)
+            }
+            ('r', key) => {
+                let effect = self.replaced(key, n);
+                self.settle(&effect);
+                effect
             }
             ('Z', Key::Char('Z')) => Effect::Quit(Quit::Write),
             ('Z', Key::Char('Q')) => Effect::Quit(Quit::Force),
@@ -1320,6 +1332,43 @@ impl Vim {
         self.pending.count = count;
         self.keep_want = true;
         Effect::Nothing
+    }
+
+    /// `{n}r{key}`: `n` chars from the cursor become `key`'s char,
+    /// one of whatever width replacing one of whatever width, the
+    /// cursor left on the last of them; `<CR>` replaces the whole
+    /// count with one line break, and `<Esc>` — or any key that is
+    /// no char to put — cancels.
+    ///
+    /// Fewer than `n` chars left on the line and nothing happens at
+    /// all, as nvim's `nv_replace` has it: the cursor does not move
+    /// and no revision is made.
+    fn replaced(&mut self, key: Key, n: usize) -> Effect {
+        let c = match key {
+            Key::Char(c) => c,
+            Key::Enter => '\n',
+            _ => return Effect::Nothing,
+        };
+        let at = self.cursor;
+        let end = self.line_end(at);
+        if self.text[at..end].chars().count() < n {
+            self.ring();
+            return Effect::Nothing;
+        }
+        let len: usize =
+            self.text[at..end].chars().take(n).map(char::len_utf8).sum();
+        let (text, last) = if c == '\n' {
+            // One break for the whole count, the cursor on the line
+            // it opened.
+            (String::from(c), 1)
+        } else {
+            // One char for each, the cursor on the last of them.
+            (core::iter::repeat_n(c, n).collect(), (n - 1) * c.len_utf8())
+        };
+        let effect = self.replace(at, len, text);
+        self.cursor = at + last;
+        self.clamp();
+        effect
     }
 
     /// An operator key, `count` the digits typed before it and 0
