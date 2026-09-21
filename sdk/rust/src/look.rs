@@ -26,6 +26,13 @@ pub const UNDERLINE: u64 = 8;
 pub const INVERSE: u64 = 16;
 /// Strike-through.
 pub const STRIKE: u64 = 32;
+/// Not drawn: the cell is left out and the row closes up over it.
+///
+/// It draws in no SGR parameter, so [`params`] writes nothing for it
+/// and a drawer takes the cell out instead. Every hidden cell of the
+/// row the cursor is on is drawn after all, as nvim's `concealcursor`
+/// default leaves that one line alone.
+pub const HIDDEN: u64 = 64;
 
 /// Every attr and the SGR parameter it draws in, in the order
 /// [`params`] writes them.

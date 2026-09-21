@@ -95,6 +95,30 @@ declare! {
 }
 
 declare! {
+    /// `/self/<plugin>/<n>/looks`: what a Plugin draws over a Buffer.
+    ///
+    /// `<n>` is the name the draft goes by under `/self/dev/buffers`,
+    /// so one Plugin serves one node per Buffer it decorates. The
+    /// drawer finds them by this declaration and not by the Plugin's
+    /// name: it walks the homes under `/self`, and a node that does not
+    /// offer this api is passed over.
+    ///
+    /// `runs` answers the looks over the bytes `from..to`, which is the
+    /// viewport and no more, in whatever order the Plugin found them. A
+    /// `Look` is in the bytes of the Buffer, as a [`window::Span`] is:
+    /// `style` is a meaning of the theme ([`reovim_sdk::sgr`]) and
+    /// never a colour, and `priority` orders the painting, the higher
+    /// over the lower and the region's own spans over both. The Plugin
+    /// is called and never ticked: it parses what the range holds when
+    /// it is asked.
+    api looks ver 1 {
+        0 runs(args: Range) -> [Look; 4096]: READ;
+    }
+    record Range { from: u64, to: u64 }
+    record Look { from: u64, to: u64, style: u64, priority: u64 }
+}
+
+declare! {
     /// `/self/dev/open`: the region shows something else.
     ///
     /// A Plugin asks its Client to show `target` here, in the Plugin

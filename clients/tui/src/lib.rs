@@ -22,10 +22,10 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use reovim_client::{Host, HostCalls};
-use reovim_client_api::{BAR, Key, NONE, display, open, window};
+use reovim_client::{Host, HostCalls, ROOT, SELF};
+use reovim_client_api::{BAR, Key, NONE, display, looks, open, window};
 use reovim_kernel_interface::{Calls, Error, Event, Handle, Kind, Rd, Rights};
-use reovim_sdk::{cell, decode, encode, ops, sgr};
+use reovim_sdk::{cell, decode, encode, look, ops, sgr};
 use reovim_text_api::history;
 
 /// The cells a char takes: the declarations', drawn on here and by the
@@ -107,7 +107,8 @@ impl Cells {
 
 /// The rd a View named, laid out here: the handle the tui reads and
 /// watches it through, what that rd is over once it is over anything,
-/// its bytes as the tui last read them, and where its history stands.
+/// its bytes as the tui last read them, where its history stands, and
+/// the `looks` Driver of every Plugin that decorates it.
 struct Laid {
     rd: Rd,
     h: Handle,
@@ -115,6 +116,8 @@ struct Laid {
     text: String,
     head: u64,
     published: u64,
+    /// One per Plugin serving looks over this rd, each opened READ.
+    looks: Vec<(Rd, Handle)>,
 }
 
 /// One region of a terminal over `/self/dev`.
@@ -157,6 +160,10 @@ impl Tui {
     /// What the Client says.
     pub fn open(host: Rc<Host>, dev: Rd) -> Result<Self, Error> {
         let cells = Cells::of(&host.own(), dev)?;
+        // A Plugin's home coming under `/self` is a `looks` Driver a
+        // later frame reads, so the tui watches its own root for as
+        // long as it runs and never closes that watch.
+        let _watching = ops::watch(&host.own(), SELF)?;
         let mut tui = Self {
             host,
             cells,
@@ -314,6 +321,7 @@ impl Tui {
             return Ok(());
         }
         self.reread(&events)?;
+        self.relook(&events)?;
         self.refresh()
     }
 
@@ -375,6 +383,24 @@ impl Tui {
             self.moved |= text != laid.text;
             laid.text = text;
         }
+        Ok(())
+    }
+
+    /// The looks Drivers found again once a Plugin's home came under
+    /// `/self`: one that registered after the lay-on is read from the
+    /// next frame on, and a frame with another Plugin's looks in it is
+    /// a frame to draw.
+    fn relook(&mut self, events: &[Event]) -> Result<(), Error> {
+        let came = |e: &Event| e.rd == SELF && e.kind == Kind::Create;
+        let Some(rd) = self.over().filter(|_| events.iter().any(came)) else {
+            return Ok(());
+        };
+        let found = looks_of(&self.ctx(), rd)?;
+        let Some(laid) = &mut self.laid else { return Ok(()) };
+        let before = core::mem::replace(&mut laid.looks, found);
+        let held: Vec<Handle> = before.into_iter().map(|(_, h)| h).collect();
+        ops::shut(&self.ctx(), &held);
+        self.moved = true;
         Ok(())
     }
 
@@ -478,20 +504,73 @@ impl Tui {
         };
         let mut at = start_of(text, boundary(text, at_of(view.top)));
         let last = text.len() - usize::from(text.ends_with('\n'));
-        while frame.lines.len() < height && at <= last {
+        let mut bytes: Vec<(usize, usize)> = Vec::new();
+        while bytes.len() < height && at <= last {
             let end = end_of(text, at);
-            let row = cell(frame.lines.len());
             frame.lines.push(shown(&text[at..end], width));
-            self.on_row(&mut frame, view, row, (at, end), (cursor, width));
+            bytes.push((at, end));
             at = end + 1;
+        }
+        let served = self.looks(&bytes);
+        let cursor = (cursor, width);
+        for (row, &on) in bytes.iter().enumerate() {
+            self.on_row(&mut frame, view, cell(row), on, cursor, &served);
         }
         frame
     }
 
-    /// What of the View falls on the row `row`, the line of bytes
-    /// `at..end`: its spans, meaning resolved to a look and cells to
-    /// the bytes of `frame.lines[row]` (already pushed), and the
-    /// cursor when it is there.
+    /// The looks every Plugin serves over the laid rd for the bytes the
+    /// rows `bytes` hold, sorted by `priority` ascending: the viewport
+    /// and no more, to paint under the View's own spans.
+    ///
+    /// A Driver that answers with an error is left out of this frame
+    /// and asked again at the next, its trouble said in the log: a
+    /// decoration is nobody's reason to lose a frame.
+    fn looks(&self, bytes: &[(usize, usize)]) -> Vec<looks::Look> {
+        let Some(laid) = self.laid.as_ref() else { return Vec::new() };
+        let (Some(first), Some(last)) = (bytes.first(), bytes.last()) else {
+            return Vec::new();
+        };
+        let range = looks::Range { from: as64(first.0), to: as64(last.1) };
+        let mut found = Vec::new();
+        for &(rd, h) in &laid.looks {
+            match self.runs(h, range.clone()) {
+                Ok(runs) => found.extend(runs),
+                Err(error) => self.grumbled(rd, error),
+            }
+        }
+        found.sort_by_key(|look| look.priority);
+        found
+    }
+
+    /// `runs` of one looks Driver, through the handle held on it.
+    fn runs(
+        &self,
+        h: Handle,
+        range: looks::Range,
+    ) -> Result<Vec<looks::Look>, Error> {
+        let own = self.host.own();
+        let mut ctx: &dyn Calls = &own;
+        looks::Call(&mut ctx, h).runs(range)
+    }
+
+    /// One looks Driver's trouble, in the log at `debug`; the frame
+    /// goes out without it and the next one asks it again.
+    fn grumbled(&self, rd: Rd, error: Error) {
+        let said = format!("<7>looks rd={} {error:?}", rd.0);
+        let ctx = self.ctx();
+        let Ok(log) = cell::resolve(&ctx, ROOT, "/sys/log") else { return };
+        let _ = ops::put(&ctx, log, said.into_bytes());
+    }
+
+    /// What falls on the row `row`, the line of bytes `at..end`: the
+    /// looks `served` and then the View's own spans, meaning resolved
+    /// to a look and cells to the bytes of `frame.lines[row]` (already
+    /// pushed), and the cursor when it is there.
+    ///
+    /// The row the cursor is on draws every hidden cell of itself; the
+    /// rest close up over theirs, so the row as it is drawn is what
+    /// `frame.lines[row]` then holds.
     fn on_row(
         &self,
         frame: &mut Frame,
@@ -499,22 +578,27 @@ impl Tui {
         row: u16,
         (at, end): (usize, usize),
         (cursor, width): (usize, usize),
+        served: &[looks::Look],
     ) {
         let line = &self.text()[at..end];
-        let cells = |span: &window::Span| {
-            span_on(line, at, end, span).map(|at| (span.style, at))
+        let cells = |(from, to, style): (u64, u64, u64)| {
+            span_on(line, (at, end), (from, to))
+                .map(|(from, to)| (style, cell(from), cell(to)))
         };
-        let spans: Vec<(u64, u16, u16)> = view
-            .spans
-            .iter()
-            .filter_map(cells)
-            .map(|(style, (from, to))| (style, cell(from), cell(to)))
-            .collect();
-        let resolved = rowed(&frame.lines[usize::from(row)], &spans);
+        let looks = served.iter().map(|it| (it.from, it.to, it.style));
+        let own = view.spans.iter().map(|it| (it.from, it.to, it.style));
+        let spans: Vec<(u64, u16, u16)> =
+            looks.chain(own).filter_map(cells).collect();
+        let held = (at..=end).contains(&cursor);
+        let row = usize::from(row);
+        let (drawn, resolved) = rowed(&frame.lines[row], &spans, !held);
+        frame.lines[row] = drawn;
         frame.runs.push(resolved);
-        if (at..=end).contains(&cursor) {
-            let at = cell_at(line, cursor - at, view.shape);
-            frame.cursor = (row, cell(at.min(width - 1)));
+        if held {
+            // The row the cursor is on hides nothing, so its cells are
+            // the line's own and the column is counted over them.
+            let on = cell_at(line, cursor - at, view.shape);
+            frame.cursor = (cell(row), cell(on.min(width - 1)));
         }
     }
 
@@ -539,12 +623,43 @@ impl Tui {
 fn lay_on(ctx: &dyn Calls, rd: Rd) -> Result<Laid, Error> {
     let h = ops::watch(ctx, rd)?;
     let text = String::from_utf8_lossy(&ops::whole(ctx, h)?).into_owned();
-    Ok(Laid { rd, h, source: None, text, head: 0, published: 0 })
+    let looks = looks_of(ctx, rd)?;
+    Ok(Laid { rd, h, source: None, text, head: 0, published: 0, looks })
+}
+
+/// Every `looks` Driver over `rd`, each opened READ: the child named
+/// as `rd` is under a Plugin's home, offering that api.
+///
+/// The Kernel checked the declaration when the Driver reported it and
+/// keeps its hash in the rd's own `Info`, so one `Op::Info` — the read
+/// `stat` makes — is the whole test, and a name that offers no `looks`
+/// is passed over. So is one that will not open: a decoration the tui
+/// cannot read is a decoration that is not there.
+fn looks_of(ctx: &dyn Calls, rd: Rd) -> Result<Vec<(Rd, Handle)>, Error> {
+    let Some(name) = ops::info(ctx, rd)?.name else { return Ok(Vec::new()) };
+    let mut found = Vec::new();
+    for home in ops::children(ctx, SELF)? {
+        let Some(node) = serving(ctx, home, &name) else { continue };
+        let Ok(h) = ctx.open(node, Rights::READ) else { continue };
+        found.push((node, h));
+    }
+    Ok(found)
+}
+
+/// The `looks` node the Plugin at `home` serves over the rd named
+/// `name`, where it serves one.
+fn serving(ctx: &dyn Calls, home: Rd, name: &str) -> Option<Rd> {
+    let over = ops::lookup(ctx, home, name).ok()?;
+    let node = ops::lookup(ctx, over, "looks").ok()?;
+    let offers = ops::info(ctx, node).ok()?.apis;
+    offers.contains(&looks::hash()).then_some(node)
 }
 
 /// What was laid out before, let go: its handle and the one on what it
 /// was over.
 fn unlay(ctx: &dyn Calls, laid: &Laid) -> Result<(), Error> {
+    let held: Vec<Handle> = laid.looks.iter().map(|&(_, h)| h).collect();
+    ops::shut(ctx, &held);
     if let Some((_, watched)) = laid.source {
         ops::close(ctx, watched)?;
     }
@@ -627,11 +742,10 @@ fn cell_at(line: &str, at: usize, shape: u64) -> usize {
 /// which is how a whole selected line shows.
 fn span_on(
     line: &str,
-    at: usize,
-    end: usize,
-    span: &window::Span,
+    (at, end): (usize, usize),
+    (from, to): (u64, u64),
 ) -> Option<(usize, usize)> {
-    let (from, to) = (at_of(span.from), at_of(span.to));
+    let (from, to) = (at_of(from), at_of(to));
     if from > end || to <= at {
         return None;
     }
@@ -643,16 +757,26 @@ fn span_on(
 
 /// `spans` (meaning, cell-from, cell-to) on one row, resolved to looks
 /// and to the bytes of `shown` — that row already truncated to its own
-/// width, as the terminal draws it.
+/// width, as the terminal draws it: the row as it is drawn, and its
+/// runs in the bytes of that.
 ///
-/// A View's spans are in paint order: painted here into one look a
-/// cell, a later one over whatever an earlier one left, so a span is
-/// whole wherever it stands and nothing needs a sort or a clip to say
+/// The spans are in paint order, the looks a Plugin served by rising
+/// `priority` and the View's own after them: painted here into one
+/// look a cell, a later one over whatever an earlier one left, so a
+/// span is whole wherever it stands and nothing needs a clip to say
 /// so. A span the theme holds no look for paints nothing — it does not
 /// erase what is already there. One cell past `shown`'s own is the
 /// newline a run may take, which is how a whole selected line shows;
 /// equal neighbours, that one included, then coalesce into runs.
-fn rowed(shown: &str, spans: &[(u64, u16, u16)]) -> Vec<display::Run> {
+///
+/// `hide` leaves every cell whose look is hidden out of the row, which
+/// closes up over it: it is on for every row but the one the cursor is
+/// on.
+fn rowed(
+    shown: &str,
+    spans: &[(u64, u16, u16)],
+    hide: bool,
+) -> (String, Vec<display::Run>) {
     let cells: usize = shown.chars().map(width).sum();
     let mut looks = vec![0u64; cells + 1];
     for &(style, from, to) in spans {
@@ -664,16 +788,47 @@ fn rowed(shown: &str, spans: &[(u64, u16, u16)]) -> Vec<display::Run> {
         let to = usize::from(to).min(looks.len());
         looks[from..to].fill(look);
     }
+    let (text, kept) = closed(shown, &looks, hide);
+    let runs = coalesced(&text, &kept);
+    (text, runs)
+}
+
+/// `shown` with every hidden cell left out where `hide` says so, and
+/// the look of each cell that is left, the newline's own last.
+///
+/// The hidden bit is off every look here: it says what the drawer does
+/// and never what a cell that is drawn looks like.
+fn closed(shown: &str, looks: &[u64], hide: bool) -> (String, Vec<u64>) {
+    let mut text = String::new();
+    let mut kept: Vec<u64> = Vec::with_capacity(looks.len());
+    let mut at = 0;
+    for c in shown.chars() {
+        let (held, wide) = (looks[at], width(c));
+        at += wide;
+        if hide && held & look::HIDDEN != 0 {
+            continue;
+        }
+        text.push(c);
+        kept.extend(core::iter::repeat_n(held & !look::HIDDEN, wide));
+    }
+    kept.push(looks[at] & !look::HIDDEN);
+    (text, kept)
+}
+
+/// The runs of a row whose cells look like `kept`, the last of those
+/// the newline's: equal neighbours coalesced, in the bytes of `text`.
+fn coalesced(text: &str, kept: &[u64]) -> Vec<display::Run> {
+    let cells = kept.len() - 1;
     let mut runs = Vec::new();
     let mut at = 0;
-    while at < looks.len() {
-        let look = looks[at];
-        let changed = looks[at..].iter().position(|&next| next != look);
-        let end = changed.map_or(looks.len(), |n| at + n);
+    while at < kept.len() {
+        let look = kept[at];
+        let changed = kept[at..].iter().position(|&next| next != look);
+        let end = changed.map_or(kept.len(), |n| at + n);
         if look != 0 {
             let newline = usize::from(end > cells);
-            let from = byte_at_cell(shown, cell(at));
-            let to = byte_at_cell(shown, cell(end.min(cells))) + newline;
+            let from = byte_at_cell(text, cell(at));
+            let to = byte_at_cell(text, cell(end.min(cells))) + newline;
             runs.push(display::Run {
                 from: as64(from),
                 to: as64(to),

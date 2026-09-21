@@ -1,14 +1,16 @@
-//! The nine meanings a run may carry, and the one theme that resolves
-//! each to a [`crate::look`].
+//! The meanings a run may carry, and the one theme that resolves each
+//! to a [`crate::look`].
 //!
 //! `SELECTION` and `MATCH` are a Plugin's own, and no Driver ever
-//! writes them; the other seven are the colors a Driver under `/bin`
+//! writes them; the next seven are the colors a Driver under `/bin`
 //! may print in, one table pairing each with the look it always drew
 //! in, so a color cannot mean one thing at the Driver and another at
-//! the terminal. [`paint`] wraps text in a meaning's escape and
-//! [`style`] takes one back apart; [`look()`] is the theme itself, one
-//! meaning to one look, for whoever resolves meanings to looks in the
-//! first place.
+//! the terminal. The nine after those are what a decoration means, the
+//! `style` of a look a Plugin serves over a Buffer.
+//!
+//! [`paint`] wraps text in a meaning's escape and [`style`] takes one
+//! back apart; [`look()`] is the theme itself, one meaning to one look,
+//! for whoever resolves meanings to looks in the first place.
 //!
 //! [`csi`] and [`plain`] know no meaning at all: they are what a
 //! reader with no colour takes an escape sequence back out with.
@@ -39,13 +41,35 @@ pub const YELLOW: u64 = 8;
 /// Dim.
 pub const DIM: u64 = 9;
 
+/// A heading, the first of the nine a decoration means: a Plugin over
+/// a Buffer serves the construct and the theme says the look.
+pub const HEADING: u64 = 10;
+/// Emphasised text.
+pub const EMPHASIS: u64 = 11;
+/// Strongly emphasised text.
+pub const STRONG: u64 = 12;
+/// A code span.
+pub const CODE: u64 = 13;
+/// A quoted block.
+pub const QUOTE: u64 = 14;
+/// A horizontal rule.
+pub const RULE: u64 = 15;
+/// A link.
+pub const LINK: u64 = 16;
+/// A fenced block, tinted for its whole width.
+pub const FENCE: u64 = 17;
+/// The marker of a construct, which the drawer conceals: the one row
+/// of the theme whose look carries [`crate::look::HIDDEN`].
+pub const MARKER: u64 = 18;
+
 /// The seven a Driver may write, in [`style`]'s search order.
 const DRIVEN: [u64; 7] = [BLUE, GREEN, RED, RED_BOLD, BOLD, YELLOW, DIM];
 
 /// Every meaning and the look this theme resolves it to. `params` of
-/// each of the seven is the string this crate always drew it in, so
-/// the bytes of `ls`, `dmesg` and `watch` do not move with it.
-fn theme() -> [(u64, u64); 9] {
+/// each of the seven a Driver writes is the string this crate always
+/// drew it in, so the bytes of `ls`, `dmesg` and `watch` do not move
+/// with it.
+fn theme() -> [(u64, u64); 18] {
     [
         (SELECTION, look::INVERSE),
         (MATCH, look::UNDERLINE),
@@ -56,6 +80,15 @@ fn theme() -> [(u64, u64); 9] {
         (BOLD, look::BOLD),
         (YELLOW, look::fg(palette(3))),
         (DIM, look::DIM),
+        (HEADING, look::BOLD | look::fg(palette(4))),
+        (EMPHASIS, look::ITALIC),
+        (STRONG, look::BOLD),
+        (CODE, look::fg(palette(6))),
+        (QUOTE, look::ITALIC | look::fg(palette(8))),
+        (RULE, look::DIM),
+        (LINK, look::UNDERLINE | look::fg(palette(4))),
+        (FENCE, look::bg(palette(236))),
+        (MARKER, look::HIDDEN),
     ]
 }
 
@@ -155,14 +188,16 @@ pub fn plain(bytes: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        BLUE, BOLD, DIM, GREEN, MATCH, RED, RED_BOLD, SELECTION, YELLOW, look,
+        BLUE, BOLD, CODE, DIM, EMPHASIS, FENCE, GREEN, HEADING, LINK, MARKER,
+        MATCH, QUOTE, RED, RED_BOLD, RULE, SELECTION, STRONG, YELLOW, look,
         paint, plain, style,
     };
-    use crate::look::params;
+    use crate::look::{HIDDEN, params};
 
-    /// The nine rows of the theme, and the string this crate always
-    /// drew each of them in: the seven a Driver writes, and the
-    /// Plugin's own two, which the app hardcoded as `"7"` and `"4"`.
+    /// The nine rows a run of a terminal's own colors rests on, and
+    /// the string this crate always drew each of them in: the seven a
+    /// Driver writes, and the Plugin's own two, which the app
+    /// hardcoded as `"7"` and `"4"`.
     #[test]
     fn every_row_of_the_theme_prints_the_string_it_always_drew() {
         let rows = [
@@ -179,6 +214,18 @@ mod tests {
         for (meaning, code) in rows {
             assert_eq!(params(look(meaning)), code, "meaning {meaning}");
         }
+    }
+
+    /// The nine a decoration means: each has a look of its own, and
+    /// `MARKER`'s is the one the drawer does not draw.
+    #[test]
+    fn every_decoration_means_a_look_and_marker_is_the_hidden_one() {
+        let meanings =
+            [HEADING, EMPHASIS, STRONG, CODE, QUOTE, RULE, LINK, FENCE, MARKER];
+        for meaning in meanings {
+            assert_ne!(look(meaning), 0, "meaning {meaning}");
+        }
+        assert_eq!(look(MARKER), HIDDEN);
     }
 
     #[test]

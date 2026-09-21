@@ -17,16 +17,17 @@ use std::rc::Rc;
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client::{Client, Host, ROOT};
 use reovim_client_api::{
-    BAR, BLOCK, BLUE, GREEN, Key, MATCH, NONE, RED, SELECTION, display, open,
-    window,
+    BAR, BLOCK, BLUE, GREEN, Key, MATCH, NONE, RED, SELECTION, display, looks,
+    open, window,
 };
 use reovim_client_region::{Region, Surface};
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,
+    Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,
+    Rd, Reply, Rights,
 };
 use reovim_rig::{Limits, Rig, buffer_over, shown};
-use reovim_sdk::{cell, decode, encode, ops, sgr};
+use reovim_sdk::{cell, decode, encode, log, ops, sgr};
 use reovim_text_api::{history, publish, text};
 
 /// What a scripted Plugin does with the next key.
@@ -120,6 +121,12 @@ impl Stub {
     /// What the region was opened with.
     fn started(&self) -> open::Ask {
         self.0.script.borrow().ask.clone().unwrap()
+    }
+
+    /// Its own Buffer, which the Views it shows name until a second
+    /// one takes its place.
+    fn buffer(&self) -> Rd {
+        self.0.script.borrow().buffer.unwrap()
     }
 
     /// The cells of `/self/dev` it holds.
@@ -837,4 +844,285 @@ fn a_none_view_does_not_hide_current_gone() {
         press(&mut tui, &stub, Act::Show(view(0, ""))),
         Err(Error::Gone)
     );
+}
+
+/// What a test hands the looks stub and what it recorded: the looks it
+/// answers, the byte range each `runs` was asked for, and the errors it
+/// answers before any of them.
+#[derive(Default)]
+struct Served {
+    looks: Vec<looks::Look>,
+    asked: Vec<(u64, u64)>,
+    refuses: VecDeque<Error>,
+}
+
+/// A second Plugin over the Buffer the region's own shows, serving
+/// `looks` for it under `/self/<plugin>/<n>/looks` and nothing else:
+/// what a Plugin with a decoration to draw registers.
+#[derive(Clone)]
+struct Looks {
+    /// The name the rd it serves looks over goes by, which is the name
+    /// it registers its own child under.
+    over: String,
+    /// What it reports at that node: the `looks` declaration, or none,
+    /// which makes it a node named `looks` that is no `looks` at all.
+    decls: Vec<Decl>,
+    served: Rc<RefCell<Served>>,
+}
+
+impl Looks {
+    /// It serves those looks from now on.
+    fn serves(&self, served: Vec<looks::Look>) {
+        self.served.borrow_mut().looks = served;
+    }
+
+    /// The next `runs` fails with that error, and no other.
+    fn refuses(&self, error: Error) {
+        self.served.borrow_mut().refuses.push_back(error);
+    }
+
+    /// Every byte range it was asked for, in order.
+    fn asked(&self) -> Vec<(u64, u64)> {
+        self.served.borrow().asked.clone()
+    }
+}
+
+impl Module for Looks {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let flags = Flags::READ.union(Flags::CONTAINER);
+        let over = ctx.register(DriverId(0), home, Some(&self.over))?;
+        ctx.report(over, flags, &[])?;
+        let node = ctx.register(DriverId(0), over, Some("looks"))?;
+        ctx.report(node, Flags::READ, &self.decls)
+    }
+}
+
+impl Driver for Looks {
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
+    }
+
+    fn call(
+        &self,
+        ctx: &dyn Calls,
+        h: u64,
+        api: Hash,
+        number: u16,
+        input: &[u8],
+    ) -> Reply<Vec<u8>> {
+        if api != looks::hash() {
+            return Reply::err(Error::Unsupported);
+        }
+        looks::dispatch(self, ctx, Rd(h), number, input).into()
+    }
+}
+
+impl looks::Api for Looks {
+    fn runs(
+        &self,
+        _: &dyn Calls,
+        _: Rd,
+        args: looks::Range,
+    ) -> Result<Vec<looks::Look>, Error> {
+        let mut served = self.served.borrow_mut();
+        served.asked.push((args.from, args.to));
+        match served.refuses.pop_front() {
+            Some(error) => Err(error),
+            None => Ok(served.looks.clone()),
+        }
+    }
+}
+
+/// A Plugin over `over` loaded under `name`, serving looks for that rd
+/// by the name the rd goes by, as a Plugin over a Buffer serves them
+/// for the draft it follows: `decls` is what it reports at that node.
+fn loading(host: &Rc<Host>, name: &str, over: Rd, decls: Vec<Decl>) -> Looks {
+    let over = ops::info(&host.own(), over).unwrap().name.unwrap();
+    let it = Rc::new(Looks { over, decls, served: Rc::default() });
+    let drivers: Vec<Rc<dyn Driver>> = vec![it.clone()];
+    host.load(name, it.clone(), drivers).unwrap();
+    it.as_ref().clone()
+}
+
+/// One that declares the api, under `looks-stub`.
+fn looking(host: &Rc<Host>, over: Rd) -> Looks {
+    loading(host, "looks-stub", over, vec![looks::decl()])
+}
+
+/// The log keeps a `debug` entry from now on, which is the level the
+/// tui says a looks Driver's trouble at.
+fn debugged(host: &Rc<Host>) {
+    let ctx = host.own();
+    let rd = cell::resolve(&ctx, ROOT, "/sys/loglevel").unwrap();
+    ops::put(&ctx, rd, b"debug".to_vec()).unwrap();
+}
+
+/// What `/sys/log` holds of the tui's own word for a looks Driver.
+fn grumbles(host: &Rc<Host>) -> Vec<(u8, String)> {
+    let ctx = host.own();
+    let rd = cell::resolve(&ctx, ROOT, "/sys/log").unwrap();
+    log::parse(&ops::bytes(&ctx, rd).unwrap())
+        .iter()
+        .filter(|entry| entry.text().starts_with("looks rd="))
+        .map(|entry| (entry.level, entry.text()))
+        .collect()
+}
+
+/// One look a Plugin serves over those bytes.
+const fn looked(from: u64, to: u64, style: u64, priority: u64) -> looks::Look {
+    looks::Look { from, to, style, priority }
+}
+
+/// The run a meaning draws as, in the bytes of the row it is on.
+fn drawn(from: u64, to: u64, meaning: u64) -> display::Run {
+    display::Run { from, to, style: sgr::look(meaning) }
+}
+
+#[test]
+fn a_plugins_look_reaches_the_frame() {
+    let rig = Rig::new("looks");
+    rig.file("note", b"a bold word\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let looks = looking(&host, stub.buffer());
+    looks.serves(vec![looked(2, 6, sgr::STRONG, 0)]);
+    assert_eq!(
+        press(&mut tui, &stub, Act::Show(view(0, ""))),
+        Ok(Step::Changed)
+    );
+    let frame = frame(&mut tui);
+    assert_eq!(frame.lines, ["a bold word"], "the text is nobody's to move");
+    assert_eq!(frame.runs[0], [drawn(2, 6, sgr::STRONG)]);
+}
+
+#[test]
+fn two_looks_compose_by_priority() {
+    let rig = Rig::new("compose");
+    rig.file("note", b"abcdef\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let looks = looking(&host, stub.buffer());
+    // The higher priority stands second in the answer and first on the
+    // overlap: what is painted is the order of `priority`.
+    looks.serves(vec![
+        looked(2, 4, sgr::STRONG, 1),
+        looked(0, 6, sgr::EMPHASIS, 0),
+    ]);
+    press(&mut tui, &stub, Act::Show(view(0, ""))).unwrap();
+    let runs = [
+        drawn(0, 2, sgr::EMPHASIS),
+        drawn(2, 4, sgr::STRONG),
+        drawn(4, 6, sgr::EMPHASIS),
+    ];
+    assert_eq!(frame(&mut tui).runs[0], runs);
+}
+
+#[test]
+fn the_regions_own_spans_stay_on_top() {
+    let rig = Rig::new("on-top");
+    rig.file("note", b"abcdef\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let looks = looking(&host, stub.buffer());
+    looks.serves(vec![looked(0, 6, sgr::STRONG, 9)]);
+    let mut shown = view(0, "-- VISUAL --");
+    shown.spans = vec![span(2, 4, SELECTION)];
+    press(&mut tui, &stub, Act::Show(shown)).unwrap();
+    let runs = [
+        drawn(0, 2, sgr::STRONG),
+        drawn(2, 4, SELECTION),
+        drawn(4, 6, sgr::STRONG),
+    ];
+    assert_eq!(frame(&mut tui).runs[0], runs, "however high the priority");
+}
+
+#[test]
+fn a_hidden_cell_is_not_drawn_off_the_cursors_row() {
+    let rig = Rig::new("hidden");
+    rig.file("note", b"**bold**\nplain\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let looks = looking(&host, stub.buffer());
+    looks.serves(vec![
+        looked(0, 2, sgr::MARKER, 0),
+        looked(6, 8, sgr::MARKER, 0),
+        looked(2, 6, sgr::STRONG, 1),
+    ]);
+    // The cursor on the second row: the first closes up over its
+    // markers, and the look that is left is in the bytes drawn.
+    press(&mut tui, &stub, Act::Show(view(9, ""))).unwrap();
+    let off = frame(&mut tui);
+    assert_eq!(off.lines, ["bold", "plain"]);
+    assert_eq!(off.runs[0], [drawn(0, 4, sgr::STRONG)]);
+    assert_eq!(off.cursor, (1, 0), "column 0 of the row it is on");
+
+    // The cursor on that row shows every hidden cell of it, as nvim's
+    // `concealcursor` default does; a marker then draws in nothing.
+    press(&mut tui, &stub, Act::Show(view(2, ""))).unwrap();
+    let on = frame(&mut tui);
+    assert_eq!(on.lines, ["**bold**", "plain"]);
+    assert_eq!(on.runs[0], [drawn(2, 6, sgr::STRONG)]);
+    assert_eq!(on.cursor, (0, 2), "over the `b` it stands on");
+}
+
+#[test]
+fn a_driver_that_comes_after_lay_on_is_read() {
+    let rig = Rig::new("after");
+    rig.file("note", b"abcdef\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    press(&mut tui, &stub, Act::Show(view(0, ""))).unwrap();
+    assert_eq!(frame(&mut tui).runs[0], Vec::new(), "no Plugin serves one");
+
+    let looks = looking(&host, tui.over().unwrap());
+    looks.serves(vec![looked(0, 6, sgr::STRONG, 0)]);
+    assert_eq!(tui.tick(), Ok(Step::Changed), "a home came under /self");
+    assert_eq!(frame(&mut tui).runs[0], [drawn(0, 6, sgr::STRONG)]);
+}
+
+#[test]
+fn a_failing_driver_costs_one_frame() {
+    let rig = Rig::new("failing");
+    rig.file("note", b"abcdef\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let looks = looking(&host, stub.buffer());
+    looks.serves(vec![looked(0, 6, sgr::STRONG, 0)]);
+    looks.refuses(Error::Busy);
+    debugged(&host);
+    press(&mut tui, &stub, Act::Show(view(0, ""))).unwrap();
+    assert_eq!(frame(&mut tui).runs[0], Vec::new(), "the frame it refused");
+    let said = grumbles(&host);
+    assert_eq!(said.len(), 1, "said once, at debug: {said:?}");
+    assert_eq!(said[0].0, 7, "a decoration is nobody's emergency");
+    let drew = [drawn(0, 6, sgr::STRONG)];
+    assert_eq!(frame(&mut tui).runs[0], drew, "and the one after it");
+    assert_eq!(grumbles(&host).len(), 1, "and nothing more to say");
+}
+
+#[test]
+fn a_node_named_looks_that_declares_none_is_passed_over() {
+    let rig = Rig::new("undeclared");
+    rig.file("note", b"abcdef\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    // A Plugin whose `looks` node declares nothing is a name and not
+    // an api: the tui tells one by the declaration the Kernel checked.
+    debugged(&host);
+    let plain = loading(&host, "plain-stub", stub.buffer(), Vec::new());
+    plain.serves(vec![looked(0, 6, sgr::EMPHASIS, 0)]);
+    let looks = looking(&host, stub.buffer());
+    looks.serves(vec![looked(0, 6, sgr::STRONG, 0)]);
+    press(&mut tui, &stub, Act::Show(view(0, ""))).unwrap();
+    assert_eq!(frame(&mut tui).runs[0], [drawn(0, 6, sgr::STRONG)]);
+    assert_eq!(plain.asked(), Vec::new(), "it was never asked");
+    // Nor opened and asked in vain: a node the walk passes over costs
+    // no handle, no call the Kernel refuses and no word in the log.
+    assert_eq!(grumbles(&host), Vec::new(), "and nothing was said");
+}
+
+#[test]
+fn the_viewport_alone_is_asked() {
+    let rig = Rig::new("viewport");
+    rig.file("note", b"one\ntwo\nthree\nfour\n");
+    let (mut tui, stub, host) = hosted(&rig, Some("note"));
+    let looks = looking(&host, stub.buffer());
+    press(&mut tui, &stub, Act::Show(view(0, ""))).unwrap();
+    // Three rows of terminal are two of text: the bytes of those two,
+    // and of no line below them.
+    tui.frame(80, 3).unwrap();
+    assert_eq!(looks.asked(), [(0, 7)]);
 }
