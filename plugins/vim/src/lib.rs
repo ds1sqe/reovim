@@ -1417,6 +1417,10 @@ impl Vim {
                 self.last_visual = last_visual;
                 self.marks.local = marks;
                 self.resettled();
+                // nvim's `buflist_getfpos` sets `w_set_curswant`
+                // after it restores the cursor, as `begin` does for
+                // a Buffer that left no `Place` behind.
+                self.want = self.wanted();
             }
             None => self.begin(self.beginning(line)),
         }
