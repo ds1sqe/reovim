@@ -1,9 +1,9 @@
-//! The corpus under tests/parity, each case what nvim did with its
-//! keys on its text (recorded by record.sh), replayed through the tui
-//! on the rig: the file after, the exit code, the cursor and the
-//! unnamed register must be nvim's. A case that holds a `count` asks
-//! one thing more: the row's two numbers, which are nvim's
-//! `searchcount()` at exit.
+//! The corpus under the engine crate's tests/parity, each case what
+//! nvim did with its keys on its text (recorded by record.sh),
+//! replayed through the tui on the rig: the file after, the exit
+//! code, the cursor and the unnamed register must be nvim's. A case
+//! that holds a `count` asks one thing more: the row's two numbers,
+//! which are nvim's `searchcount()` at exit.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -11,7 +11,8 @@ use std::path::Path;
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Editor, Kind, Register, Vim};
+use reovim_plugin_vim::{Kind, Register, Vim};
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::Rig;
 
 /// nvim's `state` file: the cursor as `line:column:cell` (the cell
@@ -172,7 +173,10 @@ fn replay(case: &Path) -> Result<(), String> {
 
 #[test]
 fn every_case_ends_as_nvim_ended() {
-    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/parity");
+    // The corpus is the engine crate's own directory still: 713 cases
+    // recorded from nvim, which no split of the code touches, and
+    // which apps/reovim/parity.sh reads from the same place.
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/parity");
     let mut cases: Vec<_> = std::fs::read_dir(&corpus)
         .unwrap()
         .map(|e| e.unwrap().path())

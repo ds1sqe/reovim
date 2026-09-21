@@ -16,7 +16,7 @@ reovim-sdk = { path = "../../sdk/rust" }
 [dev-dependencies]
 reovim-client = { path = "../../clients/core" }
 reovim-client-tui = { path = "../../clients/tui" }
-reovim-plugin-vim = { path = "../../plugins/vim" }
+reovim-plugin-vim-host = { path = "../../plugins/vim/host" }
 reovim-rig = { path = "../../clients/rig" }
 
 [lints]

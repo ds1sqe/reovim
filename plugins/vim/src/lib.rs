@@ -27,7 +27,6 @@ mod marks;
 mod motion;
 mod object;
 mod operator;
-mod plugin;
 mod search;
 mod visual;
 mod word;
@@ -36,9 +35,10 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+pub use command::{Typed, options, typed};
+pub use macros::BUDGET;
 pub use marks::Pos;
 pub use operator::Motion;
-pub use plugin::Editor;
 pub use reovim_client_api::{Key, notation};
 pub use visual::Visual;
 
@@ -50,7 +50,7 @@ pub use visual::Visual;
 /// search asks for is a [`Want`] beside the last search itself. The
 /// types are the api's.
 pub use reovim_client_api::resolver::{
-    Edit, Fed, Goto, Line as Ex, Open, Outcome, Reply, Search as Want,
+    Edit, Fed, Goto, Line as Ex, Open, Outcome, Reply, Search as Want, State,
 };
 
 use jumps::{Jump, Jumps};
@@ -108,7 +108,7 @@ pub const DIVERGENCES: &[Divergence] = &[Divergence {
 
 /// What a name of Vim's says of a Buffer over nothing: a write has
 /// no file to write and a point has no path to name.
-pub(crate) const E32: &str = "E32: No file name";
+pub const E32: &str = "E32: No file name";
 
 /// One change to the text, already made in Vim: the declared
 /// [`Edit`], `len` bytes at `at` become `text`.
@@ -118,10 +118,10 @@ pub const fn edited(at: usize, len: usize, text: String, join: bool) -> Edit {
 }
 
 /// A file to show, by the path as the person spelled it and the
-/// bang. The engine spells no `locator` (see [`Effect::Open`]).
+/// bang, which is the whole of the record (see [`Effect::Open`]).
 #[must_use]
 pub const fn asked(path: String, bang: bool) -> Open {
-    Open { path, bang, locator: String::new() }
+    Open { path, bang }
 }
 
 /// What a key did, before the calls it asks for are made.
@@ -190,7 +190,7 @@ pub enum Effect {
     /// `:e[dit][!] PATH`: the same ask over the file the record's
     /// `path` holds, which comes back a Vim of its own. A missing
     /// ordinary path opens a named draft without creating the file.
-    /// The engine spells no `locator`: whether a `PATH:LOCATOR` is
+    /// The record carries no locator: whether a `PATH:LOCATOR` is
     /// one name or two is settled over the tree, which is the host's.
     Open(Open),
     /// `:e` with no name: the Buffer read again. `true` for `:e!`,
@@ -279,7 +279,7 @@ const fn blank(kind: u64) -> Outcome {
         continuation: 0,
         edits: Vec::new(),
         line: Ex { ranged: false, from: 0, to: 0, line: String::new() },
-        open: Open { path: String::new(), bang: false, locator: String::new() },
+        open: Open { path: String::new(), bang: false },
         goto: Goto { over: NONE, line: 0, column: 0, land: land::LINE },
         search: Want {
             pattern: String::new(),
@@ -471,6 +471,35 @@ pub enum Mode {
 }
 
 impl Mode {
+    /// Its number in a [`State`], which is the order of the names
+    /// below: a reader that is not Rust has the record and not this
+    /// enum, and `/self/vim/mode` spells the name back from it.
+    #[must_use]
+    pub const fn code(self) -> u64 {
+        match self {
+            Self::Normal => 0,
+            Self::Insert => 1,
+            Self::Command => 2,
+            Self::Visual(Visual::Char) => 3,
+            Self::Visual(Visual::Line) => 4,
+            Self::Visual(Visual::Block) => 5,
+        }
+    }
+
+    /// The mode a [`State`]'s `mode` names; `Normal` for a number no
+    /// mode has, a record being read as far as it is understood.
+    #[must_use]
+    pub const fn of(code: u64) -> Self {
+        match code {
+            1 => Self::Insert,
+            2 => Self::Command,
+            3 => Self::Visual(Visual::Char),
+            4 => Self::Visual(Visual::Line),
+            5 => Self::Visual(Visual::Block),
+            _ => Self::Normal,
+        }
+    }
+
     /// The mode's name, which `/self/vim/mode` reads. It is a name and
     /// not the status row's words: a reader that wants `-- INSERT --`
     /// is drawing a statusline and can spell it.
@@ -517,6 +546,17 @@ struct Pending {
     register: Option<char>,
     /// A motion is being run for an operator, not for the cursor.
     running: bool,
+}
+
+impl Pending {
+    /// Whether a command has taken anything and not fired yet, which
+    /// is a [`State`]'s `pending`.
+    const fn any(&self) -> bool {
+        self.count > 0
+            || self.key.is_some()
+            || self.operator.is_some()
+            || self.register.is_some()
+    }
 }
 
 /// What `.` needs: the keys of the command under way and of the last
@@ -1200,7 +1240,7 @@ impl Vim {
                 self.set_mark(name)
             }
             ('q', Key::Char(name @ ('a'..='z' | 'A'..='Z'))) => {
-                self.recording(name)
+                self.record_into(name)
             }
             ('@', Key::Char(name @ ('a'..='z' | 'A'..='Z' | '@' | ':'))) => {
                 self.macro_run(name, n)
@@ -1610,6 +1650,132 @@ impl Vim {
         self.taken.as_ref()
     }
 
+    /// Whether the input now running was fed rather than typed,
+    /// which is what joins a replay's edits into one revision.
+    #[must_use]
+    pub const fn fed(&self) -> bool {
+        self.macros.fed
+    }
+
+    /// The input just run is done with: what fed it ends here, so
+    /// nothing after it joins that revision. The host says it once
+    /// the outcome has been performed; the engine sets the context
+    /// again at the key itself.
+    pub const fn unfed(&mut self) {
+        self.macros.fed = false;
+    }
+
+    /// The prefix the engine is still holding let go without being
+    /// run: what a refused outcome leaves, the queue behind it being
+    /// the host's own to drop.
+    pub fn unheld(&mut self) {
+        self.held = Held::default();
+    }
+
+    /// The macro being recorded, which `/self/vim/recording` reads.
+    #[must_use]
+    pub const fn recording(&self) -> Option<char> {
+        self.macros.recording
+    }
+
+    /// The bindings as `/self/vim/keymap` prints them, one a line.
+    #[must_use]
+    pub fn bindings(&self) -> String {
+        self.keymap.text()
+    }
+
+    /// What Vim says in its row until the next key.
+    #[must_use]
+    pub fn said(&self) -> &str {
+        &self.message
+    }
+
+    /// Say `message` until the next key: what a host worded in Vim's
+    /// name — a greeting, a refusal of an operation — goes here, as
+    /// a key's own word does.
+    pub fn say(&mut self, message: String) {
+        self.message = message;
+    }
+
+    /// What was said, taken: a host that prints it instead of showing
+    /// the row — a run of one of Vim's own names, a line of `init` —
+    /// takes it, and the row says nothing.
+    pub fn saying(&mut self) -> String {
+        core::mem::take(&mut self.message)
+    }
+
+    /// How many rows the region has now, told at the head of a frame
+    /// so the keys it runs scroll by it; [`Vim::view`] tells it again
+    /// with the rows it draws.
+    pub const fn resized(&mut self, rows: usize) {
+        self.rows = rows;
+    }
+
+    /// The draft this stay is over, `None` before the first
+    /// [`Vim::opened`]: an rd the engine was handed and hands back.
+    #[must_use]
+    pub const fn buffer(&self) -> Option<Rd> {
+        self.buffer
+    }
+
+    /// What that draft is over, `None` for a Buffer over nothing.
+    #[must_use]
+    pub const fn source(&self) -> Option<Rd> {
+        self.source
+    }
+
+    /// The alternate Buffer, `#`: the source of the one left last.
+    #[must_use]
+    pub const fn alternate(&self) -> Option<Rd> {
+        self.alt
+    }
+
+    /// Where a [`Goto`] into another Buffer is to land: the host sets
+    /// it once the ask has gone out, and the [`Vim::opened`] that
+    /// finds the new Buffer takes it.
+    pub const fn arrive_at(&mut self, goto: Goto) {
+        self.arrive = Some(goto);
+    }
+
+    /// That landing, taken before anything of a stay can fail.
+    pub const fn arrival(&mut self) -> Option<Goto> {
+        self.arrive.take()
+    }
+
+    /// The marks set now, which `/self/vim/marks` prints: each name,
+    /// where it stands, and the source a file mark is of, whose path
+    /// is the host's to spell. The local marks come first.
+    #[must_use]
+    pub fn marks(&self) -> Vec<(char, Pos, Option<Rd>)> {
+        let order = ('a'..='z').chain(['\'', '.', '[', ']', '<', '>']);
+        let mut out: Vec<(char, Pos, Option<Rd>)> = order
+            .filter_map(|name| {
+                self.marks.local.get(&name).map(|&pos| (name, pos, None))
+            })
+            .collect();
+        out.extend(
+            self.files
+                .iter()
+                .map(|(&name, &(source, pos))| (name, pos, Some(source))),
+        );
+        out
+    }
+
+    /// The jump list, oldest first, and which entry it stands at,
+    /// which `/self/vim/jumps` prints: each entry's place, and the
+    /// source it is of where that is not this Buffer's.
+    #[must_use]
+    pub fn jumps(&self) -> (usize, Vec<(Pos, Option<Rd>)>) {
+        let here = self.source;
+        let list = self
+            .jumps
+            .list
+            .iter()
+            .map(|jump| (jump.pos, jump.source.filter(|&s| Some(s) != here)))
+            .collect();
+        (self.jumps.at, list)
+    }
+
     /// The keys a failed prefix let go, in the order they were taken,
     /// for the host to put at the front of its queue; empty once
     /// there are none.
@@ -1649,7 +1815,7 @@ impl Vim {
     ///
     /// Only what the engine still holds: what it has let go is the
     /// host's queue's, which sweeps it by the same origin.
-    pub(crate) fn cancel(&mut self) {
+    pub fn cancel(&mut self) {
         self.held.keys.retain(|input| input.origin == origin::TYPED);
     }
 
@@ -2042,7 +2208,7 @@ impl Vim {
             ""
         };
         self.error(&alloc::format!("E: {} refused{why}", reply.text));
-        self.held = Held::default();
+        self.unheld();
         Effect::Nothing
     }
 
@@ -2101,12 +2267,19 @@ impl Vim {
     /// never named and a later `leave` forgot it, or a walk found it
     /// standing on the cursor's own line and dropped it (`Jumps::
     /// clean`) — seeding the new Buffer's own line 0 then is sound.
-    pub(crate) fn opened(
+    pub fn opened(
         &mut self,
+        over: Rd,
+        source: Option<Rd>,
         bytes: &[u8],
+        rows: usize,
         line: u64,
         arrive: Option<Goto>,
     ) {
+        self.arrived(source);
+        self.buffer = Some(over);
+        self.source = source;
+        self.rows = rows;
         // A stay's own first list is numbered like every other wait,
         // so no outcome ever waits on 0: `marked` moves it from here
         // on, and a text no edit has touched has this number still.
@@ -2143,7 +2316,7 @@ impl Vim {
         }
     }
 
-    pub(crate) fn arrived(&mut self, source: Option<Rd>) {
+    fn arrived(&mut self, source: Option<Rd>) {
         if let Some(left) =
             self.left.take().filter(|left| Some(*left) != source)
         {
@@ -2154,7 +2327,7 @@ impl Vim {
         }
     }
 
-    pub(crate) fn forgot(&mut self, draft: Rd, source: Option<Rd>) {
+    pub fn forgot(&mut self, draft: Rd, source: Option<Rd>) {
         self.places.remove(&draft);
         if let Some(source) = source {
             self.jumps.forget(source);
@@ -2186,7 +2359,7 @@ impl Vim {
     /// before the swap's own `start` can take it. The entries naming
     /// no source at all are then dropped, nothing left to come back
     /// to a Buffer over nothing by.
-    pub(crate) fn leave(&mut self) {
+    pub fn leave(&mut self) {
         let walked =
             self.arrive.as_ref().is_some_and(|g| g.land == land::WALKED);
         if self.buffer.is_some() && !walked {
@@ -2239,7 +2412,7 @@ impl Vim {
     /// A Buffer over nothing gains `rd` as its source: every jump it
     /// made while it had none is `rd`'s now, so it is still tracked
     /// once this Buffer is left and later found again by name.
-    pub(crate) fn sourced(&mut self, rd: Rd) {
+    pub fn sourced(&mut self, rd: Rd) {
         self.jumps.named(rd);
         self.source = self.source.or(Some(rd));
     }
@@ -2260,6 +2433,47 @@ impl Vim {
             self.top = line;
         } else if line >= self.top.saturating_add(height) {
             self.top = line + 1 - height;
+        }
+    }
+
+    /// One effect made in Vim's name by something no key typed — a
+    /// run of one of Vim's own `bin` names, a `:` line — with the
+    /// bookkeeping a key's own effect gets: the row's word begins
+    /// empty, and what the effect changed is marked as a change that
+    /// was never typing.
+    pub fn ran(&mut self, made: impl FnOnce(&mut Self) -> Effect) -> Effect {
+        self.message.clear();
+        let before = self.position();
+        let mut effect = made(self);
+        self.changing(before, &mut effect, false);
+        effect
+    }
+
+    /// The one record a frame reads of the resolver: the mode, the
+    /// row's word, what a command has typed so far, whether one is
+    /// under way, and the continuation an outcome waits on. Read once
+    /// beside [`Vim::view`]; the host reads no field beside it.
+    #[must_use]
+    pub fn state(&self) -> State {
+        State {
+            mode: self.mode.code(),
+            status: self.status(),
+            showcmd: self.showcmd(),
+            pending: self.pending.any(),
+            waiting: self.waited_on(),
+        }
+    }
+
+    /// The continuation an outcome is waiting to be answered on: a
+    /// search's own list while a motion waits on it, else the put
+    /// waiting for the clipboard, and 0 where nothing waits.
+    const fn waited_on(&self) -> u64 {
+        if self.waiting() {
+            self.found.epoch
+        } else if let Some(put) = self.put {
+            put.continuation
+        } else {
+            0
         }
     }
 

@@ -19,7 +19,7 @@ pub struct Global {
 
 impl Vim {
     /// Select everything before any command changes the text.
-    pub(crate) fn picked(
+    pub fn picked(
         &mut self,
         range: (usize, usize),
         spec: &str,
@@ -78,8 +78,14 @@ impl Vim {
         true
     }
 
+    /// The selection retired, however the run of it ended: the lines
+    /// it had left go with it, and a `:global` may begin again.
+    pub fn unpicked(&mut self) {
+        self.global = Global::default();
+    }
+
     /// The command runs after this borrow ends, through the usual path.
-    pub(crate) fn next_marked(&mut self) -> Option<Effect> {
+    pub fn next_marked(&mut self) -> Option<Effect> {
         let line = self.global.lines.pop_front()?;
         self.cursor = self.line_at(line)?;
         self.want = self.wanted();
@@ -88,11 +94,7 @@ impl Vim {
     }
 
     /// Delete whole lines, using the normal operator's register policy.
-    pub(crate) fn delete(
-        &mut self,
-        range: (usize, usize),
-        register: &str,
-    ) -> Effect {
+    pub fn delete(&mut self, range: (usize, usize), register: &str) -> Effect {
         let mut chars = register.chars();
         let name = chars.next();
         let valid = name.is_none_or(|c| {
@@ -113,7 +115,8 @@ impl Vim {
     }
 
     /// Pass two peeks; the frame remains responsible for taking the bell.
-    pub(crate) const fn ringing(&self) -> bool {
+    #[must_use]
+    pub const fn ringing(&self) -> bool {
         self.bell
     }
 }

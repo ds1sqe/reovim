@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use common::{cat, on, one, typed as engine_keys};
 use reovim_client::dev::Clip;
 use reovim_client_api::{Key, window};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, listed, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};

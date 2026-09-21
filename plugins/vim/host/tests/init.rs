@@ -8,7 +8,7 @@ use common::one;
 use reovim_client::Host;
 use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::Tui;
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, Seen, Stub, lines, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, log, ops};

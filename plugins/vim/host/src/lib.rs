@@ -1,6 +1,19 @@
+#![no_std]
+#![forbid(unsafe_code)]
 //! Vim as a Module a Client loads: what the keys asked for, done.
 //!
-//! The engine below is pure: a key becomes an `Effect`, which has
+//! The resolver is [`reovim_plugin_vim`], a crate of its own, and
+//! this one is its host: it takes the [`Effect`] a key answered and
+//! performs it. The boundary is the compiler's own — nothing here can
+//! name a field of `Vim`, only the readings the engine offers.
+//!
+//! ```compile_fail,E0616
+//! // The host reads no field of the engine: this does not compile.
+//! let engine = reovim_plugin_vim::Vim::default();
+//! let _ = engine.message;
+//! ```
+//!
+//! The engine is pure: a key becomes an `Effect`, which has
 //! already happened to Vim's own copy of the text; here it becomes
 //! calls. An edit is a `replace` on the draft `/self/dev/buffers`
 //! gave, which costs no wire message and joins the revision the draft
@@ -29,6 +42,10 @@
 //! borrow of the engine outlives an op, so a Driver of Vim's own that
 //! a run re-enters finds the state free.
 
+extern crate alloc;
+
+mod bins;
+
 use alloc::collections::{BTreeMap, VecDeque};
 use alloc::format;
 use alloc::rc::Rc;
@@ -56,10 +73,11 @@ use reovim_sdk::{cell, decode, encode, ops, progress};
 use reovim_search_api::{ENTRY, entries, search};
 use reovim_text_api::{history, publish, text};
 
-use crate::command::{Typed, options, typed};
-use crate::keymap::Held;
-use crate::macros::BUDGET;
-use crate::{E32, Edit, Effect, Ex, Key, Mode, Quit, Switch, Vim, Want, bins};
+use reovim_plugin_vim::bins::{declared, positionals};
+use reovim_plugin_vim::{
+    BUDGET, E32, Edit, Effect, Ex, Goto, Key, Mode, Quit, Switch, Typed, Vim,
+    Want, options, typed,
+};
 
 /// How many entries one read of `matches` asks for. The 48 KiB they
 /// come to is no multiple of the 64 KiB a local read copies, and
@@ -327,7 +345,8 @@ impl Editor {
     /// The caller captures the file; this portable Plugin reads no file.
     ///
     /// ```
-    /// let editor = reovim_plugin_vim::Editor::with_init("set ic\n".into());
+    /// use reovim_plugin_vim_host::Editor;
+    /// let editor = Editor::with_init("set ic\n".into());
     /// let module = editor.booted();
     /// ```
     #[must_use]
@@ -343,8 +362,10 @@ impl Editor {
         Booted { module: self.clone(), drivers: alloc::vec![self.clone()] }
     }
 
-    /// What the engine holds now, for a test to judge what the keys
-    /// did: no borrow of it outlives an op, so this one is free.
+    /// What the engine holds now, for a test of this crate to judge
+    /// what the keys did: no borrow of it outlives an op, so this one
+    /// is free. It reaches the engine's public API and nothing else,
+    /// the engine being another crate.
     ///
     /// # Panics
     /// While a frame of its own holds it, which no caller of this can
@@ -387,7 +408,7 @@ impl Module for Editor {
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
         let closing = self.closing.take();
         let greeting = self.greeting.borrow_mut().take();
-        let arrive = self.vim.borrow_mut().arrive.take();
+        let arrive = self.vim.borrow_mut().arrival();
         if let Some((draft, source)) = closing {
             let list = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
             let h = ctx.open(list, Rights::WRITE)?;
@@ -425,13 +446,9 @@ impl Module for Editor {
         };
         *self.stay.borrow_mut() = Some(Rc::new(stay));
         let mut vim = self.vim.borrow_mut();
-        vim.arrived(source);
-        vim.buffer = Some(buffer);
-        vim.source = source;
-        vim.rows = rows;
-        vim.opened(&bytes, ask.line, arrive);
+        vim.opened(buffer, source, &bytes, rows, ask.line, arrive);
         if let Some(greeting) = greeting {
-            vim.message = greeting;
+            vim.say(greeting);
         }
         if !ask.locator.is_empty() {
             vim.goto(&ask.locator);
@@ -523,21 +540,19 @@ impl Editor {
         }
         let vim = self.vim.borrow();
         let read = if rd == cells.mode {
-            format!("{}\n", vim.mode().name())
+            format!("{}\n", Mode::of(vim.state().mode).name())
         } else if rd == cells.pending {
-            vim.showcmd()
+            vim.state().showcmd
         } else if rd == cells.marks {
             marks_listed(ctx, &vim)
         } else if rd == cells.jumps {
             jumps_listed(ctx, &vim)
         } else if rd == cells.recording {
-            vim.macros
-                .recording
-                .map_or_else(String::new, |name| format!("{name}\n"))
+            vim.recording().map_or_else(String::new, |n| format!("{n}\n"))
         } else if let Some(name) = cells.options.get(&rd) {
             vim.shown(name)?
         } else if rd == cells.keymap {
-            vim.keymap.text()
+            vim.bindings()
         } else if rd == cells.point {
             format!("{}\n", self.pointed(ctx, false, false, None))
         } else {
@@ -576,9 +591,9 @@ impl Editor {
         // A frame that ends waiting ends no revision either: a run
         // that waits at a search is one revision still, and the edit
         // typed just before it goes down at the landing.
-        let mode = self.vim.borrow().mode();
-        let waiting = self.vim.borrow().waiting();
-        if mode != Mode::Insert && !self.stay()?.stale.get() && !waiting {
+        let state = self.vim.borrow().state();
+        let insert = state.mode == Mode::Insert.code();
+        if !insert && !self.stay()?.stale.get() && state.waiting == 0 {
             self.stale(ctx, Some(EDIT), |ctx| self.sync(ctx))?;
         }
         Ok(encode(&self.vim.borrow_mut().view(rows)))
@@ -586,9 +601,9 @@ impl Editor {
 
     /// Run captured lines once, preserving the opening frame's message.
     fn began(&self, ctx: &dyn Calls, text: &str) -> Result<(), Error> {
-        let opening = core::mem::take(&mut self.vim.borrow_mut().message);
+        let opening = self.vim.borrow_mut().saying();
         let result = init_lines(self, ctx, text);
-        self.vim.borrow_mut().message = opening;
+        self.vim.borrow_mut().say(opening);
         result
     }
 
@@ -604,16 +619,11 @@ impl Editor {
         if line.is_empty() || line.starts_with('#') {
             return Ok(true);
         }
-        let effect = {
-            let mut vim = self.vim.borrow_mut();
-            vim.macros.fed = false;
-            vim.macros.joined = false;
-            vim.ex(line)
-        };
+        let effect = self.vim.borrow_mut().init(line);
         let result = self.act(ctx, effect);
         let (message, failed) = {
             let mut vim = self.vim.borrow_mut();
-            (core::mem::take(&mut vim.message), vim.rung())
+            (vim.saying(), vim.rung())
         };
         result?;
         let level = if failed { 4 } else { 6 };
@@ -649,7 +659,7 @@ impl Editor {
         };
         let effect = self.key(queued);
         let result = self.performed(ctx, effect);
-        self.vim.borrow_mut().macros.fed = false;
+        self.vim.borrow_mut().unfed();
         result?;
         self.tail();
         Ok(true)
@@ -704,7 +714,7 @@ impl Editor {
             self.act(ctx, effect).and_then(|()| self.write_clipped(ctx));
         if result.is_err() {
             self.queue.borrow_mut().clear();
-            self.vim.borrow_mut().held = Held::default();
+            self.vim.borrow_mut().unheld();
         }
         result
     }
@@ -856,7 +866,7 @@ impl Editor {
     /// The rows the region has now, as `windows/0/size` says.
     fn sized(&self, ctx: &dyn Calls) -> Result<usize, Error> {
         let rows = count(self.stay()?.surface.region()?.size(ctx)?.rows);
-        self.vim.borrow_mut().rows = rows;
+        self.vim.borrow_mut().resized(rows);
         Ok(rows)
     }
 
@@ -867,7 +877,7 @@ impl Editor {
 
     /// `message` until the next key.
     fn says(&self, message: &str) {
-        self.vim.borrow_mut().message = String::from(message);
+        self.vim.borrow_mut().say(String::from(message));
     }
 
     /// A refused operation ends every pending replay.
@@ -970,7 +980,7 @@ impl Editor {
             return Ok(());
         }
         unsought(ctx, stay);
-        let source = self.vim.borrow().buffer.ok_or(Error::Closed)?;
+        let source = self.vim.borrow().buffer().ok_or(Error::Closed)?;
         let h = ctx.open(open, Rights::WRITE)?;
         let mut calls = ctx;
         let args = search::Open {
@@ -1094,13 +1104,9 @@ impl Editor {
     /// `Effect::Goto`'s own arm, apart for clippy's nesting bound. A
     /// refused ask sets `arrive` nothing, so there is nothing here for
     /// a later, unrelated `leave` to mistake for one.
-    fn arriving(
-        &self,
-        ctx: &dyn Calls,
-        goto: crate::Goto,
-    ) -> Result<(), Error> {
+    fn arriving(&self, ctx: &dyn Calls, goto: Goto) -> Result<(), Error> {
         if self.shown(ctx, goto.over, "", false, "", "")? {
-            self.vim.borrow_mut().arrive = Some(goto);
+            self.vim.borrow_mut().arrive_at(goto);
         }
         Ok(())
     }
@@ -1124,20 +1130,13 @@ impl Editor {
         rd: Rd,
         made: impl FnOnce(&mut Vim) -> Effect,
     ) -> Result<Rd, Error> {
-        let effect = {
-            let mut vim = self.vim.borrow_mut();
-            vim.message.clear();
-            let before = vim.position();
-            let mut effect = made(&mut vim);
-            // `did` is `:s` and Vim's own `bin` names, never typing.
-            vim.changing(before, &mut effect, false);
-            effect
-        };
+        // `did` is `:s` and Vim's own `bin` names, never typing.
+        let effect = self.vim.borrow_mut().ran(made);
         if let Err(error) = self.act(ctx, effect) {
             self.reloaded(ctx)?;
             return Err(error);
         }
-        let said = core::mem::take(&mut self.vim.borrow_mut().message);
+        let said = self.vim.borrow_mut().saying();
         self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
     }
 
@@ -1165,7 +1164,7 @@ impl Editor {
         ctx: &dyn Calls,
         relative: bool,
     ) -> Result<Option<String>, Error> {
-        let source = self.vim.borrow().source;
+        let source = self.vim.borrow().source();
         let (root, cwd) =
             (self.root.get().unwrap_or(ROOT), self.cwd.get().unwrap_or(ROOT));
         let Some(source) = source else { return Ok(None) };
@@ -1193,14 +1192,14 @@ impl Editor {
     ) -> Result<Rd, Error> {
         let picked = {
             let mut vim = self.vim.borrow_mut();
-            vim.message.clear();
+            vim.say(String::new());
             let range = range.unwrap_or_else(|| (0, vim.line_count() - 1));
             vim.picked(range, spec, invert)
         };
         if picked {
             self.global_lines(ctx)?;
         }
-        let said = core::mem::take(&mut self.vim.borrow_mut().message);
+        let said = self.vim.borrow_mut().saying();
         self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
     }
 
@@ -1211,7 +1210,7 @@ impl Editor {
             result = self.global_step(ctx);
         }
         let result = result.map(|_| ());
-        self.vim.borrow_mut().global = crate::global::Global::default();
+        self.vim.borrow_mut().unpicked();
         if result.is_err() {
             self.reloaded(ctx)?;
         }
@@ -1304,7 +1303,7 @@ impl Editor {
         let word =
             if self.directory(ctx, &at)? { "[New]" } else { "[New DIRECTORY]" };
         let said = as_given(&dir, &name);
-        self.vim.borrow_mut().message = format!("\"{said}\" {word}");
+        self.vim.borrow_mut().say(format!("\"{said}\" {word}"));
         Ok(())
     }
 
@@ -1312,7 +1311,7 @@ impl Editor {
     /// the file it was opened for, and has no file name without one.
     /// False when it said why it did not write.
     fn save(&self, mut ctx: &dyn Calls, bang: bool) -> Result<bool, Error> {
-        let source = self.vim.borrow().source;
+        let source = self.vim.borrow().source();
         let name = self.stay()?.name.clone();
         if source.is_some() {
             self.fixing(ctx)?;
@@ -1339,7 +1338,7 @@ impl Editor {
         let Some(target) = self.at(ctx, name)? else {
             return self.written_to(ctx, name, bang);
         };
-        if Some(target) == self.vim.borrow().source {
+        if Some(target) == self.vim.borrow().source() {
             return self.save(ctx, bang);
         }
         self.published_to(ctx, target)
@@ -1512,7 +1511,7 @@ impl Editor {
     fn list(&self, ctx: &dyn Calls) -> Result<(), Error> {
         let (current, alternate) = {
             let vim = self.vim.borrow();
-            (vim.buffer, vim.alt)
+            (vim.buffer(), vim.alternate())
         };
         let mut out = String::new();
         for item in self.listed(ctx)? {
@@ -1525,7 +1524,7 @@ impl Editor {
     }
 
     fn switched(&self, ctx: &dyn Calls, to: Switch) -> Result<(), Error> {
-        let current = self.vim.borrow().buffer;
+        let current = self.vim.borrow().buffer();
         let list = self.listed(ctx)?;
         let source = match to {
             Switch::Alternate => self.alternate(),
@@ -1540,7 +1539,7 @@ impl Editor {
     }
 
     fn alternate(&self) -> Option<Rd> {
-        let alternate = self.vim.borrow().alt;
+        let alternate = self.vim.borrow().alternate();
         if alternate.is_none() {
             self.fails("E23: No alternate file");
         }
@@ -1561,7 +1560,7 @@ impl Editor {
         ctx: &dyn Calls,
         follow: bool,
     ) -> Result<bool, Error> {
-        let current = self.vim.borrow().buffer;
+        let current = self.vim.borrow().buffer();
         let Some(other) = other_unsaved(ctx, self.listed(ctx)?, current)?
         else {
             return Ok(false);
@@ -1583,12 +1582,12 @@ impl Editor {
         name: &str,
         bang: bool,
     ) -> Result<(), Error> {
-        let current = self.vim.borrow().buffer.ok_or(Error::Closed)?;
+        let current = self.vim.borrow().buffer().ok_or(Error::Closed)?;
         let list = self.listed(ctx)?;
         let own = name.is_empty() || named(ctx, current)? == name;
         let selected = list.iter().find(|item| item.name == name);
         let (draft, source) = match (own, selected) {
-            (true, _) => (current, self.vim.borrow().source),
+            (true, _) => (current, self.vim.borrow().source()),
             (false, Some(item)) => (item.draft, Some(item.source)),
             (false, None) => {
                 self.fails("E516: No buffers were deleted");
@@ -1622,7 +1621,7 @@ impl Editor {
         source: Option<Rd>,
         list: &[Listed],
     ) -> Result<(), Error> {
-        let alternate = self.vim.borrow().alt;
+        let alternate = self.vim.borrow().alternate();
         let to = list
             .iter()
             .find(|item| Some(item.source) == alternate)
@@ -1637,7 +1636,7 @@ impl Editor {
     }
 
     fn save_all(&self, ctx: &dyn Calls) -> Result<bool, Error> {
-        let current = self.vim.borrow().buffer.ok_or(Error::Closed)?;
+        let current = self.vim.borrow().buffer().ok_or(Error::Closed)?;
         let listed = self.listed(ctx)?;
         let root = cell::resolve(ctx, ROOT, "/self/dev/buffers")?;
         let candidates =
@@ -1663,7 +1662,7 @@ impl Editor {
 
     fn keep_failure(&self, success: bool, failure: &mut Option<String>) {
         if !success && failure.is_none() {
-            *failure = Some(self.vim.borrow().message.clone());
+            *failure = Some(String::from(self.vim.borrow().said()));
         }
     }
 
@@ -1680,7 +1679,7 @@ impl Editor {
             return Self::wrote(ctx, draft).map(|()| true);
         }
         let unnamed =
-            self.vim.borrow().source.is_none() && self.stay()?.name.is_none();
+            self.vim.borrow().source().is_none() && self.stay()?.name.is_none();
         if unnamed {
             self.fails(&format!(
                 "E141: No file name for buffer {}",
@@ -1733,7 +1732,7 @@ impl Editor {
     ) -> Result<Option<u8>, Error> {
         // Over nothing and untouched: `:x` writes nothing, as Vim has
         // it, and there is no file to make.
-        if self.vim.borrow().source.is_none() && !unsaved {
+        if self.vim.borrow().source().is_none() && !unsaved {
             return Ok(Some(0));
         }
         Ok(self.save(ctx, false)?.then_some(0))
@@ -1915,12 +1914,12 @@ impl Editor {
         name: &str,
         locator: &str,
     ) -> Result<bool, Error> {
-        if Some(target) == self.vim.borrow().source && plugin.is_empty() {
+        if Some(target) == self.vim.borrow().source() && plugin.is_empty() {
             return Ok(false);
         }
         let file = target == NONE
             || !ops::info(ctx, target)?.flags.contains(Flags::CONTAINER);
-        let unnamed = self.vim.borrow().source.is_none();
+        let unnamed = self.vim.borrow().source().is_none();
         if !bang && (unnamed || !file) && self.unsaved(ctx)? {
             self.fails(E37);
             return Ok(false);
@@ -1968,7 +1967,7 @@ impl Editor {
         // takes no text has no such rule, so what follows it is the
         // shell's own line — its words, its `>` and its `|` — over
         // Vim's names, which stand first on PATH.
-        let taken = bins::positionals(&name);
+        let taken = positionals(&name);
         let ran = if taken == 0 && !arg.is_empty() {
             sh::run(ctx, &mut shell, &format!("{name} {arg}"))
         } else {
@@ -2087,7 +2086,7 @@ impl Editor {
     /// Where `:explore` with no name looks: the directory the Buffer's
     /// source is in, or, over nothing, the one the editor stands in.
     fn here(&self, ctx: &dyn Calls) -> Result<Rd, Error> {
-        let source = self.vim.borrow().source;
+        let source = self.vim.borrow().source();
         let cwd = self.cwd.get().unwrap_or(ROOT);
         source.map_or(Ok(cwd), |source| ops::parent(ctx, source))
     }
@@ -2314,7 +2313,7 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     let point = read(home, "point", one)?;
     let search = read(home, "search", one)?;
     let bin = read(home, "bin", held)?;
-    for (name, decl) in bins::declared() {
+    for (name, decl) in declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
     }
     Ok(Cells {
@@ -2341,14 +2340,13 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
 /// letter mark there when one is set.
 fn marks_listed(ctx: &dyn Calls, vim: &Vim) -> String {
     let mut out = String::new();
-    let order = ('a'..='z').chain(['\'', '.', '[', ']', '<', '>']);
-    for name in order {
-        let Some(&pos) = vim.marks.local.get(&name) else { continue };
-        let _ = writeln!(out, "{name} {} {}", pos.line + 1, pos.column);
-    }
-    for (&name, &(source, pos)) in &vim.files {
-        let path = ops::where_is(ctx, source).unwrap_or_default();
-        let _ = writeln!(out, "{name} {} {} {path}", pos.line + 1, pos.column);
+    for (name, pos, source) in vim.marks() {
+        let _ = write!(out, "{name} {} {}", pos.line + 1, pos.column);
+        if let Some(source) = source {
+            let path = ops::where_is(ctx, source).unwrap_or_default();
+            let _ = write!(out, " {path}");
+        }
+        let _ = writeln!(out);
     }
     out
 }
@@ -2359,10 +2357,11 @@ fn marks_listed(ctx: &dyn Calls, vim: &Vim) -> String {
 /// source than this Buffer's is.
 fn jumps_listed(ctx: &dyn Calls, vim: &Vim) -> String {
     let mut out = String::new();
-    for (i, jump) in vim.jumps.list.iter().enumerate() {
-        let mark = if i == vim.jumps.at { '>' } else { ' ' };
-        let _ = write!(out, "{mark}{} {}", jump.pos.line + 1, jump.pos.column);
-        if let Some(source) = jump.source.filter(|&s| Some(s) != vim.source) {
+    let (at, list) = vim.jumps();
+    for (i, (pos, elsewhere)) in list.into_iter().enumerate() {
+        let mark = if i == at { '>' } else { ' ' };
+        let _ = write!(out, "{mark}{} {}", pos.line + 1, pos.column);
+        if let Some(source) = elsewhere {
             let path = ops::where_is(ctx, source).unwrap_or_default();
             let _ = write!(out, " {path}");
         }
@@ -2501,7 +2500,13 @@ fn printed(ctx: &dyn Calls, ran: Ran) -> String {
 mod macro_queue_tests {
     use super::*;
 
-    use crate::tapped;
+    /// One key of `origin`, its press of no clock and no source: what
+    /// the engine's own tests call `tapped`, which is the engine's and
+    /// not this crate's to hand out.
+    fn tapped(key: Key, origin: u64) -> Input {
+        let press = keyboard::Press { key: 0, when: 0, source: NONE };
+        reovim_plugin_vim::keyed(key, origin, &press)
+    }
 
     #[test]
     fn recursive_tails_are_bounded_and_keep_typed_input() {
@@ -2789,7 +2794,7 @@ mod macro_queue_tests {
         assert_eq!(editor.engine().text(), "abc\n", "nothing went down");
         assert!(editor.queue.borrow().is_empty(), "a key behind it stood");
         assert_eq!(
-            editor.engine().message,
+            editor.engine().said(),
             "E: edit refused: no space",
             "a key behind the refusal ran and said its own word"
         );
@@ -2848,7 +2853,7 @@ mod macro_queue_tests {
             assert_eq!(editor.step(&refused), Ok(true));
         }
         assert_eq!(editor.step(&refused), Err(Error::Denied));
-        assert!(!editor.vim.borrow().macros.fed);
+        assert!(!editor.engine().fed());
         assert!(editor.queue.borrow().is_empty(), "failed run was retained");
         assert_eq!(editor.step(&ctx), Ok(false));
     }
@@ -2857,10 +2862,10 @@ mod macro_queue_tests {
     fn a_refused_step_lets_go_of_a_half_held_prefix() {
         let (_rig, editor, host, _tui) = scene("bind-refused-held");
         let ctx = host.own();
-        {
-            let mut vim = editor.vim.borrow_mut();
-            vim.bind("dx", "nohlsearch");
-            vim.clipboard = Some(String::from("held"));
+        editor.vim.borrow_mut().bind("dx", "nohlsearch");
+        // The door that fills the clipboard is the yank itself.
+        for key in reovim_plugin_vim::notation::keys("\"+yy").unwrap() {
+            editor.vim.borrow_mut().key(tapped(key, TYPED));
         }
         // A clipboard write waiting on an rd the tree does not hold:
         // the step after this one fails, whatever its key.

@@ -14,7 +14,7 @@ use std::rc::Rc;
 use reovim_client::Host;
 use reovim_client::dev::{self, Clip, Table, Want};
 use reovim_client_tui::Tui;
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, frame, listed, opened, said, typed};
 
 /// Twenty lines of seven bytes each, so a column past the fourth is

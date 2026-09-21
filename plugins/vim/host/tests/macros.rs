@@ -5,7 +5,7 @@ use common::{cat, one};
 use reovim_client::dev::Clip;
 use reovim_client_api::{Key, keyboard};
 use reovim_kernel_interface::{Calls, Error, Rights};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, ops};

@@ -11,7 +11,7 @@ use reovim_client_api::{Key, NONE};
 use reovim_client_region::{Region, drafted};
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Error, Rd};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, Seen, Stub, lines, opened, said, status, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};

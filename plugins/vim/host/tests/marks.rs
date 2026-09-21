@@ -12,7 +12,7 @@ use common::{cat, one};
 use reovim_client::Host;
 use reovim_client::dev::Clip;
 use reovim_client_tui::{Step, Tui};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, opened, said, typed};
 
 /// The tree over `files`, opened on the first, one `Editor` given for

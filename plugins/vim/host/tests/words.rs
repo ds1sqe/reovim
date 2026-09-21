@@ -28,7 +28,7 @@ type Editor = Tui;
 /// (01.0).
 fn table(seen: &Seen) -> Table {
     let seen = seen.clone();
-    let vim = reovim_plugin_vim::Editor::new();
+    let vim = reovim_plugin_vim_host::Editor::new();
     Box::new(move |want| match want {
         Want::Cell => Some((String::from("vim"), vim.booted())),
         Want::Container => Some((

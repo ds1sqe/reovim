@@ -1,0 +1,29 @@
+[package]
+name = "reovim-plugin-vim-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reovim-client-api = { path = "../../../clients/core/api" }
+reovim-client-region = { path = "../../../clients/core/region" }
+reovim-client-sh = { path = "../../../clients/sh" }
+reovim-kernel-interface = { path = "../../../kernel/interface" }
+reovim-plugin-vim = { path = ".." }
+reovim-sdk = { path = "../../../sdk/rust" }
+reovim-search-api = { path = "../../../modules/search/api" }
+reovim-text-api = { path = "../../../modules/text/api" }
+
+[dev-dependencies]
+reovim-client = { path = "../../../clients/core" }
+reovim-client-tui = { path = "../../../clients/tui" }
+reovim-module-coreutils = { path = "../../../modules/coreutils" }
+reovim-module-search = { path = "../../../modules/search" }
+reovim-rig = { path = "../../../clients/rig" }
+
+[lints]
+workspace = true

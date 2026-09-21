@@ -1400,3 +1400,43 @@ fn ctrl_g_and_ctrl_t_do_nothing() {
         assert_eq!(vim.position(), (1, 0), "{key}: and the match with it");
     }
 }
+
+/// The one record a frame reads: every field of `state()` is the
+/// reading it stands for, over the keys `d/x` that leave a command
+/// under way and a search waiting for its list.
+#[test]
+fn state_is_one_record_per_frame() {
+    let mut vim = on(&"abc\n".repeat(200));
+    let idle = vim.state();
+    assert_eq!(idle.mode, Mode::Normal.code(), "the mode it opens in");
+    assert_eq!(idle.status, "", "nothing said");
+    assert_eq!(idle.showcmd, "", "and nothing typed");
+    assert!(!idle.pending, "so no command is under way");
+    assert_eq!(idle.waiting, 0, "and nothing is waited for");
+
+    // An operator and a count taken, then the search they wait on.
+    typed(&mut vim, "2d");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/x<CR>"), want(&vim, "x", 0));
+    let held = vim.state();
+    assert_eq!(held.mode, vim.mode().code());
+    assert_eq!(held.status, vim.status(), "the row the search words");
+    assert_eq!(held.showcmd, "2d", "the operator and its count");
+    assert!(held.pending, "which is a command under way");
+    assert_eq!(held.waiting, epoch, "the continuation it waits on");
+    assert_eq!(Mode::of(held.mode), Mode::Normal);
+
+    // The wait dropped: the record says so in the same read.
+    vim.interrupted();
+    let after = vim.state();
+    assert_eq!(after.waiting, 0, "nothing is waited for");
+    assert_eq!(after.showcmd, "", "and the operator went with it");
+    assert!(!after.pending);
+
+    typed(&mut vim, "i");
+    let insert = vim.state();
+    assert_eq!(insert.mode, Mode::Insert.code());
+    assert_eq!(Mode::of(insert.mode), Mode::Insert);
+    assert_eq!(insert.showcmd, vim.showcmd());
+    assert_eq!(insert.status, vim.status());
+}

@@ -17,8 +17,8 @@ use reovim_client_api::resolver::{
 };
 use reovim_client_api::{NONE, filled, kind, land, reply};
 use reovim_client_tui::Tui;
-use reovim_plugin_vim::Editor;
 use reovim_plugin_vim::{Effect, Quit, Switch, Vim, effect};
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, opened};
 
 /// A reply at rest: the `kind` it is, nothing filled, nothing
@@ -159,7 +159,7 @@ fn a_search_reply_carries_the_wait_it_answers() {
 fn every_effect_round_trips_through_outcome() {
     let edit = Edit { at: 3, len: 1, text: "x".into(), join: true };
     let line = Line { ranged: true, from: 1, to: 9, line: "write".into() };
-    let open = Open { path: "note".into(), bang: true, locator: "12:4".into() };
+    let open = Open { path: "note".into(), bang: true };
     let goto = Goto { over: NONE, line: 4, column: 2, land: land::EXACT };
     let search = Search {
         pattern: "wo.d".into(),

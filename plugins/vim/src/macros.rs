@@ -81,7 +81,7 @@ fn decode(mut chars: impl Iterator<Item = char>) -> Vec<Key> {
 }
 
 impl Vim {
-    pub(crate) fn recording(&mut self, name: char) -> Effect {
+    pub(crate) fn record_into(&mut self, name: char) -> Effect {
         self.macros.recording = Some(name);
         self.macros.record.clear();
         self.repeat.record.clear();
@@ -153,7 +153,7 @@ impl Vim {
         core::mem::take(&mut self.bell)
     }
 
-    pub(crate) fn error(&mut self, message: &str) -> Effect {
+    pub fn error(&mut self, message: &str) -> Effect {
         self.message = String::from(message);
         self.ring();
         Effect::Moved

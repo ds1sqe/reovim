@@ -11,7 +11,8 @@ use reovim_client_tui::Tui;
 use reovim_kernel_interface::{
     Calls, Driver, DriverId, Error, Flags, Module, Rd, Reply, Rights,
 };
-use reovim_plugin_vim::{Editor, notation};
+use reovim_plugin_vim::notation;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, listed, opened, said, status, typed};
 use reovim_sdk::{cell, ops};
 

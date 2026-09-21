@@ -1,17 +1,11 @@
-//! What every test of Vim starts from. Each test binary compiles
-//! this on its own and uses what it needs.
+//! What every test of the engine starts from. Each test binary
+//! compiles this on its own and uses what it needs.
 #![allow(dead_code)]
 
-use std::rc::Rc;
-
-use reovim_client::Host;
-use reovim_client::dev::Table;
 use reovim_client_api::keyboard::Press;
 use reovim_client_api::{NONE, origin, resolver::Input};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Edit, Editor, Effect, Fed, Key, Vim, edited, keyed};
-use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, ops};
+use reovim_plugin_vim::{Edit, Effect, Fed, Key, Vim, edited, keyed};
 
 /// The press this test stands for `n`: a clock of its own counting
 /// up, and the rig's own source, which is no Client of a keyboard.
@@ -126,17 +120,4 @@ pub fn on(text: &str) -> Vim {
     let mut vim = Vim::default();
     vim.loaded(text.as_bytes());
     vim
-}
-
-/// A table over one `Editor`, given for every want alike, as the
-/// app's own table does for `vim` (01.0).
-pub fn one(vim: Rc<Editor>) -> Table {
-    Box::new(move |_| Some((String::from("vim"), vim.booted())))
-}
-
-/// What the cell `path` under `/self/vim` holds, as `cat` prints it.
-pub fn cat(host: &Rc<Host>, path: &str) -> String {
-    let ctx = host.own();
-    let rd = cell::resolve(&ctx, ROOT, &format!("/self/vim/{path}")).unwrap();
-    String::from_utf8(ops::bytes(&ctx, rd).unwrap()).unwrap()
 }

@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use reovim_client::dev::{Clip, Table};
 use reovim_client_tui::{Step, Tui};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, frame, opened, status, typed};
 
 /// What a write says when the file it would make is there already.

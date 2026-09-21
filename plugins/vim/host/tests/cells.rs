@@ -20,7 +20,7 @@ use reovim_rig::{Rig, listed, opened, said, typed};
 /// Vim for a cell; nothing else is opened here. One `Editor` across
 /// every swap, as the app's own table gives one (01.0).
 fn table() -> Table {
-    let vim = reovim_plugin_vim::Editor::new();
+    let vim = reovim_plugin_vim_host::Editor::new();
     Box::new(move |want| match want {
         Want::Cell => Some((String::from("vim"), vim.booted())),
         _ => None,

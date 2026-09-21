@@ -19,7 +19,7 @@ use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_region::Region;
 use reovim_client_tui::Step;
 use reovim_kernel_interface::{Calls, Error, Rd};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, Seen, Stub, lines, listed, opened, said, status, typed};
 use reovim_sdk::cell;
 use reovim_sdk::walk::ROOT;

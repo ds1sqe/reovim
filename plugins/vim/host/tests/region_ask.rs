@@ -4,7 +4,7 @@ mod common;
 use reovim_client::dev::Clip;
 use reovim_client_api::{NONE, open};
 use reovim_client_region::Region;
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, opened, status};
 use reovim_sdk::cell;
 use reovim_sdk::walk::ROOT;

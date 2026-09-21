@@ -28,7 +28,8 @@ impl Vim {
     /// How many lines: one more than the `\n`s, except that a final
     /// `\n` ends a line instead of starting one; an empty text is one
     /// empty line.
-    pub(crate) fn line_count(&self) -> usize {
+    #[must_use]
+    pub fn line_count(&self) -> usize {
         self.text.matches('\n').count() + 1
             - usize::from(self.text.ends_with('\n'))
     }

@@ -13,7 +13,7 @@ use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_region::Region;
 use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{Calls, Error, Rd};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, Seen, Stub, frame, lines, opened, said, typed};
 
 /// What `:q` and a crossing E37 refuses say to unsaved changes.

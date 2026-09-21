@@ -76,7 +76,7 @@ fn line() -> Line {
 }
 
 fn open() -> Open {
-    Open { path: "/tmp/x".to_owned(), bang: false, locator: "12:4".to_owned() }
+    Open { path: "/tmp/x".to_owned(), bang: false }
 }
 
 const fn goto() -> Goto {
@@ -105,7 +105,7 @@ const fn blank_outcome() -> Outcome {
         continuation: 0,
         edits: Vec::new(),
         line: Line { ranged: false, from: 0, to: 0, line: String::new() },
-        open: Open { path: String::new(), bang: false, locator: String::new() },
+        open: Open { path: String::new(), bang: false },
         goto: Goto { over: NONE, line: 0, column: 0, land: land::LINE },
         search: Search {
             pattern: String::new(),

@@ -31,6 +31,44 @@ Module sees calls, never keys. Plugin state, rendering and input
 resolution live in the Client; the capability a Plugin reads is its own
 Client's, read locally.
 
+## Resolver
+
+A resolver turns input into editing decisions: mode, counts, pending
+operators, bindings and continuation state are its own. The Client
+hosts it, and four declared records (the `resolver` api in
+clients/core/api) are the whole exchange.
+
+- It takes an `Input`: one `Press`, the origin saying whose key it is,
+  and whether a failed prefix let that key go.
+- It answers an `Outcome`: a kind, and the record that kind carries.
+- It receives a `Reply`: what the host found out, carrying the
+  continuation the outcome waited on.
+- It exposes a `State`: the mode, the status word, the command a key
+  has begun and the continuation still unanswered. A frame reads it
+  once.
+
+The host performs the outcomes and owns what they reach: handles, the
+input queue, the replay budget, and the tree a name resolves over. It
+reads no field of the resolver. `State` and the readings the resolver
+offers are the whole of what it may read, and another resolver in the
+same place needs none of the first one's internals.
+
+A `Press` is never invented. A key no person typed — a macro's, a
+repeat's, one a prefix let go — carries the press of the key that made
+it, so a recorded stream replays as it was and no clock and no source
+is made up.
+
+One numbering answers every wait. An outcome that waits carries a
+continuation, the reply carries it back, and a number that is not the
+one waited for is stale and means nothing. The host echoes the number
+and never reads what it stands for.
+
+The keymap is the resolver's data: keys as a person types them and the
+line they run. Which binding a prefix may still become, and letting
+those keys go again when none does, is the resolver's; the host runs
+what it is handed back. Nothing of a keymap crosses the wire, and a
+Plugin that needs no modes is given no mode system.
+
 ## Wire
 
 Client as user: `lookup`, `info`, `parent`, `children`, `open`, `read`,

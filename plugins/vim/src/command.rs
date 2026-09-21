@@ -103,7 +103,7 @@ impl Vim {
     /// run there, which the wildmenu walks. One alone is kept as the
     /// one candidate, so the status row can say the usage line `form`
     /// gives for it, where an argument's one name is not kept at all.
-    pub(crate) fn listed(
+    pub fn listed(
         &mut self,
         from: usize,
         found: Vec<String>,
@@ -121,7 +121,7 @@ impl Vim {
     /// puts it, since nothing is left to choose between and the next
     /// Tab goes on under a Container it named; several are the wildmenu.
     /// Nothing found leaves the line as the expansion left it.
-    pub(crate) fn offer(&mut self, from: usize, found: Vec<String>) -> Effect {
+    pub fn offer(&mut self, from: usize, found: Vec<String>) -> Effect {
         if found.is_empty() {
             return Effect::Moved;
         }
@@ -137,7 +137,7 @@ impl Vim {
     /// The line with its first token written out as the name it stands
     /// for, which Tab does before it completes the argument, so `:w Ca`
     /// Tab is `:write Cargo.toml`.
-    pub(crate) fn expand(&mut self, line: &str) {
+    pub fn expand(&mut self, line: &str) {
         self.prompt.line().put(0, line);
     }
 
@@ -226,6 +226,15 @@ impl Vim {
         }
         self.search.forward = forward;
         self.motion(Motion::Search { forward }, n)
+    }
+
+    /// One line of `init`, which no key typed: the `:` line it is,
+    /// run apart from whatever ran before it, so its edits begin a
+    /// revision of their own rather than joining a replay's.
+    pub fn init(&mut self, line: &str) -> Effect {
+        self.macros.fed = false;
+        self.macros.joined = false;
+        self.ex(line)
     }
 
     /// One `:` line: the range off the front, and the rest of it.
@@ -364,7 +373,8 @@ impl Vim {
     ///
     /// The long names alone: a cell is the option's one reading, not
     /// the `:set` spelling, which takes the short forms too.
-    pub(crate) fn shown(&self, name: &str) -> Option<String> {
+    #[must_use]
+    pub fn shown(&self, name: &str) -> Option<String> {
         let options = &self.search.options;
         let on = match name {
             "ignorecase" => options.ignorecase,

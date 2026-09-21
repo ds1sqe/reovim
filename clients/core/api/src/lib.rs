@@ -219,8 +219,10 @@ declare! {
     /// where it belongs to the revision before it, and `edits` carries
     /// them where a kind makes more than one. [`Line`] is a `:` line,
     /// ranged or not, whether it was typed or a binding resolved to
-    /// it. [`Open`] is a file to show, `bang` past a modified draft,
-    /// `locator` where in it to land. [`Goto`] is a jump to `line` and
+    /// it. [`Open`] is a file to show, `bang` past a modified draft;
+    /// whether a `PATH:LOCATOR` is one name or two is the host's to
+    /// split, so no locator rides here. [`Goto`] is a jump to `line`
+    /// and
     /// `column` of `over`, `land` ([`land`](crate::land)) saying how
     /// exactly it lands. [`Search`] is a pattern to run from `from`,
     /// `epoch` telling this run's answers from a later run's. [`Fed`]
@@ -248,7 +250,7 @@ declare! {
     record Input { press: Press, origin: u64, released: bool }
     record Edit { at: u64, len: u64, text: utf8(65536), join: bool }
     record Line { ranged: bool, from: u64, to: u64, line: utf8(4096) }
-    record Open { path: utf8(4096), bang: bool, locator: utf8(64) }
+    record Open { path: utf8(4096), bang: bool }
     record Goto { over: Rd, line: u64, column: u64, land: u64 }
     record Search { pattern: utf8(1024), ignorecase: bool,
                     smartcase: bool, from: u64, epoch: u64 }

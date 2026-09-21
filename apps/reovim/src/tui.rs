@@ -38,7 +38,7 @@ type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 /// keeps of Vim's state outlives it, and a second stay is a second
 /// `Stay` over the one engine, not a fresh one.
 fn table(init: Option<String>) -> Table {
-    use reovim_plugin_vim::Editor;
+    use reovim_plugin_vim_host::Editor;
     let vim = init.map_or_else(Editor::new, Editor::with_init);
     Box::new(move |want| {
         let made = match want {

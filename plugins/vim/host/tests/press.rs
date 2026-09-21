@@ -15,7 +15,7 @@ use reovim_client::dev::Clip;
 use reovim_client_api::{Key, keyboard, origin};
 use reovim_client_tui::Tui;
 use reovim_kernel_interface::{Calls, Handle, Rights};
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, ops};

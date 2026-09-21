@@ -13,7 +13,7 @@ use reovim_client::{Host, ROOT};
 use reovim_client_api::display;
 use reovim_client_tui::Tui;
 use reovim_kernel_interface::Error;
-use reovim_plugin_vim::Editor;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, frame, listed, opened, typed};
 use reovim_sdk::{cell, ops, sgr};
 

@@ -20,8 +20,8 @@ use reovim_kernel_interface::{
     Calls, Driver, Error, Hash, Module, Reply, Rights,
 };
 use reovim_module_search::Search;
-use reovim_plugin_vim::Editor;
 use reovim_plugin_vim::bins::subst;
+use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, listed, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
