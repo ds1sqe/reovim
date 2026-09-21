@@ -15,7 +15,7 @@ fn flags_preserve_grant_relations() {
     assert!(Access::EDIT.contains(Access::READ));
     assert!(!Access::READ.contains(Access::EDIT));
     assert_eq!(Access::empty() | Access::READ, Access::READ);
-    assert!(Access::empty().is_empty());
+    assert_eq!(Access::empty().bits(), 0);
 }
 
 #[test]

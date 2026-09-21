@@ -747,6 +747,6 @@ fn an_open_quote_is_a_miss_and_nothing_ran() {
         assert_eq!(typed(ctx, &mut shell, line), "unclosed quote");
         assert_eq!(rig.disk("out"), b"kept\n");
         assert_eq!(typed(ctx, &mut shell, "pwd"), "/\n");
-        assert!(cells(ctx, "cat").is_empty());
+        assert_eq!(cells(ctx, "cat"), Vec::new());
     }
 }
