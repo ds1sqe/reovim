@@ -195,6 +195,12 @@ struct State {
     /// else. A served `Op::Close` takes one out, as the Host's own
     /// `close` takes the slot.
     remote: BTreeMap<Handle, Rd>,
+    /// The rds `unregister` took out and the sweep has not said `Gone`
+    /// of yet, the root of each subtree and not what stood under it:
+    /// what retires their rows from the Kernel's mirror. A Client does
+    /// not know which of its rds a remote mirrored, so every one is
+    /// said and the mirror drops what it has no row for.
+    gone: Vec<Rd>,
     /// The names [`Host::unload`] refuses: the Host's own row and the
     /// Modules a Client is nothing without.
     kept: Vec<String>,
@@ -270,8 +276,10 @@ impl State {
         rd
     }
 
-    /// `rd` and its subtree gone, deepest first, `Delete` on `parent`.
+    /// `rd` and its subtree gone, deepest first, `Delete` on `parent`,
+    /// and `rd` kept for the sweep to say `Gone` of.
     fn unregister(&mut self, rd: Rd, parent: Rd) {
+        self.gone.push(rd);
         let mut order = alloc::vec![rd];
         let mut at = 0;
         while let Some(next) = order.get(at).copied() {
@@ -456,6 +464,7 @@ impl Host {
             events: VecDeque::new(),
             next_seq: 1,
             remote: BTreeMap::new(),
+            gone: Vec::new(),
             // The row below stands under no Module, so `unload` finds
             // none to take out: the name is refused and not mistaken
             // for one nobody loaded.
@@ -538,20 +547,25 @@ impl Host {
     }
 
     /// One `Op::Changed` per change on an rd a remote watches, from
-    /// this Host's own place in its own ring. Everything else the ring
-    /// holds is somebody's local business and is passed over.
+    /// this Host's own place in its own ring, and then one `Gone` per
+    /// rd `unregister` took out since the last sweep, watched or not.
+    /// Everything else the ring holds is somebody's local business and
+    /// is passed over.
     ///
     /// A ring that ran past this place is one `Overflow`, which
-    /// `Op::Changed` cannot carry: it holds `Modify` and `Attrib` and
-    /// no third kind. So every rd a remote watches is told `Modify`
-    /// instead and reads the cell again, which is what a watcher told
-    /// of a change does anyway; being told nothing is the one thing a
-    /// remote that missed something may not be.
+    /// `Op::Changed` cannot carry: a change is `Modify` or `Attrib`
+    /// and no third kind. So every rd a remote watches is told
+    /// `Modify` instead and reads the cell again, which is what a
+    /// watcher told of a change does anyway; being told nothing is the
+    /// one thing a remote that missed something may not be. What went
+    /// is not in the ring and is not lost with it.
     fn announce(&self) {
         let said: Vec<(Rd, Kind)> = {
-            let s = self.state.borrow();
-            let (said, cursor) = s.owed(self.said.get());
+            let mut s = self.state.borrow_mut();
+            let (mut said, cursor) = s.owed(self.said.get());
             self.said.set(cursor);
+            let gone = core::mem::take(&mut s.gone);
+            said.extend(gone.into_iter().map(|rd| (rd, Kind::Gone)));
             said
         };
         for (rd, kind) in said {

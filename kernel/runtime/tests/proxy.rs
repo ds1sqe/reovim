@@ -104,6 +104,9 @@ struct Client {
     asked: Vec<Op>,
     handles: BTreeMap<Handle, Rd>,
     next_handle: u64,
+    /// The rds it unregistered, which it answers nothing for and lists
+    /// no more, as the Host's own tree does.
+    gone: Vec<Rd>,
 }
 
 impl Client {
@@ -127,6 +130,25 @@ impl Client {
         self.side.request(kernel, Op::Changed { rd, kind })
     }
 
+    /// The Client takes `rd` and what is under it out and says so,
+    /// which is `Calls::unregister` as it goes out: one `Gone` on the
+    /// rd, whatever stands below it.
+    fn unregister(&mut self, kernel: &Kernel, rd: Rd) -> Reply<Out> {
+        self.gone.push(rd);
+        self.changed(kernel, rd, Kind::Gone)
+    }
+
+    /// The node at `rd` as this Client holds it now: none for one it
+    /// took out, and a listing without the ones it took out.
+    fn node(&self, rd: Rd) -> Result<Node, Error> {
+        if self.gone.contains(&rd) {
+            return Err(Error::Invalid);
+        }
+        let mut node = node(rd)?;
+        node.children.retain(|child| !self.gone.contains(child));
+        Ok(node)
+    }
+
     /// How many ops it has been asked, which a case snapshots around
     /// what it says costs none.
     const fn served(&self) -> usize {
@@ -148,8 +170,11 @@ impl Client {
         self.asked.push(op.clone());
         match op {
             Op::Lookup { rd, name } => found(rd, &name),
-            Op::Children { rd } => Ok(Out::Rds(node(rd)?.children)),
-            Op::Info { rd } => Ok(Out::Info(info(rd)?)),
+            Op::Children { rd } => Ok(Out::Rds(self.node(rd)?.children)),
+            Op::Info { rd } => {
+                self.node(rd)?;
+                Ok(Out::Info(info(rd)?))
+            }
             Op::Open { rd, .. } => Ok(Out::Handle(self.opened(rd)?)),
             Op::Read { h, at, len } => self.read(h, at, len),
             // A watch is on a handle this Client gave; the close that
@@ -167,7 +192,7 @@ impl Client {
     }
 
     fn opened(&mut self, rd: Rd) -> Result<Handle, Error> {
-        node(rd)?;
+        self.node(rd)?;
         self.next_handle += 1;
         let h = Handle(BASE + self.next_handle);
         self.handles.insert(h, rd);
@@ -709,14 +734,16 @@ fn a_change_the_mirror_cannot_place_is_answered_and_dropped() {
     let (mut rig, mut remote, mode, _) = watching();
 
     // A Client may say anything and the Kernel believes none of it: a
-    // kind `Calls::changed` does not take, and an rd the mirror has no
-    // row for, are answered `Unit` and change nothing.
-    for kind in [Kind::Create, Kind::Delete, Kind::Move, Kind::Gone] {
+    // kind the mirror does not place, and an rd the mirror has no row
+    // for, are answered `Unit` and change nothing.
+    for kind in [Kind::Create, Kind::Delete, Kind::Move] {
         let said = rig.client.changed(&rig.kernel, MODE, kind);
         assert_eq!(said, Reply::ok(Out::Unit), "{kind:?}");
     }
-    let stranger = rig.client.changed(&rig.kernel, Rd(BASE + 99), Kind::Modify);
-    assert_eq!(stranger, Reply::ok(Out::Unit));
+    for kind in [Kind::Modify, Kind::Gone] {
+        let stranger = rig.client.changed(&rig.kernel, Rd(BASE + 99), kind);
+        assert_eq!(stranger, Reply::ok(Out::Unit), "{kind:?}");
+    }
     assert_eq!(kinds(&rig.kernel, &mut remote, mode), Vec::new());
 
     // `/sys/info/watchers` counts the Kernel's own watch table, where
@@ -727,4 +754,87 @@ fn a_change_the_mirror_cannot_place_is_answered_and_dropped() {
     let counted = rig.lookup(facts, "watchers");
     let read = Op::Read { h: rig.opened(counted), at: 0, len: 16 };
     assert_eq!(rig.ask(read), Ok(Out::Bytes(b"1".to_vec())));
+}
+
+#[test]
+fn a_row_the_client_unregisters_goes_from_the_mirror_with_its_subtree() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let listed = rig.rds(root);
+    assert_eq!(rig.names(&listed), vec!["dev", "mode"]);
+    let (dev, mode) = (listed[0], listed[1]);
+    let cwd = rig.lookup(dev, "cwd");
+    let mut side = rig.other();
+    let watching = rig.watch(&mut side, mode);
+    rig.settled();
+    let h = rig.opened(mode);
+
+    // The Client takes `mode` out and says so, as `Calls::unregister`
+    // does: the listing the Kernel answers from its table is one
+    // shorter, whoever watched the row hears `Gone`, and every op on
+    // the old rd is what the Kernel says of an rd it no longer holds,
+    // with nothing forwarded to the Client for it.
+    let said = rig.client.unregister(&rig.kernel, MODE);
+    assert_eq!(said, Reply::ok(Out::Unit));
+    let served = rig.client.served();
+    assert_eq!(rig.rds(root), vec![dev], "the listing is one shorter");
+    assert_eq!(kinds(&rig.kernel, &mut side, mode), vec![Kind::Gone]);
+    assert_eq!(rig.ask(Op::Info { rd: mode }), Err(Error::Invalid));
+    let open = Op::Open { rd: mode, rights: Rights::READ };
+    assert_eq!(rig.ask(open), Err(Error::Invalid));
+    assert_eq!(rig.ask(Op::Children { rd: mode }), Err(Error::Invalid));
+    let read = Op::Read { h, at: 0, len: 8 };
+    assert_eq!(rig.ask(read), Err(Error::Gone), "the handle's rd went");
+    assert_eq!(rig.client.served(), served, "the Client was asked");
+
+    // A name the Client has is found again as ever: the mirror is not
+    // told a name that came, so it asks.
+    assert_eq!(rig.lookup(root, "dev"), dev, "a row that stands is found");
+    assert_eq!(rig.client.served(), served, "a held name costs nothing");
+
+    // A Container goes with what stands under it: one `Gone` on `dev`
+    // takes `cwd` with it, and the Client is asked nothing for either.
+    let said = rig.client.unregister(&rig.kernel, DEV);
+    assert_eq!(said, Reply::ok(Out::Unit));
+    assert_eq!(rig.rds(root), Vec::new(), "nothing is left to list");
+    assert_eq!(rig.ask(Op::Info { rd: cwd }), Err(Error::Invalid));
+    assert_eq!(rig.ask(Op::Info { rd: dev }), Err(Error::Invalid));
+    assert_eq!(rig.client.served(), served, "the Client was asked");
+
+    // The watcher's close still ends the forwarded watch: the proxy's
+    // own handle at the Client is closed with the remote's.
+    let at = rig.client.served();
+    let close = Op::Close { h: watching };
+    assert_eq!(rig.by(&mut side, close), Ok(Out::Unit));
+    rig.settled();
+    let both = "Close Close";
+    assert_eq!(rig.client.since(at), both, "the remote's and the proxy's");
+}
+
+#[test]
+fn an_op_queued_on_a_row_that_goes_answers_gone_and_holds_up_nothing() {
+    let mut rig = Rig::new();
+    let root = rig.root();
+    let listed = rig.rds(root);
+    let (dev, mode) = (listed[0], listed[1]);
+
+    // An open of `mode` waits on the Client; before the Client turns,
+    // the row goes. The caller hears `Gone` rather than waiting for
+    // ever, and what was queued behind it goes out as it should.
+    let open = Op::Open { rd: mode, rights: Rights::READ };
+    let Reply::Pending(token) = rig.remote.request(&rig.kernel, open) else {
+        panic!("the open waits on the Client")
+    };
+    let lookup = Op::Lookup { rd: dev, name: "cwd".to_string() };
+    let Reply::Pending(behind) = rig.remote.request(&rig.kernel, lookup) else {
+        panic!("the lookup waits on the Client")
+    };
+    let said = rig.client.unregister(&rig.kernel, MODE);
+    assert_eq!(said, Reply::ok(Out::Unit));
+    let ask = rig.remote.request(&rig.kernel, Op::Ask { token });
+    assert_eq!(ask, Reply::Ready(Err(Error::Gone)), "the row went");
+    let at = rig.client.served();
+    let cwd = rig.waited(behind);
+    assert!(matches!(cwd, Ok(Out::Rd(_))), "{cwd:?}");
+    assert_eq!(rig.client.since(at), "Lookup Info", "the one behind it");
 }

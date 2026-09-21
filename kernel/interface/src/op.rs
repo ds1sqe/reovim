@@ -48,9 +48,12 @@ pub enum Op {
     Done { token: Token, outcome: Outcome },
     /// An rd this caller serves changed, for a watch it was asked to
     /// keep: `Modify` or `Attrib`, which is what `Calls::changed` takes
-    /// at either end. A name that came or went is not announced; the
-    /// mirror is stale until somebody walks again, and the op that acts
-    /// says `gone`. Like `Done` it never reaches the Kernel's dispatch.
+    /// at either end. Or it went: `Gone` for an rd the caller
+    /// unregistered, watched or not, which is `Calls::unregister` on
+    /// the mirror's row for it, so what is under it goes with it and
+    /// its parent lists what the caller lists. A name that came is not
+    /// announced; the mirror learns it when somebody walks again. Like
+    /// `Done` it never reaches the Kernel's dispatch.
     Changed { rd: Rd, kind: Kind },
 }
 

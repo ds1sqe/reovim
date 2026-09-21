@@ -233,6 +233,35 @@ fn a_change_on_a_client_reaches_a_remote_watcher_and_nobody_else() {
     assert_eq!(heard(&events), Vec::new());
 }
 
+#[test]
+fn a_row_a_client_unregisters_goes_from_the_listing_a_remote_took() {
+    let rig = Rig::new("wire-gone");
+    let a = rig.host();
+    let cells = Rc::new(Cells);
+    let id = a.load("cells", cells.clone(), vec![cells]).unwrap();
+    let b = rig.host();
+    let (mine, theirs) = (a.own(), b.own());
+    let path = "/session/1/client/1/self/cells";
+    let home = cell::resolve(&theirs, ROOT, path).unwrap();
+    let listed = ops::children(&theirs, home).unwrap();
+    let two = cell::resolve(&theirs, ROOT, &format!("{path}/two")).unwrap();
+    assert_eq!(listed.len(), 2, "one and two");
+    let here = cell::resolve(&mine, ROOT, "/self/cells/two").unwrap();
+
+    // a takes `two` out: the next sweep says so in one message, whether
+    // or not anybody mirrored it, and the listing the Kernel answers
+    // from its mirror is one shorter. The old rd is refused there and
+    // costs a nothing.
+    let before = rig.sent();
+    a.calls(id).unregister(here).unwrap();
+    a.serve();
+    assert_eq!(rig.sent(), before + 1, "one message a row gone");
+    let left = ops::children(&theirs, home).unwrap();
+    assert_eq!(left, vec![listed[0]], "the listing is one shorter");
+    assert_eq!(ops::info(&theirs, two), Err(Error::Invalid));
+    assert_eq!(a.serve(), 0, "a served an op nobody asked of it");
+}
+
 /// Changes made with nobody serving: more than the Host's ring holds
 /// (`RING`, clients/core/src/host.rs), so the sweep's own cursor falls
 /// off the front of it.

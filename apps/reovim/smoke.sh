@@ -878,10 +878,13 @@ editing several a
 shown several 'E162:'
 keys several u : b d Enter
 editing several b
-# The draft `:bd` closed is gone from the Client: an op forwarded to it
-# says so, while `ls` from here answers the Kernel's mirror, which keeps
-# the rows it listed above. The Client's own listing is the `:cli` one.
+# The draft `:bd` closed is gone from the Kernel's mirror too: the
+# listing from here, taken once above, is one shorter, and an op on the
+# old row is refused.
 buffers=/session/1/client/1/self/dev/buffers
+listed="$("$BIN" cli ls "$buffers")"
+[[ "$listed" == $'1\n2' ]] \
+    || fail "after :bd the listing is $(tr '\n' ' ' <<< "$listed"), not 1 2"
 ! "$BIN" cli cat "$buffers/0/source" >/dev/null 2>&1 \
     || fail "the closed draft still answers"
 "$BIN" cli cat "$buffers/1/source" >/dev/null \

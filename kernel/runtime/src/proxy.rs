@@ -334,10 +334,12 @@ impl Proxy {
 
     /// A change the Client announced, put on the mirror row for the rd
     /// it named: the Kernel emits to whoever watches and the remote's
-    /// next `Since` carries it. An rd this mirror has no row for, and
-    /// a kind `Calls::changed` does not take, are one `debug` line and
-    /// nothing else — a Client may say anything and none of it is
-    /// believed.
+    /// next `Since` carries it. `Gone` is the one kind that is more
+    /// than an event: the Client unregistered the rd, so the row
+    /// retires with what is under it. An rd this mirror has no row
+    /// for, and a kind neither `Calls::changed` nor `retire` takes,
+    /// are one `debug` line and nothing else — a Client may say
+    /// anything and none of it is believed.
     pub(crate) fn changed(
         &self,
         kernel: &Kernel,
@@ -346,7 +348,10 @@ impl Proxy {
         kind: Kind,
     ) {
         let row = self.state.borrow().to_server.get(&rd).copied();
-        let told = row.map(|row| kernel.calls(id).changed(row, kind));
+        let told = row.map(|row| match kind {
+            Kind::Gone => self.retire(kernel, id, row),
+            kind => kernel.calls(id).changed(row, kind),
+        });
         if matches!(told, Some(Ok(()))) {
             return;
         }
@@ -354,6 +359,35 @@ impl Proxy {
         kernel.say(DEBUG, || {
             alloc::format!("changed rd={} kind={name} dropped", rd.0)
         });
+    }
+
+    /// The Client unregistered the rd behind the mirror row `row`: the
+    /// row and every row under it go from the Kernel's table, with the
+    /// `Gone` and `Delete` `Calls::unregister` emits, and from the
+    /// mirror's own maps, so the parent lists what the Client lists
+    /// and no op names the old rds again. A job still queued on one of
+    /// them answers `Gone` to whoever waits on it, rather than standing
+    /// at the front of the queue for a row that will never come and
+    /// holding everything behind it.
+    ///
+    /// # Errors
+    /// Whatever `Calls::unregister` says of `row`.
+    fn retire(
+        &self,
+        kernel: &Kernel,
+        id: ModuleId,
+        row: Rd,
+    ) -> Result<(), Error> {
+        let below = {
+            let s = kernel.state.borrow();
+            s.table.get(row).map(|_| s.table.subtree(row))?
+        };
+        let calls = kernel.calls(id);
+        calls.unregister(row)?;
+        for token in forget(&mut self.state.borrow_mut(), &below) {
+            let _ = calls.done(token, Err(Error::Gone));
+        }
+        Ok(())
     }
 
     /// The Client's `/self`: the row the mirror was born with stands
@@ -528,6 +562,43 @@ impl Driver for Proxy {
         // and no record of it anywhere.
         self.own(Op::Close { h: Handle(h) }, Then::Drop);
         Reply::ok(())
+    }
+}
+
+/// The rows `below` out of the mirror's maps, and out of the queue
+/// every job that names one of them, which is the three ops that go
+/// out in the mirror's rd and no other; the tokens of the callers
+/// those leave waiting.
+fn forget(s: &mut State, below: &[Rd]) -> Vec<Token> {
+    for server in below {
+        if let Some(client) = s.to_client.remove(server) {
+            s.to_server.remove(&client);
+        }
+    }
+    let named = |job: &Job| {
+        matches!(
+            job.op,
+            Op::Lookup { rd, .. } | Op::Children { rd } | Op::Open { rd, .. }
+                if below.contains(&rd)
+        )
+    };
+    let (stranded, kept): (Vec<Job>, Vec<Job>) =
+        s.queue.drain(..).partition(named);
+    s.queue = kept.into();
+    stranded.iter().filter_map(|job| waited(s, job)).collect()
+}
+
+/// The token a caller waits on for a job that will never go out, or
+/// none: a watch whose `open` had not gone out has no handle at the
+/// Client and leaves no row here, and nobody waits on the rest.
+fn waited(s: &mut State, job: &Job) -> Option<Token> {
+    match job.then {
+        Then::Answer(_) | Then::Found { .. } => Some(job.token),
+        Then::Watching { rd } => {
+            s.watched.remove(&rd);
+            None
+        }
+        Then::Drop | Then::Root { .. } | Then::Shape(_) => None,
     }
 }
 
