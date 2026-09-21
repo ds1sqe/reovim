@@ -817,13 +817,19 @@ impl Vim {
     /// on, as every operator sets `w_set_curswant`.
     ///
     /// Chars taken down to nothing leave one empty line, as Vim's
-    /// buffer always has a line. An empty span takes nothing, yet the
-    /// cursor still lands at it: `di"` within `""` goes to the close.
+    /// buffer always has a line: the `\n` nvim writes for it, where
+    /// `dd` writes none, which is the line's end and not a line
+    /// opened, so `edit` is not asked for the `\n` it would owe. An
+    /// empty span takes nothing, yet the cursor still lands at it:
+    /// `di"` within `""` goes to the close.
     fn deleted(&mut self, at: usize, len: usize, linewise: bool) -> Effect {
         let before = self.cursor;
         let whole = !linewise && at == 0 && len == self.text.len();
         let effect = if whole {
-            self.replace(0, len, String::from("\n"))
+            let text = String::from("\n");
+            self.text.clone_from(&text);
+            self.joining = false;
+            Effect::Edit(Edit { at: 0, len, text, join: false })
         } else {
             self.remove(at, len)
         };

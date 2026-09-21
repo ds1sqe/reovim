@@ -10,7 +10,7 @@ use std::rc::Rc;
 use reovim_client::dev::{Clip, Table};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::Editor;
-use reovim_rig::{Rig, opened, status, typed};
+use reovim_rig::{Rig, frame, opened, status, typed};
 
 /// What a write says when the file it would make is there already.
 const E13: &str = "E13: File exists (add ! to override)";
@@ -167,4 +167,27 @@ fn a_buffer_with_no_name_at_all_still_has_no_file_to_write() {
     assert_eq!(typed(&mut tui, ":w note<CR>"), Step::Changed);
     assert_eq!(rig.disk("note"), b"hi\n");
     assert_eq!(status(&mut tui), "note  1:2  r3   ");
+}
+
+#[test]
+fn an_opened_line_at_an_unterminated_end_is_a_line_of_its_own() {
+    let rig = Rig::new("new-file-eol");
+    let (mut tui, vim) = editor(&rig, "", None, None);
+    // Typed from nothing, the text has no final `\n`; `o` at its end
+    // must both end that line and open the new one, as nvim holds
+    // `["11", ""]`, so the cursor is on a line the text has.
+    assert_eq!(typed(&mut tui, "i11<Esc>o"), Step::Changed);
+    assert_eq!(vim.engine().text(), "11\n\n");
+    assert_eq!(vim.engine().position(), (1, 0));
+    let shown = frame(&mut tui);
+    assert_eq!(shown.lines[..2], ["11", ""]);
+    assert_eq!(shown.cursor, (1, 0), "the frame's cursor is on the new row");
+    assert_eq!(typed(&mut tui, "<Esc>:w note<CR>"), Step::Changed);
+    assert_eq!(rig.disk("note"), b"11\n\n", "two lines, as nvim writes");
+
+    // Backspace on that empty line joins it back onto the first.
+    assert_eq!(typed(&mut tui, "a<BS><Esc>:w<CR>"), Step::Changed);
+    assert_eq!(vim.engine().text(), "11\n");
+    assert_eq!(vim.engine().position(), (0, 1));
+    assert_eq!(rig.disk("note"), b"11\n");
 }

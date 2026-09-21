@@ -348,7 +348,8 @@ impl Vim {
         // and `]` must land on what changed, not on a byte the
         // substitution only carried along unchanged.
         let mut last = None;
-        for (start, end, text) in changes {
+        for (start, end, mut text) in changes {
+            self.owed_eol(start, end - start, &mut text);
             let edit = minimal_edit(
                 start,
                 &self.text[start..end],

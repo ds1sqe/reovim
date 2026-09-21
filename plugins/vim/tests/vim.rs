@@ -26,12 +26,14 @@ fn insert_edits_join_and_esc_steps_back() {
     assert_eq!(vim.mode(), Mode::Insert);
     assert_eq!(vim.key(Key::Char('a')), edit(0, 0, "a", false));
     assert_eq!(vim.key(Key::Char('b')), edit(1, 0, "b", true));
-    assert_eq!(vim.key(Key::Enter), edit(2, 0, "\n", true));
+    // The text had no final `\n`; the Enter ends its line and opens
+    // the next, so the cursor's line is one the text holds.
+    assert_eq!(vim.key(Key::Enter), edit(2, 0, "\n\n", true));
     assert_eq!(vim.key(Key::Char('c')), edit(3, 0, "c", true));
     assert_eq!(vim.position(), (1, 1));
     assert_eq!(vim.key(Key::Backspace), edit(3, 1, "", true));
     assert_eq!(vim.key(Key::Backspace), edit(2, 1, "", true), "across");
-    assert_eq!(vim.text(), "ab");
+    assert_eq!(vim.text(), "ab\n", "one line, ended");
     assert_eq!(vim.key(Key::Left), Effect::Moved, "an arrow ends the step");
     assert_eq!(vim.key(Key::Char('é')), edit(1, 0, "é", false));
     assert_eq!(vim.key(Key::Esc), Effect::Moved);

@@ -1105,7 +1105,6 @@ impl Vim {
         let pending = core::mem::take(&mut self.indent);
         let at = self.cursor - pending;
         let text = alloc::format!("\n{indent}");
-        self.text.replace_range(at..self.cursor, &text);
         self.cursor = at + text.len();
         self.indent = indent.len();
         self.edit(at, pending, text)
@@ -1119,7 +1118,6 @@ impl Vim {
             return None;
         }
         let at = self.cursor - pending;
-        self.text.replace_range(at..self.cursor, "");
         self.cursor = at;
         Some(self.edit(at, pending, String::new()))
     }
@@ -1148,7 +1146,6 @@ impl Vim {
     /// `text` at the cursor.
     fn put_str(&mut self, text: &str) -> Effect {
         let at = self.cursor;
-        self.text.insert_str(at, text);
         self.cursor += text.len();
         self.edit(at, 0, String::from(text))
     }
@@ -1159,20 +1156,37 @@ impl Vim {
             return Effect::Nothing;
         };
         self.cursor -= c.len_utf8();
-        self.text.remove(self.cursor);
         self.edit(self.cursor, c.len_utf8(), String::new())
     }
 
-    /// An edit already applied to the text, joined to the revision
+    /// `len` bytes at `at` become `text`, joined to the revision
     /// under way when an insert is.
-    const fn edit(&mut self, at: usize, len: usize, text: String) -> Effect {
+    fn edit(&mut self, at: usize, len: usize, mut text: String) -> Effect {
+        self.owed_eol(at, len, &mut text);
+        self.text.replace_range(at..at + len, &text);
         let join = core::mem::replace(&mut self.joining, true);
         Effect::Edit(Edit { at, len, text, join })
     }
 
+    /// `text`, about to replace `at..at + len`, given the `\n` it
+    /// owes: a final `\n` ends a line, so an edit that leaves a text
+    /// which had none ending in one — `o` at that end, a `\r` of
+    /// `:s` there, the last line's chars taken — has put the cursor
+    /// on a line the text does not hold, and one `\n` more is that
+    /// line, as nvim holds `["11", ""]`. The splices that can reach
+    /// the end (`edit`, `:s`, a block's) pass here first.
+    pub(crate) fn owed_eol(&self, at: usize, len: usize, text: &mut String) {
+        let last = at + len == self.text.len() && !self.text.ends_with('\n');
+        let tail =
+            if text.is_empty() { &self.text[..at] } else { text.as_str() };
+        let owed = last && tail.ends_with('\n');
+        if owed {
+            text.push('\n');
+        }
+    }
+
     /// `len` bytes at `at` become `text`, as a revision of their own.
     fn replace(&mut self, at: usize, len: usize, text: String) -> Effect {
-        self.text.replace_range(at..at + len, &text);
         self.joining = false;
         self.edit(at, len, text)
     }

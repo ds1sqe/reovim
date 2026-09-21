@@ -412,7 +412,8 @@ impl Vim {
         let mut edits = Vec::new();
         // An empty range is a line short of the block: nothing to do.
         for &(from, to) in ranges.iter().rev().filter(|&&(a, b)| a < b) {
-            let text = with(&self.text[from..to]);
+            let mut text = with(&self.text[from..to]);
+            self.owed_eol(from, to - from, &mut text);
             self.text.replace_range(from..to, &text);
             edits.push(Edit {
                 at: from,
