@@ -214,16 +214,20 @@ impl Vim {
 
     /// The selection as an operator's span: chars through the cursor's
     /// (a newline included after `$`), or whole lines.
+    ///
+    /// The last line's end is `bound`, not the text's: nvim's buffer
+    /// has no line break after its last line for `op_delete` or
+    /// `op_yank` to take, the one the file ends with being
+    /// `fixeol`'s, so a charwise selection reaching that line's NUL
+    /// takes no newline where an inner line's does.
     fn selection(&self, kind: Visual) -> Span {
         let (lo, hi) = self.ends();
         match kind {
             // A `V` selection begins at its first line's start.
             Visual::Line => (self.line_start(lo), hi, Extent::Linewise),
-            _ => (
-                lo,
-                self.forward_char(hi).min(self.text.len()),
-                Extent::Exclusive,
-            ),
+            _ => {
+                (lo, self.forward_char(hi).min(self.bound()), Extent::Exclusive)
+            }
         }
     }
 
