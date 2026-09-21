@@ -345,6 +345,7 @@ impl Editor {
     /// made ended where the mode says it is over; the rows the region
     /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
+        let rows = self.sized(ctx)?;
         if !self.stay()?.leaving.get() {
             let keys = self.stay()?.surface.region()?.keys(ctx)?;
             self.queue.borrow_mut().extend(keys.into_iter().map(Queued::Typed));
@@ -359,7 +360,6 @@ impl Editor {
         if mode != Mode::Insert && !self.stay()?.stale.get() {
             self.stale(ctx, |ctx| self.sync(ctx))?;
         }
-        let rows = self.sized(ctx)?;
         Ok(encode(&self.vim.borrow_mut().view(rows)))
     }
 
@@ -1625,7 +1625,11 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     let pending = read(home, "pending", one)?;
     let under = read(home, "registers", held)?;
     let mut registers = BTreeMap::new();
-    for name in core::iter::once('"').chain('a'..='z') {
+    for name in core::iter::once('"')
+        .chain('0'..='9')
+        .chain('a'..='z')
+        .chain(core::iter::once('-'))
+    {
         registers.insert(read(under, &format!("{name}"), one)?, name);
     }
     let marks = read(home, "marks", one)?;

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# laststatus=0 leaves 23 text rows, matching the Client region.
 # What nvim does with a case: `out`, `exit` and `state` written beside
 # its `in` and `keys`; `state` is the cursor as line:column:cell (the
 # column in chars, the cell on the screen, all from 1), the unnamed
@@ -34,7 +35,8 @@ for case in "$@"; do
         . charcol('.') . ':' . $cell, getregtype('\"')], '$state') \
         | call writefile(split(getreg('\"'), \"\\n\", 1), '$state', 'ab')"
     set +e
-    (cd "$work" && nvim --headless --clean -i NONE -n file --cmd "$leave" \
+    (cd "$work" && nvim --headless --clean -i NONE -n file \
+        --cmd "set laststatus=0" --cmd "$leave" \
         -c "call feedkeys(\"$keys\", 'tx')" -c 'cquit 2' 2>/dev/null)
     code=$?
     set -e

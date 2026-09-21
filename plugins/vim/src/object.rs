@@ -6,12 +6,6 @@ use alloc::vec::Vec;
 use crate::Vim;
 use crate::operator::{Extent, Span};
 
-/// A word for `iw` and `aw`: same class; for `iW` and `aW`: not blank.
-fn same(big: bool, a: Option<char>, b: Option<char>) -> bool {
-    let blank = |c: Option<char>| matches!(c, None | Some(' ' | '\t' | '\n'));
-    if big { blank(a) == blank(b) } else { crate::word::same_class(a, b) }
-}
-
 /// Where one step forward landed, as nvim's `inc` tells the three
 /// apart: on a char of the same line, on the line's end, which is a
 /// place of its own, or on the line after.
@@ -121,7 +115,7 @@ impl Vim {
     /// one at `at`; `None` at the text's end.
     fn past_class(&self, mut at: usize, big: bool) -> Option<usize> {
         let here = self.char_at(at);
-        while same(big, self.char_at(at), here) {
+        while crate::word::same_class(big, self.char_at(at), here) {
             at = self.inc(at)?.0;
         }
         Some(at)
@@ -143,7 +137,11 @@ impl Vim {
         let here = self.char_at(at);
         let mut from = at;
         while from > start
-            && same(big, self.char_at(self.prev_char(from)), here)
+            && crate::word::same_class(
+                big,
+                self.char_at(self.prev_char(from)),
+                here,
+            )
         {
             from = self.prev_char(from);
         }
@@ -156,7 +154,9 @@ impl Vim {
     fn end_word(&self, from: usize, big: bool) -> Option<usize> {
         let here = self.char_at(from);
         let at = self.inc(from)?.0;
-        if !self.blank_at(from) && !same(big, self.char_at(at), here) {
+        if !self.blank_at(from)
+            && !crate::word::same_class(big, self.char_at(at), here)
+        {
             return Some(from);
         }
         let at = self.past_blanks(at)?;
@@ -181,7 +181,10 @@ impl Vim {
         }
         let here = self.char_at(from);
         let over_word = !self.blank_at(from);
-        while at < end && over_word && same(big, self.char_at(at), here) {
+        while at < end
+            && over_word
+            && crate::word::same_class(big, self.char_at(at), here)
+        {
             at = self.forward_char(at);
         }
         while at < end && self.blank_at(at) {

@@ -125,9 +125,10 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
         ]
     );
     let names = listed(&host, "/self/vim/registers");
-    assert_eq!(names.len(), 27, "the unnamed one and `a` to `z`");
+    assert_eq!(names.len(), 38, "unnamed, digits, letters and small delete");
     assert_eq!(names[0], "\"");
-    assert_eq!(names[26], "z");
+    assert_eq!(names[36], "z");
+    assert_eq!(names[37], "-");
     // `"+` is no register of Vim's: the clipboard is the Client's one
     // cell, and a second name for it would be a second clipboard.
     assert!(!names.iter().any(|name| name == "+"));

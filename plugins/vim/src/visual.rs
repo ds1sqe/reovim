@@ -5,7 +5,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::operator::{Extent, Operator, Span};
+use crate::operator::{Extent, Operator, Span, Took};
 use crate::{Edit, Effect, Key, Kind, Mode, Motion, Put, Register, Vim};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -263,7 +263,7 @@ impl Vim {
             Operator::ShiftRight | Operator::ShiftLeft => {
                 self.shifted(from, to, op == Operator::ShiftRight, n)
             }
-            _ => self.apply(op, (from, to, extent)),
+            _ => self.apply(op, (from, to, extent), false),
         }
     }
 
@@ -280,7 +280,7 @@ impl Vim {
         match op {
             Operator::Yank => {
                 let register = self.block_register(&ranges);
-                self.store(register);
+                self.store(register, Took::Yank);
                 self.cursor = top_left;
                 Effect::Moved
             }
@@ -376,7 +376,7 @@ impl Vim {
         left: usize,
     ) -> Effect {
         let register = self.block_register(ranges);
-        self.store(register);
+        self.store(register, Took::Delete { one: false });
         let effect = self.block_edits(ranges, |_| String::new());
         let start = self.line_at(lines.0).unwrap_or(0);
         self.cursor = self.at_column(start, left);
@@ -495,10 +495,16 @@ impl Vim {
         let taken = self.text[at..at + len].trim_end_matches('\n').into();
         self.leave_visual();
         let below = put.starts_with('\n');
+        let inline = shape == Kind::Char
+            && !lines
+            && !put.contains('\n')
+            && !put.is_empty();
+        let end = at + put.len();
         let effect = self.replace(at, len, put);
         let kind = if lines { Kind::Line } else { Kind::Char };
-        self.store(Register { text: taken, kind });
-        self.cursor = at + usize::from(below);
+        self.store(Register { text: taken, kind }, Took::Delete { one: false });
+        self.cursor =
+            if inline { self.prev_char(end) } else { at + usize::from(below) };
         self.clamp();
         effect
     }
@@ -511,7 +517,7 @@ impl Vim {
         let (lines, (left, _)) = self.corners();
         self.leave_visual();
         let taken = self.block_register(&ranges);
-        self.store(taken);
+        self.store(taken, Took::Delete { one: false });
         let Register { text, kind } = register;
         let mut edits = Vec::new();
         let start = self.line_at(lines.0).unwrap_or(0);
@@ -634,7 +640,8 @@ impl Vim {
     /// line's newline after `$`.
     fn block_spans(&self, top: usize, height: usize) -> Vec<(usize, usize)> {
         let ((first, last), (left, right)) = self.corners();
-        let rows = first.max(top)..=last.min(top + height - 1);
+        let rows = first.max(top)
+            ..=last.min(top.saturating_add(height.saturating_sub(1)));
         rows.filter_map(|line| self.line_at(line))
             .map(|start| {
                 let (from, to) = self.block_range(start, left, right);

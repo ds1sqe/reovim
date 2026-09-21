@@ -779,6 +779,9 @@ impl Vim {
     /// A digit onto the count: `0` only after another, being a motion
     /// else.
     const fn digit(&mut self, key: Key) -> bool {
+        if self.pending.key.is_some() {
+            return false;
+        }
         let Key::Char(digit @ '0'..='9') = key else { return false };
         if digit == '0' && self.pending.count == 0 {
             return false;
@@ -803,7 +806,7 @@ impl Vim {
             && key == Key::Char(op.key())
         {
             self.pending.operator = None;
-            return self.lines(op, first * n);
+            return self.lines(op, first.saturating_mul(n));
         }
         if let Some(motion) = Motion::of(key, count) {
             return self.motion(motion, n);
@@ -935,6 +938,10 @@ impl Vim {
     ) -> Option<Motion> {
         let Key::Char(c) = key else { return None };
         let motion = match first {
+            'g' if c == 'e' => Motion::WordEndBack { big: false },
+            'g' if c == 'E' => Motion::WordEndBack { big: true },
+            'g' if c == 'j' => Motion::ScreenDown,
+            'g' if c == 'k' => Motion::ScreenUp,
             'g' if c == 'g' => Motion::Line(count.saturating_sub(1)),
             'i' | 'a' => Motion::Object { inner: first == 'i', kind: c },
             'f' => Motion::Find(Find::Forward, c),
@@ -985,7 +992,7 @@ impl Vim {
     fn operator(&mut self, op: Operator, n: usize) -> Effect {
         match self.pending.operator.take() {
             Some((waiting, count)) if waiting == op => {
-                self.lines(op, count * n)
+                self.lines(op, count.saturating_mul(n))
             }
             Some(_) => {
                 self.repeat.record.clear();
@@ -1009,7 +1016,9 @@ impl Vim {
     /// `motion` `n` times for the cursor, or for the operator waiting.
     fn motion(&mut self, motion: Motion, n: usize) -> Effect {
         let effect = match self.pending.operator.take() {
-            Some((op, count)) => self.operate(op, count * n, motion),
+            Some((op, count)) => {
+                self.operate(op, count.saturating_mul(n), motion)
+            }
             None => self.move_by(motion, n),
         };
         self.settle(&effect);
@@ -1518,19 +1527,26 @@ impl Vim {
         self.line_at(line.min(self.line_count() - 1)).unwrap_or(0)
     }
 
+    /// Scroll only far enough to keep the cursor in the visible rows.
+    fn scrolled(&mut self, height: usize) {
+        let height = height.max(1);
+        let line = self.position().0;
+        if line < self.top {
+            self.top = line;
+        } else if line >= self.top.saturating_add(height) {
+            self.top = line + 1 - height;
+        }
+    }
+
     /// What to show in a region of `rows` rows: the first byte of the
     /// first line shown, which moves to keep the cursor in it, the
     /// cursor itself and its shape, the selection and the search
     /// matches as byte spans, and the status word.
     #[must_use]
     pub fn view(&mut self, rows: usize) -> window::View {
+        self.rows = rows;
+        self.scrolled(rows);
         let height = rows.max(1);
-        let line = self.position().0;
-        if line < self.top {
-            self.top = line;
-        } else if line >= self.top + height {
-            self.top = line + 1 - height;
-        }
         let selected = match self.mode {
             Mode::Visual(kind) => self.selection_spans(kind, self.top, height),
             _ => Vec::new(),

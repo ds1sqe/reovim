@@ -1051,6 +1051,21 @@ keys macros : q ! Enter
 ended macros
 [[ "$ENDED" == 0 ]] || fail "the macro editor did not quit"
 
+# --- WORD and window motions, and distinct numbered registers --------
+mkdir -p "$DIR/numbered"
+printf 'one two\nthree four\nfive six\n' > "$DIR/numbered/file"
+start numbered "$DIR/numbered" "$BIN file"
+editing numbered file
+keys numbered d W y y j d d '"' 0 p '"' 1 p L
+shown numbered 'file  4:'
+keys numbered H
+shown numbered 'file  1:'
+keys numbered : c a t Space / s e l f / v i m / r e g i s t e r s / 0 Enter
+shown numbered 'file  1:.*   two$'
+keys numbered : q ! Enter
+ended numbered
+[[ "$ENDED" == 0 ]] || fail "the numbered-register editor did not quit"
+
 # --- start to first frame -------------------------------------------
 before="$EPOCHREALTIME"
 start time "$DIR" "$BIN other"

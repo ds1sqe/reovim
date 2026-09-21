@@ -327,3 +327,28 @@ fn a_line_that_is_only_a_range_is_that_line() {
     assert_eq!(typed(&mut tui, ":<CR>"), Step::Changed);
     assert_eq!(at(&mut tui), "2:1");
 }
+
+mod common;
+
+#[test]
+fn big_folds_punctuation_into_the_word() {
+    for (keys, column) in [("W", 4), ("$B", 4), ("E", 2)] {
+        let mut vim = common::on("a.b c-d\n");
+        common::typed(&mut vim, keys);
+        assert_eq!(vim.position(), (0, column), "{keys}");
+    }
+}
+
+#[test]
+fn ge_lands_on_the_end_before() {
+    for (text, keys, position) in [
+        ("ab cd\n", "wge", (0, 1)),
+        ("ab\n\ncd\n", "Gge", (1, 0)),
+        ("ab cd\n", "lge", (0, 0)),
+        ("a.b c-d\n", "$gE", (0, 2)),
+    ] {
+        let mut vim = common::on(text);
+        common::typed(&mut vim, keys);
+        assert_eq!(vim.position(), position, "{keys}");
+    }
+}

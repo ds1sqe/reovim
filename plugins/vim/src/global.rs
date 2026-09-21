@@ -96,7 +96,7 @@ impl Vim {
         let mut chars = register.chars();
         let name = chars.next();
         let valid = name.is_none_or(|c| {
-            c.is_ascii_alphabetic() || matches!(c, '_' | '+' | '*')
+            c.is_ascii_alphabetic() || matches!(c, '_' | '+' | '*' | '-')
         });
         if !valid || chars.next().is_some() {
             self.error("E488: Trailing characters");
@@ -105,7 +105,8 @@ impl Vim {
         let Some(from) = self.line_at(range.0) else { return Effect::Nothing };
         let to = self.line_at(range.1).unwrap_or_else(|| self.bound());
         self.pending.register = name;
-        let effect = self.apply(Operator::Delete, (from, to, Extent::Linewise));
+        let effect =
+            self.apply(Operator::Delete, (from, to, Extent::Linewise), false);
         self.cursor = self.first_non_blank(self.line_start(self.cursor));
         self.keep_want = false;
         self.want = self.wanted();

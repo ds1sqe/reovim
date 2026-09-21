@@ -24,6 +24,13 @@ pub enum Operator {
     Toggle,
 }
 
+/// Why bytes enter register storage; search motions force numbered history.
+#[derive(Clone, Copy)]
+pub enum Took {
+    Yank,
+    Delete { one: bool },
+}
+
 impl Operator {
     /// The key that, typed again, makes the operator take lines.
     pub(crate) const fn key(self) -> char {
@@ -74,6 +81,20 @@ impl Find {
 }
 
 /// A motion, for the cursor or for an operator.
+/// A motion's semantic kind. WORD motion groups punctuation with words.
+///
+/// ```
+/// use reovim_plugin_vim::Motion;
+/// let word = Motion::WordForward { big: true }; // W
+/// let previous = Motion::WordEndBack { big: false }; // ge
+/// assert_ne!(word, previous);
+/// let window = [Motion::High, Motion::Middle, Motion::Low];
+/// let display = [Motion::ScreenDown, Motion::ScreenUp];
+/// assert_ne!(window[0], display[0]);
+/// let backwards = Motion::WordBack { big: true }; // B
+/// let end = Motion::WordEnd { big: true }; // E
+/// assert_ne!(backwards, end);
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Motion {
     Left,
@@ -83,9 +104,32 @@ pub enum Motion {
     LineStart,
     FirstNonBlank,
     LineEnd,
-    WordForward,
-    WordBack,
-    WordEnd,
+    /// Start of the next word; WORD when `big` groups punctuation.
+    WordForward {
+        big: bool,
+    },
+    /// Start of the previous word, or WORD.
+    WordBack {
+        big: bool,
+    },
+    /// End of the current or next word, or WORD.
+    WordEnd {
+        big: bool,
+    },
+    /// End of the preceding word, or WORD, including both endpoints.
+    WordEndBack {
+        big: bool,
+    },
+    /// Top visible line, adjusted by the command count.
+    High,
+    /// Middle visible line; counts are ignored.
+    Middle,
+    /// Bottom visible line, adjusted by the command count.
+    Low,
+    /// Next unwrapped display line; an exclusive operator motion.
+    ScreenDown,
+    /// Previous unwrapped display line; an exclusive operator motion.
+    ScreenUp,
     /// `gg` and `G`: a line from 0, clamped.
     Line(usize),
     Find(Find, char),
@@ -134,6 +178,17 @@ pub enum Extent {
 pub type Span = (usize, usize, Extent);
 
 impl Motion {
+    /// These otherwise-small deletes also enter numbered history.
+    const fn one(self) -> bool {
+        matches!(
+            self,
+            Self::Mark { exact: true, .. }
+                | Self::Search { .. }
+                | Self::SearchAgain { .. }
+                | Self::Star { .. }
+        )
+    }
+
     /// The motion one key names, `count` being the digits before it.
     pub(crate) const fn of(key: Key, count: usize) -> Option<Self> {
         let motion = match key {
@@ -144,9 +199,15 @@ impl Motion {
             Key::Char('0') | Key::Home => Self::LineStart,
             Key::Char('^') => Self::FirstNonBlank,
             Key::Char('$') | Key::End => Self::LineEnd,
-            Key::Char('w') => Self::WordForward,
-            Key::Char('b') => Self::WordBack,
-            Key::Char('e') => Self::WordEnd,
+            Key::Char('w') => Self::WordForward { big: false },
+            Key::Char('W') => Self::WordForward { big: true },
+            Key::Char('b') => Self::WordBack { big: false },
+            Key::Char('B') => Self::WordBack { big: true },
+            Key::Char('e') => Self::WordEnd { big: false },
+            Key::Char('E') => Self::WordEnd { big: true },
+            Key::Char('H') => Self::High,
+            Key::Char('M') => Self::Middle,
+            Key::Char('L') => Self::Low,
             Key::Char('G') => Self::Line(count.wrapping_sub(1)),
             Key::Char(';') => Self::FindAgain { reversed: false },
             Key::Char(',') => Self::FindAgain { reversed: true },
@@ -180,11 +241,17 @@ impl Motion {
             None => false,
         };
         match self {
-            Self::Up | Self::Down | Self::Line(_) | Self::Lines => {
-                Extent::Linewise
+            Self::Up
+            | Self::Down
+            | Self::Line(_)
+            | Self::Lines
+            | Self::High
+            | Self::Middle
+            | Self::Low
+            | Self::Mark { exact: false, .. } => Extent::Linewise,
+            Self::WordEnd { .. } | Self::WordEndBack { .. } | Self::Percent => {
+                Extent::Inclusive
             }
-            Self::Mark { exact: false, .. } => Extent::Linewise,
-            Self::WordEnd | Self::Percent => Extent::Inclusive,
             Self::Find(kind, _) if kind.forward() => Extent::Inclusive,
             Self::FindAgain { reversed } if last_forward != reversed => {
                 Extent::Inclusive
@@ -206,9 +273,19 @@ impl Vim {
             Motion::LineStart => self.go(self.line_start(self.cursor)),
             Motion::FirstNonBlank => self.go(self.first_non_blank(self.cursor)),
             Motion::LineEnd => self.line_end_motion(n),
-            Motion::WordForward => self.repeat(n, Self::word_forward),
-            Motion::WordBack => self.repeat(n, Self::word_back),
-            Motion::WordEnd => self.repeat(n, Self::word_end),
+            Motion::WordForward { big } => {
+                self.repeat(n, |v| v.word_forward(big))
+            }
+            Motion::WordBack { big } => self.repeat(n, |v| v.word_back(big)),
+            Motion::WordEnd { big } => self.repeat(n, |v| v.word_end(big)),
+            Motion::WordEndBack { big } => {
+                self.repeat(n, |v| v.word_end_back(big))
+            }
+            Motion::High | Motion::Middle | Motion::Low => {
+                self.window_motion(motion, n)
+            }
+            Motion::ScreenDown => self.repeat(n, |v| v.vertical(true)),
+            Motion::ScreenUp => self.repeat(n, |v| v.vertical(false)),
             Motion::Line(line) => self.jump(line),
             Motion::Find(kind, c) => self.repeat_find(n, kind, c),
             Motion::FindAgain { reversed } => self.find_again(n, reversed),
@@ -227,6 +304,19 @@ impl Vim {
             self.bell = bell;
         }
         effect
+    }
+
+    /// Resolve against the viewport after preceding keys in this frame.
+    fn window_motion(&mut self, motion: Motion, n: usize) -> Effect {
+        self.scrolled(self.rows);
+        let shown = self.rows.max(1).min(self.line_count() - self.top);
+        let offset = n.max(1).min(shown) - 1;
+        let line = match motion {
+            Motion::High => self.top + offset,
+            Motion::Low => self.top + shown - 1 - offset,
+            _ => self.top + (shown - 1) / 2,
+        };
+        self.jump(line)
     }
 
     /// `$` with a count: `n - 1` lines down, then the last char, or
@@ -472,13 +562,18 @@ impl Vim {
         self.pending.running = true;
         let moved = match motion {
             Motion::Lines => self.lines_down(n - 1),
-            Motion::WordForward => self.words_for_operator(n),
+            Motion::WordForward { big } => self.words_for_operator(n, big),
             _ => self.move_by(motion, n),
         };
         self.pending.running = false;
         let end = self.cursor;
         (self.cursor, self.want) = (start, want);
-        if moved == Effect::Nothing {
+        if moved == Effect::Nothing
+            && !matches!(
+                motion,
+                Motion::Line(_) | Motion::High | Motion::Middle | Motion::Low
+            )
+        {
             return None;
         }
         let (from, to) = if end >= start { (start, end) } else { (end, start) };
@@ -507,9 +602,9 @@ impl Vim {
 
     /// `w` under an operator: the last of `n` stops at a line's end
     /// rather than crossing it, as Vim's does.
-    fn words_for_operator(&mut self, n: usize) -> Effect {
-        let before = self.repeat(n - 1, Self::word_forward);
-        let last = self.word_forward_op();
+    fn words_for_operator(&mut self, n: usize, big: bool) -> Effect {
+        let before = self.repeat(n - 1, |v| v.word_forward(big));
+        let last = self.word_forward_op(big);
         moved(before == Effect::Moved || last == Effect::Moved)
     }
 
@@ -522,11 +617,14 @@ impl Vim {
         motion: Motion,
     ) -> Effect {
         // `cw` on a word is `ce`, stopping on a word's last char.
-        let as_end = motion == Motion::WordForward
+        let as_end = matches!(motion, Motion::WordForward { .. })
             && op == Operator::Change
             && !self.on_blank();
         let span = if as_end {
-            self.change_word_span(n)
+            self.change_word_span(
+                n,
+                matches!(motion, Motion::WordForward { big: true }),
+            )
         } else {
             self.span(motion, n)
         };
@@ -542,7 +640,7 @@ impl Vim {
         if op == Operator::Delete {
             span = self.as_lines(span);
         }
-        let effect = self.apply(op, span);
+        let effect = self.apply(op, span, motion.one());
         // nvim's inner bracket over whole lines is a charwise span
         // that `:help exclusive` makes linewise, so its delete ends
         // on the first non-blank of the line left behind; `dd`, `dj`
@@ -576,7 +674,12 @@ impl Vim {
     }
 
     /// `op` over `span`.
-    pub(crate) fn apply(&mut self, op: Operator, span: Span) -> Effect {
+    pub(crate) fn apply(
+        &mut self,
+        op: Operator,
+        span: Span,
+        one: bool,
+    ) -> Effect {
         let (from, to, kind) = span;
         let linewise = kind == Extent::Linewise || op.linewise();
         if op.linewise() {
@@ -603,7 +706,11 @@ impl Vim {
         // region, so a delete or a change of one leaves what stands
         // there; a yank of one still empties the register.
         if len > 0 || linewise || op == Operator::Yank {
-            self.store(Register { text: text.into(), kind });
+            let took = match op {
+                Operator::Yank => Took::Yank,
+                _ => Took::Delete { one },
+            };
+            self.store(Register { text: text.into(), kind }, took);
         } else {
             self.pending.register = None;
         }
@@ -743,10 +850,10 @@ impl Vim {
 
     /// `ce` under `c`: on a word's last char, just that char; else
     /// `e`.
-    fn change_word_span(&mut self, n: usize) -> Option<Span> {
+    fn change_word_span(&mut self, n: usize, big: bool) -> Option<Span> {
         let next = self.forward_char(self.cursor);
-        let at_end =
-            next >= self.text.len() || self.class_changes(self.cursor, next);
+        let at_end = next >= self.text.len()
+            || self.class_changes(self.cursor, next, big);
         if n == 1 && at_end {
             return Some((
                 self.cursor,
@@ -754,7 +861,7 @@ impl Vim {
                 Extent::Exclusive,
             ));
         }
-        self.span(Motion::WordEnd, n)
+        self.span(Motion::WordEnd { big }, n)
     }
 
     /// The lines from the one `from` is on to the one `to` is on, as
@@ -787,27 +894,79 @@ impl Vim {
     /// `"x` named: `a`-`z` hold, `A`-`Z` append, `_` drops, `+` and
     /// `*` go to the clipboard. The unnamed register is then the
     /// named one whole, as Vim's points at the register last written.
-    pub(crate) fn store(&mut self, taken: Register) {
+    pub(crate) fn store(&mut self, taken: Register, took: Took) {
+        // Explicit unnamed writes use register0; unnamed reads still use
+        // the last register's contents through fetch.
+        let selected = match self.pending.register.take() {
+            Some('"') => Some('0'),
+            other => other,
+        };
+        if selected == Some('_') {
+            return;
+        }
+        let named = self.store_named(selected, &taken);
+        let whole = named.and_then(|name| self.registers.get(&name).cloned());
+        self.store_history(&taken, took, selected.is_some());
+        self.register = Some(whole.unwrap_or(taken));
+    }
+
+    /// A selected clipboard remains selected, though it has no map entry.
+    fn store_named(
+        &mut self,
+        name: Option<char>,
+        taken: &Register,
+    ) -> Option<char> {
         let end = if taken.kind == Kind::Line { "\n" } else { "" };
-        let named = match self.pending.register.take() {
-            Some('_') => return,
+        match name {
             Some('+' | '*') => {
                 self.clipboard = Some(alloc::format!("{}{end}", taken.text));
                 None
             }
-            Some(name @ 'a'..='z') => {
+            Some(name @ ('a'..='z' | '0'..='9' | '-')) => {
                 self.registers.insert(name, taken.clone());
                 Some(name)
             }
             Some(name @ 'A'..='Z') => {
                 let name = name.to_ascii_lowercase();
-                self.append(name, &taken);
+                self.append(name, taken);
                 Some(name)
             }
             _ => None,
-        };
-        let whole = named.and_then(|name| self.registers.get(&name).cloned());
-        self.register = Some(whole.unwrap_or(taken));
+        }
+    }
+
+    fn store_history(&mut self, taken: &Register, took: Took, named: bool) {
+        if matches!(took, Took::Yank) && !named {
+            self.registers.insert('0', taken.clone());
+        }
+        let Took::Delete { one } = took else { return };
+        let small = taken.kind != Kind::Line && !taken.text.contains('\n');
+        if !small || one {
+            self.shift_history(taken);
+        }
+        if small && !named {
+            self.registers.insert('-', taken.clone());
+        }
+    }
+
+    fn shift_history(&mut self, taken: &Register) {
+        for from in (b'1'..=b'8').rev() {
+            self.shift_register(from);
+        }
+        self.registers.insert('1', taken.clone());
+    }
+
+    fn shift_register(&mut self, from: u8) {
+        let to = char::from(from + 1);
+        let held = self.registers.get(&char::from(from)).cloned();
+        match held {
+            Some(held) => {
+                self.registers.insert(to, held);
+            }
+            None => {
+                self.registers.remove(&to);
+            }
+        }
     }
 
     /// `taken` onto register `name`: lines on their own line, chars
@@ -836,7 +995,7 @@ impl Vim {
             }
             Some('+' | '*') => None,
             Some('_') => Some(Register::default()),
-            Some(name @ ('a'..='z' | 'A'..='Z')) => {
+            Some(name @ ('a'..='z' | 'A'..='Z' | '0'..='9' | '-')) => {
                 let name = name.to_ascii_lowercase();
                 Some(self.registers.get(&name).cloned().unwrap_or_default())
             }

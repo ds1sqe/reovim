@@ -2,6 +2,8 @@
 
 mod common;
 
+use std::fmt::Write as _;
+
 use common::{edit, on, typed};
 use reovim_client_api::{BAR, BLOCK};
 use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit, Visual};
@@ -443,4 +445,94 @@ fn huge_counts_on_empty_registers_finish_and_nonempty_runs_are_bounded() {
         panic!("a register run must return replay keys");
     };
     assert_eq!(keys, vec![Key::Char('x'); 100_001]);
+}
+
+#[test]
+fn h_m_l_read_the_window_and_clamp_counts() {
+    let text: String = (1..=20).fold(String::new(), |mut text, n| {
+        writeln!(text, "{n}").unwrap();
+        text
+    });
+    let mut vim = on(&text);
+    let _ = vim.view(5);
+    for (keys, line) in
+        [("99H", 4), ("99L", 0), ("3M", 2), ("GH", 15), ("M", 17), ("L", 19)]
+    {
+        typed(&mut vim, keys);
+        assert_eq!(vim.position().0, line, "{keys}");
+    }
+    let mut vim = on("a\nb\n");
+    let _ = vim.view(0);
+    typed(&mut vim, "999999999999999999999999L");
+    assert_eq!(vim.position().0, 0, "zero-sized view is one row");
+}
+
+#[test]
+fn a_window_motion_pushes_a_jump() {
+    let mut vim = on("one\ntwo\nthree\nfour\nfive\n");
+    let _ = vim.view(5);
+    typed(&mut vim, "jL");
+    assert_eq!(vim.position().0, 4);
+    typed(&mut vim, "<C-o>");
+    assert_eq!(vim.position().0, 1);
+}
+
+#[test]
+fn window_operator_counts_saturate_before_clamping() {
+    let mut vim = on("one\ntwo\nthree\nfour\nfive\n");
+    let _ = vim.view(5);
+    typed(&mut vim, "2d999999999999999999999999H");
+    assert_eq!(vim.position(), (0, 0));
+    assert!(!vim.text().contains("one"));
+    assert!(!vim.text().contains("five"));
+}
+
+#[test]
+fn waiting_for_a_key_reads_digits_as_the_key() {
+    let mut vim = on("a1b2c\n");
+    typed(&mut vim, "f1");
+    assert_eq!(vim.position(), (0, 1));
+    typed(&mut vim, "0t2");
+    assert_eq!(vim.position(), (0, 2));
+    let mut vim = on("abc\n");
+    typed(&mut vim, "vlr3");
+    assert_eq!(vim.text(), "33c\n");
+}
+
+#[test]
+fn ordinary_counts_and_word_objects_remain_unchanged() {
+    let mut vim = on("one two three four\n");
+    typed(&mut vim, "2w");
+    assert_eq!(vim.position(), (0, 8));
+    typed(&mut vim, "diw");
+    assert_eq!(vim.text(), "one two  four\n");
+    let mut vim = on("a.b c-d\n");
+    typed(&mut vim, "diW");
+    assert_eq!(vim.text(), " c-d\n");
+}
+
+#[test]
+fn a_maximum_height_after_scrolling_does_not_overflow() {
+    let mut vim = on("one\ntwo\nthree\n");
+    typed(&mut vim, "G");
+    let _ = vim.view(1);
+    let view = vim.view(usize::MAX);
+    assert_eq!(view.cursor, 8);
+    typed(&mut vim, "H");
+    assert_eq!(vim.position(), (2, 0));
+}
+
+#[test]
+fn maximum_height_is_safe_with_visual_selection_after_scrolling() {
+    for (keys, end) in [("v", 9), ("V", 14), ("<C-v>", 9)] {
+        let mut vim = on("one\ntwo\nthree\n");
+        typed(&mut vim, "G");
+        let _ = vim.view(1);
+        typed(&mut vim, keys);
+        let view = vim.view(usize::MAX);
+        assert_eq!(view.cursor, 8);
+        assert!(view.spans.iter().any(|span| span.from == 8
+            && span.to == end
+            && span.style == reovim_client_api::SELECTION));
+    }
 }
