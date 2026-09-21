@@ -2,7 +2,9 @@
 # The corpus through the binary in tmux: each case's keys typed into
 # `reovim file`, then the file, the exit code and the screen cursor
 # compared with what nvim recorded (`out`, `exit`, `state`). Needs
-# tmux, no nvim. The exit code is the number of cases that differ.
+# tmux, no nvim. A case that holds a `count` and ends in a search's
+# key must show `[current/total]` on the pane. The exit code is the
+# number of cases that differ.
 #
 #   apps/reovim/parity.sh BINARY [CASE...]     default: every case
 set -euo pipefail
@@ -81,6 +83,16 @@ tokens() {
     done
 }
 
+# Whether `keys` ends in a key that lands a search, and so leaves the
+# count on the row: the row goes at the next key, so no other case can
+# be read for one.
+ends_in_search() {
+    case "$1" in
+        *'<CR>' | *n | *N | *'*' | *'#') return 0 ;;
+    esac
+    return 1
+}
+
 # The pane's cursor as `row col`, once it has settled.
 cursor() {
     sleep 0.05
@@ -124,6 +136,13 @@ run_case() {
     [[ -z "$run" ]] || "${TMUX[@]}" send-keys -t "$SESSION" -l "$run"
     local at
     at="$(cursor)"
+    # The count the row shows, read before the quit takes it: nvim's
+    # own `searchcount()`, recorded beside the case.
+    local count="" row=""
+    [[ -f "$case/count" ]] && count="$(cat "$case/count")"
+    if [[ -n "$count" && "$count" != "0/0" ]] && ends_in_search "$keys"; then
+        shown "\[$count\]" || row="count($count not shown)"
+    fi
     while IFS= read -r token; do send "$token"; done < <(tokens "$quit")
     local i
     for ((i = 0; i < 400; i++)); do
@@ -144,6 +163,7 @@ run_case() {
     done
     [[ "$code" == "$(cat "$case/exit")" ]] || bad+=" exit($code)"
     [[ "$at" == "$expect" ]] || bad+=" cursor($at, nvim $expect)"
+    [[ -z "$row" ]] || bad+=" $row"
     [[ -z "$bad" ]] || { echo "$name:$bad"; return 1; }
 }
 

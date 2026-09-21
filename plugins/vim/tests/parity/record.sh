@@ -7,7 +7,9 @@
 # These flags are the definition of "what nvim does". A case may hold
 # `in.NAME` beside `in`, another file the keys reach by that name
 # (`:e other`, say); each is copied to `NAME` beside `file`, and after
-# the run each `NAME` back out as `out.NAME`.
+# the run each `NAME` back out as `out.NAME`. A case that holds a
+# `count` file gets nvim's own `searchcount()` at exit written back
+# into it, as `current/total`.
 #
 #   plugins/vim/tests/parity/record.sh CASE...     directories
 set -euo pipefail
@@ -34,6 +36,14 @@ for case in "$@"; do
     leave="autocmd VimLeavePre * call writefile([line('.') . ':' \
         . charcol('.') . ':' . $cell, getregtype('\"')], '$state') \
         | call writefile(split(getreg('\"'), \"\\n\", 1), '$state', 'ab')"
+    # Which match the cursor is on, and of how many: no cap and no
+    # timeout, so what it says is the whole text's.
+    if [[ -f "$case/count" ]]; then
+        leave="$leave | let g:n = \
+            searchcount({'recompute':1,'maxcount':0,'timeout':0}) \
+            | call writefile([g:n.current . '/' . g:n.total], \
+            '$work/count')"
+    fi
     set +e
     (cd "$work" && nvim --headless --clean -i NONE -n file \
         --cmd "set laststatus=0" --cmd "$leave" \
@@ -52,6 +62,9 @@ for case in "$@"; do
         cp "$work/$name" "$case/out.$name"
     done
     cp "$state" "$case/state"
+    if [[ -f "$case/count" ]]; then
+        cp "$work/count" "$case/count"
+    fi
     printf '%s\n' "$code" >"$case/exit"
     rm -rf "$work"
     printf 'record.sh: %s exit %s, %s bytes\n' "$case" "$code" \

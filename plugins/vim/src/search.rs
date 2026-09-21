@@ -101,6 +101,10 @@ pub struct Found {
     /// The entries before it, which the fill found after the wrap.
     pub before: Vec<(usize, usize)>,
     pub filled: Filled,
+    /// The `at` of each entry nvim's own per-line search never finds,
+    /// in the text's order: what the count leaves out. Filled where
+    /// the list turns whole, and nowhere else.
+    pub skipped: Vec<usize>,
     pub waiting: Option<Waiting>,
     /// `done`, `total` and what is left, as the last read of the
     /// view's `progress` left them: the row's three numbers.
@@ -202,6 +206,27 @@ impl Found {
         next.or_else(|| self.ordered().next()).map_or(Looked::None, Looked::At)
     }
 
+    /// Which match the cursor is on and of how many, as nvim's
+    /// `searchcount()` counts them: the entries that start at or
+    /// before the cursor, and how many there are, each less the ones
+    /// nvim never finds.
+    ///
+    /// `None` until the list is whole: a rank is the entries before
+    /// it, and the ones before `from`'s own line come in after the
+    /// wrap. Nothing is walked — both runs and `skipped` ascend.
+    fn rank(&self, cursor: usize) -> Option<(usize, usize)> {
+        if self.filled != Filled::Whole {
+            return None;
+        }
+        let upto = |run: &[(usize, usize)]| {
+            run.partition_point(|(at, _)| *at <= cursor)
+        };
+        let passed = self.skipped.partition_point(|at| *at <= cursor);
+        let current = upto(&self.before) + upto(&self.after) - passed;
+        let total = self.before.len() + self.after.len() - self.skipped.len();
+        Some((current, total))
+    }
+
     /// Backward needs the whole list: the fill has one direction, so
     /// nothing before the cursor is final until it has gone through.
     fn backward(&self, at: usize, whole: bool) -> Looked {
@@ -271,14 +296,13 @@ impl Vim {
         self.found.progress = Some((done, total, eta));
     }
 
-    /// The row a list still filling shows: the way it searched and the
-    /// pattern, how many entries are held, how far the fill has gone
-    /// and how long that leaves.
+    /// The row a search shows: the way it searched and the pattern,
+    /// then which match the cursor is on and of how many.
     ///
-    /// The first number is `?` while the list fills. A match's rank is
-    /// the entries before it, and the ones before `from`'s own line
-    /// arrive only after the wrap, so no rank is known until the list
-    /// is whole.
+    /// While the list fills the first number is `?`, the second is
+    /// what is held so far with a `+`, and how far the fill has gone
+    /// and how long that leaves follow. Once the count answers it is
+    /// that pair alone.
     pub(crate) fn row(&self) -> String {
         let forward = match self.found.waiting.map(|waiting| waiting.motion) {
             Some(Motion::Search { forward } | Motion::Star { forward }) => {
@@ -288,9 +312,14 @@ impl Vim {
             _ => self.found.shown.unwrap_or(self.search.forward),
         };
         let lead = if forward { '/' } else { '?' };
-        let held = self.found.after.len() + self.found.before.len();
         let pattern = &self.search.pattern;
-        let mut row = alloc::format!("{lead}{pattern}  [?/{held}+]");
+        let mut row = alloc::format!("{lead}{pattern}  ");
+        if let Some((current, total)) = self.counted() {
+            let _ = write!(row, "[{current}/{total}]");
+            return row;
+        }
+        let held = self.found.after.len() + self.found.before.len();
+        let _ = write!(row, "[?/{held}+]");
         let Some((done, total, eta)) = self.found.progress else { return row };
         if total > 0 {
             // Thousandths, so `42.005%` is never read as `42.5%`.
@@ -301,6 +330,48 @@ impl Vim {
             let _ = write!(row, "  ~{}s", eta.div_ceil(1_000_000_000));
         }
         row
+    }
+
+    /// Which match the cursor is on, and of how many, as nvim's
+    /// `searchcount()` says it with no cap: the row's two numbers,
+    /// and what a corpus case compares.
+    ///
+    /// `None` while the list is not the last pattern's under today's
+    /// `ic` and `scs`, or not yet whole. A pattern nothing matches is
+    /// `Some((0, 0))`, as nvim's is.
+    #[must_use]
+    pub fn counted(&self) -> Option<(usize, usize)> {
+        if self.found.key.as_ref() != Some(&self.keyed()) {
+            return None;
+        }
+        self.found.rank(self.cursor)
+    }
+
+    /// The entries nvim's own search never finds: one on a line's end
+    /// that the entry before it reached, nvim searching a line from
+    /// column 0, each match from the end of the one before it, and
+    /// stopping where that reaches the line's end.
+    ///
+    /// The fill anchors every line, so it holds them all; the count
+    /// is nvim's, so it passes them.
+    fn skipping(&self) -> Vec<usize> {
+        let entries = || self.found.before.iter().chain(&self.found.after);
+        entries()
+            .zip(entries().skip(1))
+            .filter(|(before, entry)| self.reaches(**before, entry.0))
+            .map(|(_, entry)| entry.0)
+            .collect()
+    }
+
+    /// Whether `at` is a line's end that the entry before it reached,
+    /// the two standing on the one line. nvim's search of that line
+    /// goes on from where `before` ended and stops where it reaches
+    /// the end, so it never finds what stands there.
+    fn reaches(&self, before: (usize, usize), at: usize) -> bool {
+        let (from, len) = before;
+        let ends = at >= self.text.len() || self.text.as_bytes()[at] == b'\n';
+        ends && (from + len).max(self.forward_char(from)) == at
+            && !self.text[from..at].contains('\n')
     }
 
     /// The key of the list the options and the pattern name now.
@@ -401,10 +472,9 @@ impl Vim {
         let before = entries.iter().filter(|entry| entry.0 < start);
         self.found.before.extend(before.copied());
         self.found.filled = filled;
-        // The row is of a list still filling; one that has stopped
-        // has no more to say.
-        if filled != Filled::More {
-            self.found.shown = None;
+        if filled == Filled::Whole {
+            let passed = self.skipping();
+            self.found.skipped = passed;
         }
         // A list nobody waits for — `hlsearch`'s — would else be
         // opened again at every edit, each paying the whole budget.
@@ -484,13 +554,14 @@ impl Vim {
         }
     }
 
-    /// The landing: the cursor onto `at`, and the row over a list
-    /// still filling. Nothing is shown under an operator: the edit
-    /// would drop the list the row is of, and a text filled again for
-    /// a row is a fill nobody asked for.
+    /// The landing: the cursor onto `at`, and the row with it, whole
+    /// list or not — a list still filling shows how far it has got,
+    /// and a whole one which match this is. Nothing is shown under an
+    /// operator: the edit would drop the list the row is of, and a
+    /// text filled again for a row is a fill nobody asked for.
     fn alighted(&mut self, at: usize, forward: bool) -> Effect {
         let effect = self.onto(at);
-        if self.found.filled == Filled::More && !self.pending.running {
+        if !self.pending.running {
             self.found.shown = Some(forward);
         }
         effect

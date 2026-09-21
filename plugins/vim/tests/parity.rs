@@ -1,7 +1,9 @@
 //! The corpus under tests/parity, each case what nvim did with its
 //! keys on its text (recorded by record.sh), replayed through the tui
 //! on the rig: the file after, the exit code, the cursor and the
-//! unnamed register must be nvim's.
+//! unnamed register must be nvim's. A case that holds a `count` asks
+//! one thing more: the row's two numbers, which are nvim's
+//! `searchcount()` at exit.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -45,6 +47,23 @@ fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
     (format!("{}:{}", line + 1, column + 1), kind, bytes)
 }
 
+/// What a case that holds a `count` was recorded saying: nvim's
+/// `searchcount()` at exit, `current/total`.
+fn counted(case: &Path) -> Option<String> {
+    let bytes = std::fs::read(case.join("count")).ok()?;
+    Some(String::from_utf8_lossy(&bytes).trim().into())
+}
+
+/// The same two numbers off the engine. A list that is not whole has
+/// none, and the case fails on it: a case whose keys leave the fill
+/// half done is no comparison with nvim, which blocks.
+fn count_of(vim: &Vim) -> String {
+    vim.counted().map_or_else(
+        || String::from("none, the list not being whole"),
+        |(current, total)| format!("{current}/{total}"),
+    )
+}
+
 /// The other files a case carries, `in.NAME` beside `in`: `NAME`, in
 /// the order `record.sh` writes `out.NAME`.
 fn others(case: &Path) -> Vec<String> {
@@ -73,6 +92,7 @@ fn replay(case: &Path) -> Result<(), String> {
     let line = String::from_utf8(read("keys")?).unwrap();
     let keys =
         keys(line.trim_end()).ok_or_else(|| format!("{name}: bad notation"))?;
+    let count = counted(case);
     let others = others(case);
     let expected = others
         .iter()
@@ -111,10 +131,12 @@ fn replay(case: &Path) -> Result<(), String> {
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
     let ours = state_of(&vim.engine());
+    let ours_count = count.as_ref().map(|_| count_of(&vim.engine()));
     let theirs_of: Vec<Vec<u8>> =
         others.iter().map(|other| rig.disk(other)).collect();
-    let matched =
-        (code, &file, &ours) == (exit, &out, &theirs) && theirs_of == expected;
+    let matched = (code, &file, &ours) == (exit, &out, &theirs)
+        && theirs_of == expected
+        && ours_count == count;
     if matched {
         return Ok(());
     }
@@ -134,6 +156,11 @@ fn replay(case: &Path) -> Result<(), String> {
     }
     if ours.0 != theirs.0 {
         let _ = write!(report, "\ncursor {}, nvim {}", ours.0, theirs.0);
+    }
+    if let (Some(ours), Some(theirs)) = (&ours_count, &count)
+        && ours != theirs
+    {
+        let _ = write!(report, "\ncount {ours}, nvim {theirs}");
     }
     if (&ours.1, &ours.2) != (&theirs.1, &theirs.2) {
         let (a, b) = (show(&ours.2), show(&theirs.2));

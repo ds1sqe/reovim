@@ -1328,6 +1328,30 @@ keys long : q Enter
 ended long
 [[ "$ENDED" == 0 ]] || fail "the long pane did not quit"
 
+# --- which match, and of how many ------------------------------------
+# The row says which match the cursor is on and of how many, as nvim's
+# `searchcount()` says it, the lead being the way the search went; it
+# goes at the next key.
+mkdir -p "$DIR/count"
+printf 'the a\nb the\nthe c\n' > "$DIR/count/three"
+start count "$DIR/count" "$BIN three"
+editing count three
+keys count / t h e Enter
+shown count '/the  \[2/3\]'
+keys count n
+shown count '/the  \[3/3\]'
+keys count n
+shown count '/the  \[1/3\]'
+keys count N
+shown count '?the  \[3/3\]'
+keys count l
+shown count 'three  3:2  r'
+counted="$("${TMUX[@]}" capture-pane -p -t count | tail -n 1)"
+[[ "$counted" != *'['*/*']'* ]] || fail "the row outlived the key: $counted"
+keys count : q Enter
+ended count
+[[ "$ENDED" == 0 ]] || fail "the count pane did not quit"
+
 # --- start to first frame -------------------------------------------
 before="$EPOCHREALTIME"
 start time "$DIR" "$BIN other"

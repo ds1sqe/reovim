@@ -750,7 +750,11 @@ fn entries_before_a_spent_offset_are_landed_on() {
     assert_eq!(vim.matched(epoch, &[(2, 1)], Filled::More), Effect::Moved);
     assert_eq!(vim.position(), (1, 0));
     assert_eq!(vim.matched(epoch, &[], Filled::Spent), Effect::Nothing);
-    assert_eq!(vim.status(), "", "the landing said nothing");
+    assert_eq!(
+        vim.status(),
+        "/\\(a*\\)*b  [?/1+]",
+        "the landing said no word, and its row holds what was found"
+    );
     assert_eq!(typed(&mut vim, "n"), Effect::Moved, "the message is a change");
     assert!(vim.status().starts_with("E363"), "{}", vim.status());
 }
@@ -908,7 +912,7 @@ fn the_row_words_percent_found_and_eta() {
     vim.filling(1_000, 4_000, None);
     assert_eq!(vim.status(), "?b  [?/1+]  25.000%");
     vim.matched(vim.epoch(), &[], Filled::Whole);
-    assert_eq!(vim.status(), "", "a whole list has no row");
+    assert_eq!(vim.status(), "?b  [1/1]", "a whole list says which match");
 
     // A landing an operator made shows none: the text is filled again
     // for nobody.
@@ -926,4 +930,169 @@ fn the_row_words_percent_found_and_eta() {
     );
     assert_eq!(vim.status(), "", "nor does a delete's");
     assert!(vim.wants().is_none(), "and nothing is filled for one");
+}
+
+/// The text the count cases search: four `foo`, one on the first
+/// line, two on the second and one on the fourth.
+const FOUR: &str = "foo a\nb foo foo\nc\nfoo\n";
+
+/// Its four entries, as the fill hands them from the first byte.
+const ENTRIES: [(usize, usize); 4] = [(0, 3), (8, 3), (12, 3), (18, 3)];
+
+#[test]
+fn the_count_is_the_entries_at_or_before_the_cursor() {
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
+    assert_eq!(vim.matched(epoch, &ENTRIES, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.position(), (1, 2));
+    assert_eq!(vim.counted(), Some((2, 4)), "on the match landed on");
+    typed(&mut vim, "l");
+    assert_eq!(vim.counted(), Some((2, 4)), "inside it, the same one");
+    typed(&mut vim, "j");
+    assert_eq!(vim.counted(), Some((3, 4)), "between two, the one before");
+    typed(&mut vim, "gg");
+    assert_eq!(vim.counted(), Some((1, 4)), "on the first of them");
+
+    let mut vim = on("a b\nfoo\nc foo\nd\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
+    let two = [(4, 3), (10, 3)];
+    assert_eq!(vim.matched(epoch, &two, Filled::Whole), Effect::Moved);
+    typed(&mut vim, "gg");
+    assert_eq!(vim.counted(), Some((0, 2)), "before the first, none");
+    typed(&mut vim, "G");
+    assert_eq!(vim.counted(), Some((2, 2)), "after the last, all of them");
+}
+
+#[test]
+fn a_lines_end_reached_from_itself_is_not_counted() {
+    // nvim finds a line's matches from column 0, each from the end of
+    // the one before it. A match on the line's end that the one
+    // before it reached is not found twice, so the count leaves it
+    // out — and the fill, which anchors every line, holds it anyway.
+    let mut vim = on("ab\ncd\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/x*<CR>"), want(&vim, "x*", 0));
+    let empties = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0)];
+    assert_eq!(vim.matched(epoch, &empties, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.counted(), Some((2, 4)), "six entries, four matches");
+    for count in [(3, 4), (4, 4), (1, 4)] {
+        typed(&mut vim, "n");
+        assert_eq!(vim.counted(), Some(count));
+    }
+
+    // `$` on each line: the one before it ends a char short of it, so
+    // neither is left out.
+    let mut vim = on("ab\ncd\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/$<CR>"), want(&vim, "$", 0));
+    let ends = [(2, 0), (5, 0)];
+    assert_eq!(vim.matched(epoch, &ends, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.counted(), Some((0, 2)), "the landing is a char back");
+
+    // `b\|$`: line 1's `$` stands where the `b` before it ends, so
+    // nvim never finds it and the count passes it.
+    let mut vim = on("ab\ncd\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/b\\|$<CR>"), want(&vim, "b\\|$", 0));
+    let mixed = [(1, 1), (2, 0), (5, 0)];
+    assert_eq!(vim.matched(epoch, &mixed, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.counted(), Some((1, 2)), "three entries, two matches");
+    typed(&mut vim, "n");
+    assert_eq!(vim.position(), (1, 1), "the `d`, the last line's end");
+    assert_eq!(vim.counted(), Some((1, 2)));
+
+    // A match that is itself a newline reaches the next line's end,
+    // but nvim's per-line search stops at the end of the line it
+    // began on, so the one after it is a match of its own.
+    let mut vim = on("a\n\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/\\n<CR>"), want(&vim, "\\n", 0));
+    let newlines = [(1, 1), (2, 1)];
+    assert_eq!(vim.matched(epoch, &newlines, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.position(), (1, 0));
+    assert_eq!(vim.counted(), Some((2, 2)), "neither is passed");
+
+    // The entry before it ends three chars short of the line's end,
+    // so nvim finds that end too.
+    let mut vim = on("abc\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/a\\|$<CR>"), want(&vim, "a\\|$", 0));
+    let apart = [(0, 1), (3, 0)];
+    assert_eq!(vim.matched(epoch, &apart, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.position(), (0, 2));
+    assert_eq!(vim.counted(), Some((1, 2)), "the end is not reached");
+}
+
+#[test]
+fn the_row_is_a_number_once_the_list_is_whole() {
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
+    assert_eq!(vim.matched(epoch, &ENTRIES[..2], Filled::More), Effect::Moved);
+    vim.filling(1_000, 4_000, None);
+    assert_eq!(vim.status(), "/foo  [?/2+]  25.000%", "no rank while it fills");
+    assert_eq!(
+        vim.matched(epoch, &ENTRIES[2..], Filled::Whole),
+        Effect::Nothing
+    );
+    assert_eq!(vim.status(), "/foo  [2/4]", "a number, and nothing after it");
+    assert_eq!(typed(&mut vim, "N"), Effect::Moved);
+    assert_eq!(vim.status(), "?foo  [1/4]", "the way it searched leads");
+
+    let mut vim = on(&"a\n".repeat(1200));
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/a<CR>"), want(&vim, "a", 0));
+    let many: Vec<(usize, usize)> = (0..1200).map(|n| (n * 2, 1)).collect();
+    assert_eq!(vim.matched(epoch, &many, Filled::Whole), Effect::Moved);
+    assert_eq!(vim.status(), "/a  [2/1200]", "there is no cap");
+}
+
+#[test]
+fn the_row_goes_at_the_next_key_and_an_operator_shows_none() {
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
+    vim.matched(epoch, &ENTRIES, Filled::Whole);
+    assert_eq!(vim.status(), "/foo  [2/4]");
+    assert_eq!(typed(&mut vim, "l"), Effect::Moved);
+    assert_eq!(vim.status(), "", "the row goes at the next key");
+    assert!(vim.wants().is_none(), "and an idle frame reads nothing");
+
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "d/foo<CR>"), want(&vim, "foo", 0));
+    vim.matched(epoch, &ENTRIES, Filled::Whole);
+    assert_eq!(vim.text(), "foo foo\nc\nfoo\n", "the delete ran");
+    assert_eq!(vim.status(), "", "and its landing shows no count");
+    assert!(vim.wants().is_none());
+
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/zzz<CR>"), want(&vim, "zzz", 0));
+    vim.matched(epoch, &[], Filled::Whole);
+    assert_eq!(vim.status(), "E486: Pattern not found: zzz");
+    assert_eq!(vim.counted(), Some((0, 0)), "none found is none of none");
+}
+
+#[test]
+fn the_count_is_unknown_until_whole_and_under_another_key() {
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
+    vim.matched(epoch, &ENTRIES[..2], Filled::More);
+    assert_eq!(vim.counted(), None, "a list still filling has no rank");
+    vim.matched(epoch, &ENTRIES[2..], Filled::Whole);
+    assert_eq!(vim.counted(), Some((2, 4)));
+    typed(&mut vim, "x");
+    assert_eq!(vim.counted(), None, "the edit dropped the list");
+
+    let mut vim = on(FOUR);
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
+    vim.matched(epoch, &ENTRIES, Filled::Whole);
+    assert_eq!(vim.counted(), Some((2, 4)));
+    assert_eq!(vim.set("ic"), Effect::Moved);
+    assert_eq!(vim.counted(), None, "the list is of another key now");
 }

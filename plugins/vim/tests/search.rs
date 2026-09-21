@@ -181,7 +181,11 @@ fn matches_before_a_spent_offset_are_kept() {
             .unwrap();
     typed(&mut tui, "/\\(a*\\)*b<CR>");
     assert_eq!(vim.engine().position(), (1, 0), "what it found is landed on");
-    assert_eq!(said(&mut tui), "", "and nothing is said");
+    let row = said(&mut tui);
+    assert!(
+        row.starts_with("/\\(a*\\)*b  [?/1+]"),
+        "no word is said, and the row holds what was found: {row}"
+    );
     typed(&mut tui, "n");
     assert!(said(&mut tui).starts_with("E363"), "{}", said(&mut tui));
 }
@@ -233,8 +237,9 @@ struct Watched {
 }
 
 impl Watched {
-    fn new(deny: bool) -> Rc<Self> {
-        Rc::new(Self { inner: Search::new(), reads: Cell::new(0), deny })
+    fn new(deny: bool, budget: Option<usize>) -> Rc<Self> {
+        let inner = budget.map_or_else(Search::new, Search::with_budget);
+        Rc::new(Self { inner, reads: Cell::new(0), deny })
     }
 }
 
@@ -299,7 +304,7 @@ fn wrapped(
 
 #[test]
 fn an_error_of_no_cause_ends_the_wait() {
-    let denying = Watched::new(true);
+    let denying = Watched::new(true, None);
     let (_rig, host, vim, mut tui) =
         wrapped("search-denied", b"ab\n", &denying);
     for key in keys("d/b").unwrap() {
@@ -317,7 +322,7 @@ fn an_error_of_no_cause_ends_the_wait() {
 
 #[test]
 fn ten_idle_frames_read_nothing() {
-    let counting = Watched::new(false);
+    let counting = Watched::new(false, None);
     let (_rig, host, _vim, mut tui) =
         wrapped("search-idle", b"ab\nb\n", &counting);
     typed(&mut tui, ":set hls<CR>/b<CR>");
@@ -621,4 +626,35 @@ fn a_call_from_elsewhere_that_edits_ends_the_wait() {
         vim.engine().text().starts_with("z\na\n"),
         "and no frame after it deletes"
     );
+}
+
+#[test]
+fn the_row_fills_then_counts_with_no_key() {
+    let counting = Watched::new(false, Some(64));
+    let text = long();
+    // Every `a` of the text is a match of its own; `zzz` holds none.
+    let whole = std::str::from_utf8(&text).unwrap().matches('a').count();
+    let (_rig, _host, vim, mut tui) =
+        wrapped("search-count-fills", &text, &counting);
+    typed(&mut tui, "/a<CR>");
+    assert!(!vim.engine().waiting(), "the first slice landed it");
+    let row = said(&mut tui);
+    assert!(row.starts_with("/a  [?/"), "no rank while it fills: {row}");
+    // Frames with no key: the fill goes on for the row alone, and the
+    // `?` turns into a number where the list turns whole.
+    let counted = format!("/a  [2/{whole}]");
+    let mut frames = 0;
+    while said(&mut tui) != counted {
+        assert_eq!(tui.tick().unwrap(), Step::Changed, "the row moved");
+        frames += 1;
+        assert!(frames < 500, "the list never turned whole");
+    }
+    assert!(frames > 1, "it was whole on the frame that landed");
+    // A counted row wants nothing: the list is as full as it will get.
+    let reads = counting.reads.get();
+    for _ in 0..10 {
+        assert_eq!(tui.tick().unwrap(), Step::Same, "the row stands");
+    }
+    assert_eq!(said(&mut tui), counted);
+    assert_eq!(counting.reads.get(), reads, "and nothing is read for it");
 }
