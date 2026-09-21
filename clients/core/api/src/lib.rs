@@ -190,6 +190,185 @@ declare! {
     }
 }
 
+declare! {
+    use crate::keyboard::Press;
+
+    /// The resolver's own records: what a Client hands whatever turns
+    /// input into editing decisions, and what it is handed back.
+    ///
+    /// A resolver is neither a Driver nor a Resource — the Rust path
+    /// calls one with typed calls of its own — so this api declares
+    /// data and no method: the records are what crosses where the
+    /// other side is not Rust, and the shape both sides agree on
+    /// where it is.
+    ///
+    /// [`Input`] is one key on its way in, a [`Press`] kept whole with
+    /// an `origin` ([`origin`](crate::origin)) saying whose it is: the
+    /// user's, a macro's, a `.`'s, or a held prefix's release where it
+    /// matched nothing. A synthetic key carries the `Press` of the key
+    /// that made it, so no clock and no source is invented and a
+    /// recorded stream replays.
+    ///
+    /// [`Outcome`] is what one `Input` decided: a `kind`
+    /// ([`kind`](crate::kind)) and the payload that kind names, the
+    /// other fields left where they were, and `continuation` the
+    /// number an outcome that waits is answered by, 0 where nothing
+    /// waits. [`Edit`] replaces the `len` bytes at `at`, `join` true
+    /// where it belongs to the revision before it, and `edits` carries
+    /// them where a kind makes more than one. [`Line`] is a `:` line,
+    /// ranged or not, whether it was typed or a binding resolved to
+    /// it. [`Open`] is a file to show, `bang` past a modified draft,
+    /// `locator` where in it to land. [`Goto`] is a jump to `line` and
+    /// `column` of `over`, `land` ([`land`](crate::land)) saying how
+    /// exactly it lands. [`Search`] is a pattern to run from `from`,
+    /// `epoch` telling this run's answers from a later run's. [`Fed`]
+    /// is the keys a macro or a `.` replays, which the host pushes
+    /// back as `Input`s rather than the resolver feeding itself.
+    /// `name` and `flag` are a kind's one word and its one bit, which
+    /// `QUIT` reads as its how and `SWITCH` as its to.
+    ///
+    /// [`Reply`] answers a continuation: `kind`
+    /// ([`reply`](crate::reply)) says which answer it is, `text` what
+    /// the clipboard held, [`Place`] where a loaded Buffer stands
+    /// (`cursor`, and `top`, the first byte shown), [`Entry`] one
+    /// match a search found with `filled`
+    /// ([`filled`](crate::filled)) saying how far it got, and `error`
+    /// the `Error` as the Kernel numbers it, read for a `REFUSED`
+    /// alone. A continuation no longer waited for is stale and means
+    /// nothing.
+    ///
+    /// [`State`] is what a frame reads once: the `mode`, the `status`
+    /// line, the `showcmd` a pending count and operator spell (`3d`),
+    /// `pending` whether one is, and `waiting` the continuation still
+    /// unanswered, 0 for none. The host reads no other field of a
+    /// resolver.
+    api resolver ver 1 {}
+    record Input { press: Press, origin: u64 }
+    record Edit { at: u64, len: u64, text: utf8(65536), join: bool }
+    record Line { ranged: bool, from: u64, to: u64, line: utf8(4096) }
+    record Open { path: utf8(4096), bang: bool, locator: utf8(64) }
+    record Goto { over: Rd, line: u64, column: u64, land: u64 }
+    record Search { pattern: utf8(1024), ignorecase: bool,
+                    smartcase: bool, from: u64, epoch: u64 }
+    record Fed { keys: [u64; 4096], repeat: bool }
+    record Outcome { kind: u64, continuation: u64, edits: [Edit; 4096],
+                     line: Line, open: Open, goto: Goto, search: Search,
+                     fed: Fed, name: utf8(4096), flag: bool }
+    record Place { cursor: u64, top: u64 }
+    record Entry { at: u64, len: u64 }
+    record Reply { continuation: u64, kind: u64, text: utf8(65536),
+                   place: Place, entries: [Entry; 4096], filled: u64,
+                   error: u64 }
+    record State { mode: u64, status: utf8(4096), showcmd: utf8(64),
+                   pending: bool, waiting: u64 }
+}
+
+/// Whose a [`resolver::Input`] is, its `origin`.
+pub mod origin {
+    /// A key the user typed, which is every key with a clock and a
+    /// source of its own.
+    pub const TYPED: u64 = 0;
+    /// A key a macro replays, carrying the `Press` of the `@a`.
+    pub const FED: u64 = 1;
+    /// A key a `.` repeats, carrying the `Press` of the `.`.
+    pub const REPEAT: u64 = 2;
+    /// A key a held prefix gives back where the prefix matched
+    /// nothing, carrying the prefix's own `Press`.
+    pub const RELEASED: u64 = 3;
+}
+
+/// What a [`resolver::Outcome`] is, its `kind`; a field no kind here
+/// names is left where it was.
+pub mod kind {
+    /// The key was taken and nothing follows from it.
+    pub const NOTHING: u64 = 0;
+    /// The cursor moved within what is shown; the `State` says where.
+    pub const MOVED: u64 = 1;
+    /// The `edits`, in the order they are to be made.
+    pub const EDITS: u64 = 2;
+    /// The draft's last revision is undone.
+    pub const UNDO: u64 = 3;
+    /// The undone revision is made again.
+    pub const REDO: u64 = 4;
+    /// The draft is written where it came from.
+    pub const SAVE: u64 = 5;
+    /// The draft is written to `name`, which becomes its source.
+    pub const SAVE_AS: u64 = 6;
+    /// The editor ends; `flag` is how, past a modified draft or not.
+    pub const QUIT: u64 = 7;
+    /// The region shows the draft `name`.
+    pub const SWITCH: u64 = 8;
+    /// The draft `name` is taken out of the tree, `flag` past a
+    /// modified one.
+    pub const CLOSE: u64 = 9;
+    /// The drafts this Client holds are shown.
+    pub const LIST: u64 = 10;
+    /// Every modified draft is written.
+    pub const SAVE_ALL: u64 = 11;
+    /// The tree under `name` is shown.
+    pub const EXPLORE: u64 = 12;
+    /// The `open`.
+    pub const OPEN: u64 = 13;
+    /// The draft takes the server's head in place of what it holds.
+    pub const RELOAD: u64 = 14;
+    /// The `line`, a `:` line to run.
+    pub const LINE: u64 = 15;
+    /// `name` is a shell line for the Client to run.
+    pub const CLI: u64 = 16;
+    /// `name` is the word to complete, answered by a `LOADED` reply.
+    pub const COMPLETE: u64 = 17;
+    /// The clipboard is asked for, answered by a `PASTED` reply at
+    /// `continuation`.
+    pub const CLIPBOARD: u64 = 18;
+    /// The `goto`, answered by a `LOADED` reply where it lands in
+    /// another Buffer.
+    pub const GOTO: u64 = 19;
+    /// The `search`, answered by `MATCHED` replies at its `epoch`.
+    pub const SEARCH: u64 = 20;
+    /// The `fed` keys, which the host pushes back as `Input`s.
+    pub const FED: u64 = 21;
+}
+
+/// How exactly a [`resolver::Goto`] lands, its `land`.
+pub mod land {
+    /// On the line, at whatever column the line's own first byte is.
+    pub const LINE: u64 = 0;
+    /// On the line and the column both, as a mark remembered them.
+    pub const EXACT: u64 = 1;
+    /// On the line, at the column a walk from its start reaches,
+    /// which is where a jump list's own step left off.
+    pub const WALKED: u64 = 2;
+}
+
+/// Which answer a [`resolver::Reply`] is, its `kind`.
+pub mod reply {
+    /// The clipboard's own text, for a `CLIPBOARD` outcome.
+    pub const PASTED: u64 = 0;
+    /// A Buffer is loaded and stands at `place`, for a `GOTO`, an
+    /// `OPEN` or a `COMPLETE`.
+    pub const LOADED: u64 = 1;
+    /// What a search found so far, for a `SEARCH`.
+    pub const MATCHED: u64 = 2;
+    /// The operation did not happen; `error` says what stopped it.
+    pub const REFUSED: u64 = 3;
+}
+
+/// How far a [`resolver::Reply`] filled what was asked, its `filled`.
+pub mod filled {
+    /// Nothing was being filled, which is every reply but a search's.
+    pub const ABSENT: u64 = 0;
+    /// The `entries` are what a slice of the text held; more of it
+    /// remains to run.
+    pub const MORE: u64 = 1;
+    /// The `entries` are every match there is.
+    pub const WHOLE: u64 = 2;
+    /// The run stopped on its own budget with the text unspent, so
+    /// the `entries` are all that will come of it.
+    pub const SPENT: u64 = 3;
+    /// The run did not happen; `error` says what stopped it.
+    pub const REFUSED: u64 = 4;
+}
+
 /// The nine a span may mean, the sdk's own theme: [`SELECTION`] and
 /// [`MATCH`] are the Plugin's own, and no Driver writes them; the rest
 /// stand for the same colors a Driver under `/bin` prints in. A

@@ -65,9 +65,22 @@ impl Call for &dyn Calls {
 /// `utf8(max)`, `[T; max]` (a Sequence) and a record's name. A method
 /// takes no argument or one. Doc comments before `api` document the
 /// module.
+///
+/// A record's name is read inside the module the macro makes, so a
+/// record declared by another api is named by a `use` before the
+/// `api` line, which the module repeats:
+///
+/// ```ignore
+/// reovim_sdk::declare! {
+///     use crate::keyboard::Press;
+///     api resolver ver 1 {}
+///     record Input { press: Press, origin: u64 }
+/// }
+/// ```
 #[macro_export]
 macro_rules! declare {
     (
+        $( use $( $seg:ident )::+ ; )*
         $( #[$meta:meta] )*
         api $api:ident ver $ver:literal {
             $( $number:literal $method:ident
@@ -86,6 +99,7 @@ macro_rules! declare {
                 Rights, ToString, Ty, Vec, vec,
             };
             use $crate::{Decode, Encode, Reader, Typed};
+            $( use $( $seg )::+ ; )*
 
             /// The declaration, as the Kernel hashes it.
             #[must_use]
