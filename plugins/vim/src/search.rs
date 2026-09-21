@@ -114,10 +114,6 @@ pub struct Found {
     /// The entries before it, which the fill found after the wrap.
     pub before: Vec<(usize, usize)>,
     pub filled: Filled,
-    /// The `at` of each entry nvim's own per-line search never finds,
-    /// in the text's order: what the count leaves out. Filled where
-    /// the list turns whole, and nowhere else.
-    pub skipped: Vec<usize>,
     pub waiting: Option<Waiting>,
     /// `done`, `total` and what is left, as the last read of the
     /// view's `progress` left them: the row's three numbers.
@@ -221,12 +217,12 @@ impl Found {
 
     /// Which match the cursor is on and of how many, as nvim's
     /// `searchcount()` counts them: the entries that start at or
-    /// before the cursor, and how many there are, each less the ones
-    /// nvim never finds.
+    /// before the cursor, and how many there are. The list is the
+    /// fill's, which is nvim's own.
     ///
     /// `None` until the list is whole: a rank is the entries before
     /// it, and the ones before `from`'s own line come in after the
-    /// wrap. Nothing is walked — both runs and `skipped` ascend.
+    /// wrap. Nothing is walked — both runs ascend.
     fn rank(&self, cursor: usize) -> Option<(usize, usize)> {
         if self.filled != Filled::Whole {
             return None;
@@ -234,9 +230,8 @@ impl Found {
         let upto = |run: &[(usize, usize)]| {
             run.partition_point(|(at, _)| *at <= cursor)
         };
-        let passed = self.skipped.partition_point(|at| *at <= cursor);
-        let current = upto(&self.before) + upto(&self.after) - passed;
-        let total = self.before.len() + self.after.len() - self.skipped.len();
+        let current = upto(&self.before) + upto(&self.after);
+        let total = self.before.len() + self.after.len();
         Some((current, total))
     }
 
@@ -360,33 +355,6 @@ impl Vim {
         self.found.rank(self.cursor)
     }
 
-    /// The entries nvim's own search never finds: one on a line's end
-    /// that the entry before it reached, nvim searching a line from
-    /// column 0, each match from the end of the one before it, and
-    /// stopping where that reaches the line's end.
-    ///
-    /// The fill anchors every line, so it holds them all; the count
-    /// is nvim's, so it passes them.
-    fn skipping(&self) -> Vec<usize> {
-        let entries = || self.found.before.iter().chain(&self.found.after);
-        entries()
-            .zip(entries().skip(1))
-            .filter(|(before, entry)| self.reaches(**before, entry.0))
-            .map(|(_, entry)| entry.0)
-            .collect()
-    }
-
-    /// Whether `at` is a line's end that the entry before it reached,
-    /// the two standing on the one line. nvim's search of that line
-    /// goes on from where `before` ended and stops where it reaches
-    /// the end, so it never finds what stands there.
-    fn reaches(&self, before: (usize, usize), at: usize) -> bool {
-        let (from, len) = before;
-        let ends = at >= self.text.len() || self.text.as_bytes()[at] == b'\n';
-        ends && (from + len).max(self.forward_char(from)) == at
-            && !self.text[from..at].contains('\n')
-    }
-
     /// The key of the list Vim wants now: the `/` or `?` line's own
     /// text while one is open and holds any, else the last pattern,
     /// each under today's `ignorecase` and `smartcase`.
@@ -409,7 +377,6 @@ impl Vim {
         self.found.from = from;
         self.found.after.clear();
         self.found.before.clear();
-        self.found.skipped.clear();
         self.found.filled = Filled::More;
     }
 
@@ -496,10 +463,6 @@ impl Vim {
         self.found.before.extend(before.copied());
         let filled = how(reply.filled);
         self.found.filled = filled;
-        if filled == Filled::Whole {
-            let passed = self.skipping();
-            self.found.skipped = passed;
-        }
         // A list nobody waits for — `hlsearch`'s — would else be
         // opened again at every edit, each paying the whole budget.
         if filled == Filled::Spent {
@@ -797,15 +760,11 @@ impl Vim {
         Some(line[first..stop].into())
     }
 
-    /// `hlsearch`'s byte spans on the lines shown, read off the runs,
-    /// each entry `skipped` names left out: the entries inside the
-    /// window's bytes, each taking at least the char it sits on, as
-    /// nvim shows an empty match. `room` is how many spans the View
-    /// has left once the selection has taken its own.
-    ///
-    /// `skipped` is empty while the list fills, so a run still filling
-    /// marks everything it holds; `begun` is the door that keeps it
-    /// so, clearing it with the runs it begins again.
+    /// `hlsearch`'s byte spans on the lines shown, read off the runs:
+    /// the entries inside the window's bytes, each taking at least
+    /// the char it sits on, as nvim shows an empty match. `room` is
+    /// how many spans the View has left once the selection has taken
+    /// its own.
     ///
     /// The list shown is the one [`Self::seeking`] names, so a `/` or
     /// `?` line marks its own as it is typed, and the entry that line
@@ -828,15 +787,10 @@ impl Vim {
         } else {
             (0, 0)
         };
-        let skipped = &self.found.skipped;
         let shown = |run: &Vec<(usize, usize)>| {
             let first = run.partition_point(|(at, _)| *at < from);
             let last = run.partition_point(|(at, _)| *at < upto);
-            run[first..last]
-                .iter()
-                .copied()
-                .filter(|(at, _)| skipped.binary_search(at).is_err())
-                .collect::<Vec<_>>()
+            run[first..last].to_vec()
         };
         // The entry the typed line found is marked whatever
         // `hlsearch` and `:noh` say: it is what the line is showing.

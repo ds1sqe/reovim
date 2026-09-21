@@ -79,9 +79,10 @@ fn hlsearch_marks_every_match_until_noh() {
 
 /// `x*` matches the empty string at every column, including each
 /// line's end; nvim's own per-line search never finds the one there
-/// that the match before it already reached, so `hlsearch` leaves it
-/// out too, once the list is whole. `b\|$` is the same for one match
-/// a literal reaches rather than another zero-width one.
+/// that the match before it already reached, and neither does the
+/// fill, so `hlsearch` marks what the count counts. `b\|$` is the
+/// same for one match a literal reaches rather than another
+/// zero-width one.
 #[test]
 fn hlsearch_marks_the_entries_the_count_counts() {
     let (_rig, host, _vim, mut tui) = over("search-hls-skipped", b"ab\ncd\n");
@@ -682,14 +683,13 @@ fn the_row_fills_then_counts_with_no_key() {
     assert_eq!(counting.reads.get(), reads, "and nothing is read for it");
 }
 
-/// `begun` clears `skipped` with the runs it clears, so a list still
-/// filling never reads a byte set the last pattern's own skips left
-/// behind. `x*`'s own skips are every line's end; `$` matches every
-/// line's end too, so a `$` search right after an `x*` one is the
-/// case where a stale `skipped` would drop the most — all of it,
-/// until `$`'s own list turns whole and overwrites it.
+/// A list still filling marks what it has found and nothing else,
+/// whatever the pattern before it found. `x*` finds two entries a
+/// line and none at a line's end; `$` finds every line's end and
+/// nothing else, so a `$` search right after an `x*` one is the case
+/// where the two lists agree on no byte at all.
 #[test]
-fn a_new_list_clears_the_skip_the_last_pattern_left() {
+fn a_new_pattern_marks_what_its_own_list_has_found() {
     let mut text = String::from("ab\ncd\n");
     text.push_str(&"e\n".repeat(3));
     let rig = Rig::new("search-hls-skip-cleared");
@@ -719,7 +719,7 @@ fn a_new_list_clears_the_skip_the_last_pattern_left() {
     assert_eq!(
         marks(&host),
         [(2, 3), (5, 6), (7, 8)],
-        "what $ has found so far, none of it dropped by x*'s own skips"
+        "what $ has found so far, and nothing of x*'s"
     );
 
     tui.tick().unwrap();
@@ -727,7 +727,7 @@ fn a_new_list_clears_the_skip_the_last_pattern_left() {
     assert_eq!(
         marks(&host),
         [(2, 3), (5, 6), (7, 8), (9, 10), (11, 12)],
-        "every line end, $ skipping none of its own"
+        "every line end, none of $'s own left out"
     );
 }
 /// Sixty lines, `fx` on line 10 and `foo` on line 40: a typed `f`

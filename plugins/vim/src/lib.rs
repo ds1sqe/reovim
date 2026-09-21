@@ -1050,7 +1050,6 @@ impl Vim {
         self.found.key = None;
         self.found.after.clear();
         self.found.before.clear();
-        self.found.skipped.clear();
         self.found.filled = Filled::More;
         self.found.shown = None;
         // An edit from anywhere ends a wait, and here alone: the list

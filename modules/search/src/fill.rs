@@ -44,6 +44,11 @@ pub struct Fill {
     wrapped: bool,
     /// The end has been passed twice: the fill is whole.
     whole: bool,
+    /// The match emitted before this one on the line the window
+    /// holds, `(at, end)`: what [`reached`] reads. Gone wherever a
+    /// window closes or the fill wraps, there being no match before
+    /// the first of a line.
+    last: Option<(u64, u64)>,
 }
 
 impl Fill {
@@ -64,6 +69,7 @@ impl Fill {
             next: start,
             wrapped: false,
             whole: false,
+            last: None,
         }
     }
 
@@ -137,6 +143,7 @@ fn run(
                 fill.wrapped = true;
                 fill.line = 0;
                 fill.next = 0;
+                fill.last = None;
             }
         }
     }
@@ -210,6 +217,9 @@ fn once(
 /// anchored too, as nvim finds it; at its own end otherwise, or a
 /// char on for an empty one. An empty match unable to move past the
 /// text's own end closes the window instead of looping on it.
+///
+/// One [`reached`] is no entry, the scan going on from it all the
+/// same.
 fn matched(
     fill: &mut Fill,
     text: &str,
@@ -218,11 +228,14 @@ fn matched(
     end: usize,
     found: &mut Vec<search::Match>,
 ) -> bool {
-    found.push(search::Match {
-        over: fill.source,
-        at: fill.line + start as u64,
-        len: (end - start) as u64,
-    });
+    if !reached(fill, text, start, end) {
+        found.push(search::Match {
+            over: fill.source,
+            at: fill.line + start as u64,
+            len: (end - start) as u64,
+        });
+        fill.last = Some((fill.line + start as u64, fill.line + end as u64));
+    }
     let advance = if end == start {
         onward(text, end)
     } else {
@@ -236,6 +249,29 @@ fn matched(
     true
 }
 
+/// Whether the match at `[start, end)` inside `text` is one nvim
+/// never finds: an empty match standing at a line's end — a `\n` or
+/// the text's own end — that the match before it on that line
+/// already reached.
+///
+/// nvim searches a line from column 0 and each match from the end of
+/// the one before it, a char on where that one was empty, and stops
+/// where it reaches the line's end; so by the time it stands there,
+/// its search of that line is over. The fill anchors every line
+/// instead, which is what would else put the entry in.
+fn reached(fill: &Fill, text: &str, start: usize, end: usize) -> bool {
+    let Some((at, to)) = fill.last else { return false };
+    if end != start || at < fill.line {
+        return false;
+    }
+    let ends = text.as_bytes().get(start).is_none_or(|b| *b == b'\n');
+    let before = usize::try_from(at - fill.line).unwrap_or(usize::MAX);
+    let to = usize::try_from(to - fill.line).unwrap_or(usize::MAX);
+    ends && before < start
+        && to.max(onward(text, before)) == start
+        && !text[before..start].contains('\n')
+}
+
 /// Past the first `\n` inside `[start, end)`, unless it stands at the
 /// match's own last byte, in which case `end` itself: nvim anchors
 /// every line, `a\na` over `a`, `a`, `a`, `b` being two matches.
@@ -247,11 +283,13 @@ fn onto_the_next_line(text: &str, start: usize, end: usize) -> usize {
     }
 }
 
-/// The window ended: the next one begins right past it.
+/// The window ended: the next one begins right past it, its own
+/// first match having none before it.
 const fn close(fill: &mut Fill, bound: usize) {
     let end = fill.line + bound as u64;
     fill.line = end;
     fill.next = end;
+    fill.last = None;
 }
 
 /// The budget ran out at `at` inside `text`: `next` resumes there,

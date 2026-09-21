@@ -630,17 +630,24 @@ fn two_views_fill_apart() {
 fn an_empty_match_ends_a_window_without_a_final_newline() {
     // No trailing `\n`: the window is unterminated, so `upto` is the
     // window's own length, inclusive, and an empty match may stand
-    // exactly there.
+    // exactly there, where nothing before it on the line reached it.
+    // The window closes on such a match rather than looping on it.
+    let sut = Sut::small("empty-match-end");
+    let source = sut.source("f", b"ab");
+    let view = sut.opened(args(source, "$", 0));
+    let found = drained(&sut, view.matches);
+    let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(ats, [(2, 0)], "the text's own end, nothing having reached it");
+
+    // `x*` matches the empty string at every offset, but nvim's own
+    // search of the line stops where the match at 1 reaches 2: it
+    // finds two, and so does the fill.
     let sut = Sut::small("empty-match");
     let source = sut.source("f", b"ab");
     let view = sut.opened(args(source, "x*", 0));
     let found = drained(&sut, view.matches);
     let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
-    assert_eq!(
-        ats,
-        [(0, 0), (1, 0), (2, 0)],
-        "one empty match at every offset"
-    );
+    assert_eq!(ats, [(0, 0), (1, 0)], "nvim 0.12.5 says 2/2 here");
 }
 
 #[test]
@@ -732,6 +739,22 @@ fn each_line_is_anchored() {
     let found = drained(&sut, view.matches);
     let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
     assert_eq!(ats, [(0, 3), (2, 3)]);
+}
+
+/// nvim searches a line from column 0, each match from the end of
+/// the one before it, and stops where that reaches the line's end:
+/// the empty match standing at a line's end that the match before it
+/// on that line already reached is one nvim never finds, and the fill
+/// never emits it. `.*` over `ab`, `cd` is the two lines and nothing
+/// at 2 or 5.
+#[test]
+fn a_line_end_the_match_before_it_reached_is_no_entry() {
+    let sut = Sut::small("one-entry-set");
+    let source = sut.source("f", b"ab\ncd\n");
+    let view = sut.opened(args(source, ".*", 0));
+    let found = drained(&sut, view.matches);
+    let ats: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(ats, [(0, 2), (3, 2)], "no entry at 2 or 5, the line ends");
 }
 
 #[test]
