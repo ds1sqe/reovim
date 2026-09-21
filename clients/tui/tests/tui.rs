@@ -248,7 +248,8 @@ fn hosted(rig: &Rig, file: Option<&str>) -> (Tui, Stub, Rc<Host>) {
     let table: Table =
         Box::new(move |_| Some((String::from("stub"), one.booted())));
     let host = rig.host();
-    let dev = dev::boot(&host, table, Clip::none(), "", file, None).unwrap();
+    let dev =
+        dev::boot(&host, table, Clip::none(), "", file, None, "").unwrap();
     (Tui::open(host.clone(), dev).unwrap(), stub, host)
 }
 

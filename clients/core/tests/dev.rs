@@ -239,7 +239,7 @@ impl Dev {
     ) -> Self {
         let host = rig.host();
         let rd =
-            dev::boot(&host, table, Clip::none(), dir, file, line).unwrap();
+            dev::boot(&host, table, Clip::none(), dir, file, line, "").unwrap();
         Self { host, rd }
     }
 
@@ -247,7 +247,7 @@ impl Dev {
     /// all: what the two cases of the clipboard cell ask.
     fn clipped(rig: &Rig, clip: Clip) -> Self {
         let host = rig.host();
-        let rd = dev::boot(&host, none(), clip, "", None, None).unwrap();
+        let rd = dev::boot(&host, none(), clip, "", None, None, "").unwrap();
         Self { host, rd }
     }
 

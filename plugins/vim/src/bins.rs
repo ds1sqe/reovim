@@ -108,6 +108,16 @@ reovim_sdk::declare! {
     }
 }
 
+reovim_sdk::declare! {
+    /// `goto`: where in the text to land, in the grammar `point`
+    /// writes it. One argument and nothing else; another domain's
+    /// locator is said back, never read.
+    api located ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { locator: utf8(64) }
+}
+
 /// The names, in the order a `:` line resolves one, each with the
 /// declaration of the shape it takes.
 ///
@@ -117,7 +127,7 @@ reovim_sdk::declare! {
 /// registered in and the order `children(/self/vim/bin)` lists them,
 /// which is where the abbreviation is read from; nothing lists a short
 /// form by hand.
-pub(crate) fn declared() -> [(&'static str, Decl); 24] {
+pub(crate) fn declared() -> [(&'static str, Decl); 25] {
     let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
     [
         ("write", file.clone()),
@@ -148,6 +158,9 @@ pub(crate) fn declared() -> [(&'static str, Decl); 24] {
         // And after `bind`: `:p` is this one, no other name of Vim's
         // beginning with it, and `:po` is this one too.
         ("point", point::decl()),
+        // And after `point`: `:g` is `global` still and `:go` is this
+        // one, no other name beginning with those two.
+        ("goto", located::decl()),
     ]
 }
 
@@ -200,6 +213,7 @@ pub(crate) fn dispatch(
         "buffer" | "bdelete" => numbered::dispatch(vim, ctx, rd, number, input),
         "bind" => bound::dispatch(vim, ctx, rd, number, input),
         "point" => point::dispatch(vim, ctx, rd, number, input),
+        "goto" => located::dispatch(vim, ctx, rd, number, input),
         _ => Err(Error::Unsupported),
     }
 }
@@ -321,6 +335,20 @@ impl point::Api for Editor {
             vim.message = said;
             Effect::Nothing
         })
+    }
+}
+
+impl located::Api for Editor {
+    /// `:goto LOCATOR`: the cursor where the locator names, or the
+    /// locator said back when this view cannot read it. No range and
+    /// no bang: a place is a place.
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: located::Args,
+    ) -> Result<Rd, Error> {
+        self.did(ctx, rd, move |vim| vim.goto(&args.locator))
     }
 }
 

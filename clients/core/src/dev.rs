@@ -273,9 +273,12 @@ pub struct Dev {
 ///
 /// `clip` is the machine's clipboard, [`Clip::none`] for a Client that
 /// was given none. `dir` is where the Client stands, `file` a name
-/// under the root or nothing, and `line` the line to begin at, counted
-/// from 1. The first Plugin comes of the ask this leaves in
-/// `windows/0/ask`, at the first read of the view.
+/// under the root or nothing, `line` the line to begin at, counted
+/// from 1, and `locator` where in that file to land, in the grammar
+/// the Plugin that serves it owns and nobody here reads (see
+/// [`open::Ask`]); an empty one asks for nothing. The first Plugin
+/// comes of the ask this leaves in `windows/0/ask`, at the first read
+/// of the view.
 ///
 /// # Errors
 /// What `load` says, and `Invalid` if `dev` did not register.
@@ -286,8 +289,9 @@ pub fn boot(
     dir: &str,
     file: Option<&str>,
     line: Option<u64>,
+    locator: &str,
 ) -> Result<Rd, Error> {
-    let dev = Rc::new(Dev::new(host, table, clip, dir, file, line));
+    let dev = Rc::new(Dev::new(host, table, clip, dir, file, line, locator));
     let drivers: Vec<Rc<dyn Driver>> =
         alloc::vec![dev.clone(), dev.buffers.clone()];
     host.load("dev", dev.clone(), drivers)?;
@@ -305,6 +309,7 @@ impl Dev {
         dir: &str,
         file: Option<&str>,
         line: Option<u64>,
+        locator: &str,
     ) -> Self {
         // The ask `start` fills in once it knows what the file is.
         let ask = open::Ask {
@@ -312,6 +317,7 @@ impl Dev {
             plugin: String::new(),
             name: file.map(ToString::to_string).unwrap_or_default(),
             line: line.unwrap_or(0),
+            locator: String::from(locator),
         };
         let state = State {
             home: None,

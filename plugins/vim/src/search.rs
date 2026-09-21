@@ -188,16 +188,43 @@ impl Vim {
         self.search(forward, n)
     }
 
+    /// `gF`: the `PATH:LOCATOR` under the cursor opened as `:e`
+    /// opens it, the Plugin splitting the name and landing on the
+    /// rest. The name is the run of file-name chars at or after the
+    /// cursor on its line, as nvim reads one by `'isfname'`, with `:`
+    /// among them so the locator comes with it. There is no `gf`, and
+    /// no count is read.
+    pub(crate) fn file_under_cursor(&mut self) -> Effect {
+        let Some(name) = self.name_at_cursor() else {
+            self.error("E446: No file name under cursor");
+            return Effect::Nothing;
+        };
+        Effect::Open(name, false)
+    }
+
+    /// The run of file-name chars at or after the cursor, on its line
+    /// alone.
+    fn name_at_cursor(&self) -> Option<String> {
+        self.run_at_cursor(|c| {
+            c.is_alphanumeric() || "/.-_+,#$%~=:".contains(c)
+        })
+    }
+
     fn keyword_at_cursor(&self) -> Option<String> {
-        let keyword = |c: char| c.is_alphanumeric() || c == '_';
+        self.run_at_cursor(|c| c.is_alphanumeric() || c == '_')
+    }
+
+    /// The run of `held` chars the cursor stands in, or the next one
+    /// after it on the same line: what `*` reads as a word and what
+    /// `gF` reads as a name.
+    fn run_at_cursor(&self, held: impl Fn(char) -> bool) -> Option<String> {
         let start = self.line_start(self.cursor);
         let line = &self.text[start..self.line_end(self.cursor)];
         let col = self.cursor - start;
-        let from = line[col..].find(keyword).map(|i| col + i)?;
-        let first =
-            line[..from].rfind(|c: char| !keyword(c)).map_or(0, |i| i + 1);
+        let from = line[col..].find(&held).map(|i| col + i)?;
+        let first = line[..from].rfind(|c: char| !held(c)).map_or(0, |i| i + 1);
         let stop = line[from..]
-            .find(|c: char| !keyword(c))
+            .find(|c: char| !held(c))
             .map_or(line.len(), |i| from + i);
         Some(line[first..stop].into())
     }

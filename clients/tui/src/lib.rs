@@ -167,6 +167,7 @@ impl Tui {
                 plugin: String::new(),
                 name: String::new(),
                 line: 0,
+                locator: String::new(),
             },
             laid: None,
             name: String::from(UNNAMED),

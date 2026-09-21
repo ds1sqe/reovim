@@ -14,7 +14,7 @@ use reovim_client_region::drafted;
 use reovim_client_tui::{Frame, Step, Tui};
 use reovim_host::{clipboard, term};
 use reovim_sdk::look;
-use reovim_sdk::path::under;
+use reovim_sdk::path::{split, under};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, ops};
 
@@ -130,9 +130,23 @@ fn run(
 ) -> Result<u8, Fail> {
     let init = captured_config(&host.own())?;
     let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
-    let file = files.first().map(String::as_str);
-    let dev = dev::boot(&host, table(init), clip(), dir, file, line)?;
-    drafts(&host.own(), files)?;
+    // The one place a name is split: what comes off the first file is
+    // the view's to read, never this binary's.
+    let mut names: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut locator = "";
+    if let Some(first) = names.first_mut() {
+        (*first, locator) = located(&host.own(), first);
+    }
+    let dev = dev::boot(
+        &host,
+        table(init),
+        clip(),
+        dir,
+        names.first().copied(),
+        line,
+        locator,
+    )?;
+    drafts(&host.own(), &names)?;
     // The tui takes the Host; what answers a remote holds it too.
     let served = host.clone();
     let mut tui = Tui::open(host, dev)?;
@@ -151,7 +165,7 @@ fn run(
 /// first is not said: not on disk it is the new file the ask already
 /// names, and a directory is the explorer's, `table` answering it a
 /// `Want::Container`.
-fn drafts(ctx: &dyn Calls, files: &[String]) -> Result<(), Error> {
+fn drafts(ctx: &dyn Calls, files: &[&str]) -> Result<(), Error> {
     for (index, file) in files.iter().enumerate() {
         let opened =
             cell::resolve(ctx, ROOT, &format!("/module/fs/root/{file}"))
@@ -186,6 +200,28 @@ fn captured(path: &str) -> Result<Option<String>, &'static str> {
         Err(_) => return Err("unreadable"),
     };
     String::from_utf8(bytes).map(Some).map_err(|_| "not UTF-8")
+}
+
+/// `FILE[:LOCATOR]` as the editor opens it: the whole name while a
+/// file of it is there, so `a:b` on disk opens `a:b`, else the path
+/// [`split`] names while a file of *that* is there, and the rest with
+/// it. A name no file holds either way is whole, and is the new file
+/// it asks for.
+///
+/// The rest is handed on unread: which locators mean anything is the
+/// view's, not this binary's, and a new domain adds a view, never a
+/// line here.
+fn located<'a>(ctx: &dyn Calls, file: &'a str) -> (&'a str, &'a str) {
+    let there = |name: &str| {
+        cell::resolve(ctx, ROOT, &format!("/module/fs/root/{name}")).is_ok()
+    };
+    if there(file) {
+        return (file, "");
+    }
+    match split(file) {
+        (path, Some(locator)) if there(path) => (path, locator),
+        _ => (file, ""),
+    }
 }
 
 /// A startup failure in the shared diagnostic stream.
@@ -319,7 +355,7 @@ mod tests {
     use reovim_sdk::walk::ROOT;
     use reovim_sdk::{cell, ops};
 
-    use super::{clip, drafts, table};
+    use super::{clip, drafts, located, table};
     use crate::client;
     use crate::local::Local;
     use crate::server;
@@ -359,17 +395,11 @@ mod tests {
         };
         let client = Local::client(&kernel, None).unwrap();
         let Ok(host) = client::over(client) else { panic!("no host") };
-        dev::boot(&host, table(None), clip(), "", Some("a"), None).unwrap();
+        dev::boot(&host, table(None), clip(), "", Some("a"), None, "").unwrap();
 
         let own = host.own();
         let ctx: &dyn Calls = &own;
-        let files = [
-            String::from("a"),
-            String::from("b"),
-            String::from("missing"),
-            String::from("d"),
-        ];
-        drafts(ctx, &files).unwrap();
+        drafts(ctx, &["a", "b", "missing", "d"]).unwrap();
 
         let list = cell::resolve(ctx, ROOT, "/self/dev/buffers").unwrap();
         let made = ops::children(ctx, list).unwrap();
@@ -391,6 +421,39 @@ mod tests {
         assert!(holds("open missing:"), "the log: {said:?}");
         assert!(holds("open d:"), "the log: {said:?}");
         assert!(!holds("open a:"), "the log: {said:?}");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `FILE:LOCATOR` as the app reads it, which is as little as it
+    /// can: the whole name while a file of it is there, else the path
+    /// before the first colon while that is, and the rest handed on
+    /// unread.
+    #[test]
+    fn a_name_splits_only_where_no_file_holds_it_whole() {
+        let dir = std::env::temp_dir()
+            .join(format!("reovim-locator-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("README.md"), "one\n").unwrap();
+        std::fs::write(dir.join("a:b"), "colon\n").unwrap();
+        // `a` too, so `a:b` is a name the split could take apart.
+        std::fs::write(dir.join("a"), "plain\n").unwrap();
+        let root = dir.to_str().unwrap();
+
+        let Ok((kernel, _modules)) = server::boot(root, &[]) else {
+            panic!("the server did not boot")
+        };
+        let client = Local::client(&kernel, None).unwrap();
+        let Ok(host) = client::over(client) else { panic!("no host") };
+        let own = host.own();
+        let ctx: &dyn Calls = &own;
+
+        assert_eq!(located(ctx, "README.md:12"), ("README.md", "12"));
+        assert_eq!(located(ctx, "README.md:12:5"), ("README.md", "12:5"));
+        assert_eq!(located(ctx, "a:b"), ("a:b", ""), "the whole name wins");
+        assert_eq!(located(ctx, "README.md"), ("README.md", ""));
+        assert_eq!(located(ctx, "x:"), ("x:", ""), "an empty rest");
+        assert_eq!(located(ctx, "new:file"), ("new:file", ""), "no path");
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

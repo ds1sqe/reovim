@@ -1028,6 +1028,40 @@ keys point : q Enter
 ended point
 [[ "$ENDED" == 0 ]] || fail "the point pane did not quit"
 
+# --- the locator after the path, and the way back to it --------------
+# The point is a round trip: what `point` writes, `reovim FILE:LOCATOR`
+# opens again, and so do `:e FILE:LOCATOR` and `gF` over such text. The
+# app splits the name once and reads no more of it; the locator is the
+# view's, which says so when it cannot read one.
+mkdir -p "$DIR/locator"
+seq -f 'line-%02g' 20 > "$DIR/locator/README.md"
+printf 'one\ntwo\nthree\n' > "$DIR/locator/other.md"
+start locator "$DIR/locator" "$BIN README.md:12"
+editing locator README.md
+shown locator 'README.md  12:1  r'
+lself=/session/1/client/1/self
+[[ "$("$BIN" cli cat "$lself/vim/point")" == "$DIR/locator/README.md:12" ]] \
+    || fail "the entry landed at $("$BIN" cli cat "$lself/vim/point")"
+
+# `:e FILE:LOCATOR` is the same door, the same split.
+keys locator : e Space R E A D M E . m d : 1 4 Enter
+shown locator 'README.md  14:1  r'
+[[ "$("$BIN" cli cat "$lself/vim/point")" == "$DIR/locator/README.md:14" ]] \
+    || fail "the edit landed at $("$BIN" cli cat "$lself/vim/point")"
+
+# A locator no view of text can read: the file opens all the same.
+keys locator : e Space R E A D M E . m d : p x 1 2 , 3 4 Enter
+shown locator 'E: invalid locator: px12,34'
+
+# `gF` over a line the pane itself writes.
+keys locator g g O o t h e r . m d : 3 : 2 Escape 0
+keys locator g F
+shown locator 'other.md  3:2  r'
+# `:qa!`, the `gF` above having left README.md modified behind it.
+keys locator : q a ! Enter
+ended locator
+[[ "$ENDED" == 0 ]] || fail "the locator pane did not quit"
+
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's
 # line, run over the tree from the directory the file is in: `:ls`

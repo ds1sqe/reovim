@@ -919,6 +919,7 @@ impl Vim {
             ('g', Key::Char('U')) => self.operator(Operator::Upper, n),
             ('g', Key::Char('~')) => self.operator(Operator::Toggle, n),
             ('g', Key::Char('v')) => self.reselect(),
+            ('g', Key::Char('F')) => self.file_under_cursor(),
             ('"', Key::Char(name)) => self.named(name, count),
             ('m', Key::Char(name @ ('a'..='z' | 'A'..='Z'))) => {
                 self.repeat.record.clear();
@@ -1506,6 +1507,40 @@ impl Vim {
         alloc::format!("{}:{}", at.line + 1, at.column + 1)
     }
 
+    /// The cursor where `locator` names, in the grammar [`Self::point`]
+    /// writes: `LINE`, `LINE:COL`, `FROM-TO` and `LINE:COL-LINE:COL`,
+    /// a range landing at its start. A line past the last is the last,
+    /// as `+N` is, and the landing is a jump, as `G`'s is.
+    ///
+    /// A locator this view cannot read belongs to another domain
+    /// (`px12,34` for a canvas, `t1m23.4s` for media): it is said back
+    /// and nothing moves. No registry tells them apart — text's own
+    /// begins with a digit and every other one with the letter that
+    /// names it.
+    ///
+    /// ```
+    /// let mut vim = reovim_plugin_vim::Vim::default();
+    /// vim.loaded(b"one\ntwo\n");
+    /// vim.goto("2:3");
+    /// assert_eq!(vim.point(Some("/a"), true, None), Ok("/a:2:3".into()));
+    /// ```
+    pub fn goto(&mut self, locator: &str) -> Effect {
+        let Some((line, column)) = placed(locator) else {
+            return self
+                .error(&alloc::format!("E: invalid locator: {locator}"));
+        };
+        self.set_previous();
+        let Some(column) = column else {
+            self.begin(self.at_line(line));
+            return Effect::Moved;
+        };
+        let pos = Pos { line: line.max(1) - 1, column: column.max(1) - 1 };
+        self.cursor = self.byte_at(pos);
+        self.clamp();
+        self.want = self.wanted();
+        Effect::Moved
+    }
+
     /// KEYS bound to LINE, which `/self/vim/bin/bind` runs: no LINE
     /// takes the binding away, and there is no `unbind`.
     ///
@@ -1893,6 +1928,30 @@ fn span(style: u64) -> impl Fn((usize, usize)) -> window::Span {
 
 const fn is_digit(key: Key) -> bool {
     matches!(key, Key::Char('0'..='9'))
+}
+
+/// The place a locator names: the line, and the column where it holds
+/// one, both counted from 1. A range is its start, and an end this
+/// view cannot read makes the whole no locator of its own, so
+/// `12-zz` is refused where `12-14` lands.
+fn placed(locator: &str) -> Option<(usize, Option<usize>)> {
+    let (from, to) = match locator.split_once('-') {
+        Some((from, to)) => (from, Some(to)),
+        None => (locator, None),
+    };
+    let at = numbered(from)?;
+    if let Some(to) = to {
+        numbered(to)?;
+    }
+    Some(at)
+}
+
+/// One end of a locator: `LINE`, or `LINE:COL`, digits alone.
+fn numbered(text: &str) -> Option<(usize, Option<usize>)> {
+    let Some((line, column)) = text.split_once(':') else {
+        return Some((text.parse().ok()?, None));
+    };
+    Some((line.parse().ok()?, Some(column.parse().ok()?)))
 }
 
 /// `Moved` when something did.

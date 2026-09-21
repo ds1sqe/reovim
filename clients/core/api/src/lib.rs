@@ -103,6 +103,13 @@ declare! {
     /// nothing was opened with, there being no such file, and `line`
     /// the line to begin at, counted from 1; 0 is none of either.
     ///
+    /// `locator` is where in what it opens the region is to land, in
+    /// the grammar the Plugin that serves the target owns: text's is
+    /// `LINE`, `LINE:COL`, `FROM-TO` and `LINE:COL-LINE:COL`, and
+    /// another domain's begins with a letter that names it. Whoever
+    /// makes the ask never reads it; an empty one asks for nothing,
+    /// and one the Plugin cannot read is that Plugin's to answer.
+    ///
     /// The call answers nothing, the asking Plugin being on the stack:
     /// the Client records the ask and acts on it at the next read of
     /// the region's view, which is after the call it is inside has
@@ -117,7 +124,10 @@ declare! {
         0 open(ask: Ask) -> (): WRITE;
         1 back() -> (): WRITE;
     }
-    record Ask { target: Rd, plugin: utf8(64), name: utf8(4096), line: u64 }
+    record Ask {
+        target: Rd, plugin: utf8(64), name: utf8(4096), line: u64,
+        locator: utf8(64)
+    }
 }
 
 declare! {

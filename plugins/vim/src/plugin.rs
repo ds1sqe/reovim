@@ -42,6 +42,7 @@ use reovim_kernel_interface::{
     Rd, Reply, Rights,
 };
 use reovim_sdk::dynamic::Value;
+use reovim_sdk::path;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
 use reovim_text_api::{history, publish, text};
@@ -220,6 +221,10 @@ impl Module for Editor {
     /// and written through a handle it keeps, the clipboard found if
     /// there is one, and the text shown from the line it was told to
     /// begin at, or the `Place` this draft kept from its last stay.
+    /// The ask's `locator`, where there is one, lands after that
+    /// line, so `reovim README.md:12` and `:e README.md:12` are one
+    /// door; a locator this view cannot read says so in the row it
+    /// opens with.
     /// `dir`, `root`, `cwd`, `shell` and `clip` are kept across every
     /// stay: `root` is `None` only before the very first `start`, so
     /// they are found once there and never again, `:cd` and the
@@ -279,6 +284,9 @@ impl Module for Editor {
         }
         vim.rows = rows;
         vim.opened(&bytes, ask.line, arrive);
+        if !ask.locator.is_empty() {
+            vim.goto(&ask.locator);
+        }
         drop(vim);
         self.announce(ctx)?;
         if self.spent.get() >= BUDGET {
@@ -636,7 +644,7 @@ impl Editor {
         pos: Pos,
         land: Land,
     ) -> Result<(), Error> {
-        if self.shown(ctx, rd, "", false, "")? {
+        if self.shown(ctx, rd, "", false, "", "")? {
             self.vim.borrow_mut().arrive = Some((rd, pos, land));
         }
         Ok(())
@@ -1073,7 +1081,7 @@ impl Editor {
             Switch::Previous => neighbour(&list, current, true),
         };
         source.map_or(Ok(()), |source| {
-            self.shown(ctx, source, "", false, "").map(drop)
+            self.shown(ctx, source, "", false, "", "").map(drop)
         })
     }
 
@@ -1109,7 +1117,7 @@ impl Editor {
             other.path
         );
         self.fails(&message);
-        if follow && self.shown(ctx, other.source, "", true, "")? {
+        if follow && self.shown(ctx, other.source, "", true, "", "")? {
             self.vim.borrow_mut().greets(message);
         }
         Ok(true)
@@ -1168,7 +1176,7 @@ impl Editor {
             .or_else(|| neighbour(list, Some(draft), false))
             .filter(|to| Some(*to) != source)
             .unwrap_or(NONE);
-        if self.shown(ctx, to, "", true, "")? {
+        if self.shown(ctx, to, "", true, "", "")? {
             self.closing.set(Some((draft, source)));
         }
         Ok(())
@@ -1294,7 +1302,9 @@ impl Editor {
         bang: bool,
     ) -> Result<(), Error> {
         let Some(name) = name else {
-            return self.shown(ctx, self.here(ctx)?, "", bang, "").map(drop);
+            return self
+                .shown(ctx, self.here(ctx)?, "", bang, "", "")
+                .map(drop);
         };
         // Nothing is being left for a name that leads nowhere, so
         // there is nothing for the bang to override yet.
@@ -1302,13 +1312,17 @@ impl Editor {
             self.fails(&format!("{E344} \"{name}\" in cdpath"));
             return Ok(());
         };
-        self.shown(ctx, target, "", bang, "").map(drop)
+        self.shown(ctx, target, "", bang, "", "").map(drop)
     }
 
-    /// `:e[dit][!] PATH`: the file that name holds in this region,
-    /// which the Client's table gives another Vim. The name is
+    /// `:e[dit][!] PATH[:LOCATOR]`: the file that name holds in this
+    /// region, which the Client's table gives another Vim. The name is
     /// resolved as `:explore`'s is; a missing ordinary path becomes
     /// a named draft without creating a file.
+    ///
+    /// A file of the whole name wins, so `:e a:b` over a file `a:b`
+    /// opens it; only a name no file holds is split. `gF` comes in
+    /// here too, its `PATH:LOCATOR` being the one the person typed.
     fn edited(
         &self,
         ctx: &dyn Calls,
@@ -1320,14 +1334,51 @@ impl Editor {
         }
         let (from, rest) = self.from(name);
         match cell::resolve(ctx, from, rest) {
-            Ok(target) => self.shown(ctx, target, "", bang, "").map(drop),
-            Err(Error::Gone) => self.edit_missing(ctx, name, bang),
+            Ok(target) => self.opening(ctx, target, bang, ""),
+            Err(Error::Gone) => self.located(ctx, name, bang),
             Err(Error::Unsupported) => {
                 self.fails(&format!("{E345} \"{name}\" in path"));
                 Ok(())
             }
             Err(error) => Err(error),
         }
+    }
+
+    /// The whole name was no file: `PATH:LOCATOR` when a file of the
+    /// path is one, else the name is the new file it asks for.
+    fn located(
+        &self,
+        ctx: &dyn Calls,
+        name: &str,
+        bang: bool,
+    ) -> Result<(), Error> {
+        let (path, Some(locator)) = path::split(name) else {
+            return self.edit_missing(ctx, name, bang);
+        };
+        let (from, rest) = self.from(path);
+        let Ok(target) = cell::resolve(ctx, from, rest) else {
+            return self.edit_missing(ctx, name, bang);
+        };
+        self.opening(ctx, target, bang, locator)
+    }
+
+    /// The region over `target`, landing where `locator` says. The
+    /// file already shown is not asked for again (see [`Self::shown`]),
+    /// so its locator lands here instead of at a next stay's first
+    /// frame: `:e README.md:12` goes to line 12 either way.
+    fn opening(
+        &self,
+        ctx: &dyn Calls,
+        target: Rd,
+        bang: bool,
+        locator: &str,
+    ) -> Result<(), Error> {
+        if !self.shown(ctx, target, "", bang, "", locator)?
+            && !locator.is_empty()
+        {
+            self.vim.borrow_mut().goto(locator);
+        }
+        Ok(())
     }
 
     fn edit_missing(
@@ -1340,7 +1391,7 @@ impl Editor {
             self.fails(&format!("{E345} \"{name}\" in path"));
             return Ok(());
         };
-        self.shown(ctx, NONE, "", bang, &anchored).map(drop)
+        self.shown(ctx, NONE, "", bang, &anchored, "").map(drop)
     }
 
     /// Normalize in tree coordinates before checking the mirror boundary.
@@ -1390,7 +1441,7 @@ impl Editor {
     /// `:cli` opens over as it moves what `:ls` lists.
     fn cli(&self, ctx: &dyn Calls, bang: bool) -> Result<(), Error> {
         let cwd = self.vim.borrow().shell.cwd();
-        self.shown(ctx, cwd, "cli", bang, "").map(drop)
+        self.shown(ctx, cwd, "cli", bang, "", "").map(drop)
     }
 
     /// The Client asked to show `target` in this region, in the Plugin
@@ -1400,6 +1451,10 @@ impl Editor {
     /// A Container door also guards other modified drafts. False
     /// means no ask went out, for a refusal or same-source selection;
     /// the caller then stores no arrival or closing state.
+    ///
+    /// `locator` rides in the ask to whatever Plugin serves the
+    /// target, which reads it at its own first frame; nothing here
+    /// reads it.
     fn shown(
         &self,
         ctx: &dyn Calls,
@@ -1407,6 +1462,7 @@ impl Editor {
         plugin: &str,
         bang: bool,
         name: &str,
+        locator: &str,
     ) -> Result<bool, Error> {
         if Some(target) == self.vim.borrow().source && plugin.is_empty() {
             return Ok(false);
@@ -1429,6 +1485,7 @@ impl Editor {
                 plugin: String::from(plugin),
                 name: String::from(name),
                 line: 0,
+                locator: String::from(locator),
             },
         )?;
         stay.asked.set(true);
@@ -2150,7 +2207,10 @@ mod macro_queue_tests {
         let b = cell::resolve(&ctx, ROOT, "/module/fs/root/b").unwrap();
         let refused =
             Refused { calls: &ctx, info: Some(b), opening: None, lookup: None };
-        assert_eq!(editor.shown(&refused, b, "", true, ""), Err(Error::Denied));
+        assert_eq!(
+            editor.shown(&refused, b, "", true, "", ""),
+            Err(Error::Denied)
+        );
         assert!(!editor.stay().unwrap().leaving.get());
         tui.tick().unwrap();
         assert_eq!(reovim_rig::lines(&mut tui), ["abc"]);

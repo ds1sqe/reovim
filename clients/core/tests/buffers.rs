@@ -125,7 +125,7 @@ impl Drafts {
     fn hosted(host: Rc<Host>) -> Self {
         let table: Table = Box::new(|_| None);
         let dev =
-            dev::boot(&host, table, Clip::none(), "", None, None).unwrap();
+            dev::boot(&host, table, Clip::none(), "", None, None, "").unwrap();
         let list = cell::resolve(&host.own(), dev, "buffers").unwrap();
         let h = host.own().open(list, Rights::WRITE).unwrap();
         Self { host, list, h }

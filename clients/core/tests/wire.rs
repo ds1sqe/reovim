@@ -27,7 +27,7 @@ fn none() -> Table {
 /// `/self/dev/cwd` to be read.
 fn editor(rig: &Rig, dir: &str) -> Rc<Host> {
     let host = rig.host();
-    dev::boot(&host, none(), Clip::none(), dir, None, None).unwrap();
+    dev::boot(&host, none(), Clip::none(), dir, None, None, "").unwrap();
     host
 }
 

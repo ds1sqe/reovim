@@ -36,6 +36,7 @@ fn a_region_delivers_every_field_of_the_declared_ask() {
                 plugin: String::from("vim"),
                 name: String::from("kept"),
                 line: 2,
+                locator: String::new(),
             },
         )
         .unwrap();
@@ -54,6 +55,7 @@ fn a_region_delivers_every_field_of_the_declared_ask() {
                 plugin: String::new(),
                 name: String::from("sub/new"),
                 line: 0,
+                locator: String::new(),
             },
         )
         .unwrap();

@@ -136,6 +136,7 @@ impl Region {
             plugin: String::from(plugin),
             name: String::new(),
             line: 0,
+            locator: String::new(),
         };
         self.asks(ctx, ask)
     }
@@ -143,7 +144,8 @@ impl Region {
     /// Pass the complete declared open request to the Client.
     ///
     /// Unlike [`Self::opens`], this preserves the intended filename
-    /// for an absent source and the requested starting line.
+    /// for an absent source, the requested starting line and the
+    /// locator the region is to land on.
     ///
     /// ```no_run
     /// use reovim_client_api::{NONE, open};
@@ -153,6 +155,7 @@ impl Region {
     ///     Region::of(ctx)?.asks(ctx, open::Ask {
     ///         target: NONE, plugin: String::new(),
     ///         name: "notes/new.md".into(), line: 0,
+    ///         locator: String::new(),
     ///     })
     /// }
     /// ```

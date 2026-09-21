@@ -124,7 +124,7 @@ fn help_bind_says_its_form() {
     let (_rig, mut tui, host, _seen) = three("bind-help");
     typed(&mut tui, ":help bind<CR>");
     assert_eq!(said(&mut tui), "bind [keys] [line]");
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 24);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 25);
 
     // `bind` stands after `wqall`, so `:b` resolves to `buffer` still.
     typed(&mut tui, ":e other<CR>:b 0<CR>");

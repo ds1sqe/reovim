@@ -25,7 +25,7 @@ fn none() -> Table {
 /// the app's Client loads it.
 fn editor(rig: &Rig) -> Rc<Host> {
     let host = rig.host();
-    dev::boot(&host, none(), Clip::none(), "", None, None).unwrap();
+    dev::boot(&host, none(), Clip::none(), "", None, None, "").unwrap();
     let booted = reovim_module_sysutils::boot("");
     host.load("sysutils", booted.module, booted.drivers).unwrap();
     host

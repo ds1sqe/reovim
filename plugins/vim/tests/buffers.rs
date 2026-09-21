@@ -596,6 +596,7 @@ fn full_ask_fixture_matches_the_existing_declared_api() {
         plugin: String::new(),
         name: String::from("sub/new"),
         line: 2,
+        locator: String::new(),
     };
     ops::call_by_name(&ctx, target, "open", reovim_sdk::encode(&ask)).unwrap();
     s.tui.tick().unwrap();

@@ -54,7 +54,7 @@ pub fn opened(
     file: Option<&str>,
     line: Option<u64>,
 ) -> Result<Tui, Error> {
-    let dev = dev::boot(host, table, clip, dir, file, line)?;
+    let dev = dev::boot(host, table, clip, dir, file, line, "")?;
     Tui::open(host.clone(), dev)
 }
 

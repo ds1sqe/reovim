@@ -603,7 +603,7 @@ fn total_is_the_source_length_at_every_boundary_size() {
 /// buffer, as a Plugin makes one.
 fn scratch(host: &Rc<Host>) -> Rd {
     let table: Table = Box::new(|_| None);
-    let dev = dev::boot(host, table, Clip::none(), "", None, None).unwrap();
+    let dev = dev::boot(host, table, Clip::none(), "", None, None, "").unwrap();
     let list = cell::resolve(&host.own(), dev, "buffers").unwrap();
     let own = host.own();
     let mut ctx: &dyn Calls = &own;
