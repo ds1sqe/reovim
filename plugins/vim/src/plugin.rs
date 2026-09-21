@@ -537,12 +537,58 @@ impl Editor {
             let mut effect = made(&mut vim);
             // `did` is `:s` and Vim's own `bin` names, never typing.
             vim.changing(before, &mut effect, false);
-            vim.settle(&effect);
             effect
         };
-        self.act(ctx, effect)?;
+        if let Err(error) = self.act(ctx, effect) {
+            self.reloaded(ctx)?;
+            return Err(error);
+        }
         let said = core::mem::take(&mut self.vim.borrow_mut().message);
         self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
+    }
+
+    /// Mark first, then run each line after releasing the engine borrow.
+    pub(crate) fn globally(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        range: Option<(usize, usize)>,
+        spec: &str,
+        invert: bool,
+    ) -> Result<Rd, Error> {
+        let picked = {
+            let mut vim = self.vim.borrow_mut();
+            vim.message.clear();
+            let range = range.unwrap_or_else(|| (0, vim.line_count() - 1));
+            vim.picked(range, spec, invert)
+        };
+        if picked {
+            self.global_lines(ctx)?;
+        }
+        let said = core::mem::take(&mut self.vim.borrow_mut().message);
+        self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
+    }
+
+    /// Always retire the selection, including a failed call's exit.
+    fn global_lines(&self, ctx: &dyn Calls) -> Result<(), Error> {
+        let mut result = self.global_step(ctx);
+        while result == Ok(true) {
+            result = self.global_step(ctx);
+        }
+        let result = result.map(|_| ());
+        self.vim.borrow_mut().global = crate::global::Global::default();
+        if result.is_err() {
+            self.reloaded(ctx)?;
+        }
+        result
+    }
+
+    /// No borrow is held while a line calls back through the tree.
+    fn global_step(&self, ctx: &dyn Calls) -> Result<bool, Error> {
+        let next = self.vim.borrow_mut().next_marked();
+        let Some(effect) = next else { return Ok(false) };
+        self.act(ctx, effect)?;
+        Ok(!self.vim.borrow().ringing() && !self.stay()?.leaving.get())
     }
 
     /// The name a first token stands for: the first under Vim's own
@@ -904,7 +950,7 @@ impl Editor {
             return self.shelled(ctx, &ex.line);
         };
         let mut shell = self.vim.borrow().shell.clone();
-        ranged(&mut shell, ex.from, ex.to, bang);
+        ranged(&mut shell, ex.from, ex.to, bang, ex.ranged);
         // The rest of the line is one argument by Vim's own rule, and
         // an empty one is no argument at all.
         let one = [arg];
@@ -1124,14 +1170,14 @@ fn kept_of(ctx: &dyn Calls, region: &Region) -> Result<Kept, Error> {
     let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
     let mut shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
     shell.first("/self/vim/bin");
-    ranged(&mut shell, 0, 0, false);
+    ranged(&mut shell, 0, 0, false, false);
     let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
     Ok(Kept { dir, root, cwd, shell, clip })
 }
 
 /// What Vim registers under its home, in the order `ls` shows them,
 /// after the `view` it is handed: the state it holds read out of the
-/// engine, and `bin`, whose eleven names are the `:` line's own.
+/// engine, and `bin`, whose names are the `:` line's own.
 ///
 /// Every register that can exist is registered here, filled or not,
 /// because the Host asks a Container to list itself once and answers
@@ -1210,13 +1256,14 @@ fn jumps_listed(ctx: &dyn Calls, vim: &Vim) -> String {
 ///
 /// They stand there from `start`, so no usage line of one of Vim's
 /// names holds them either, and every line writes its own over them.
-fn ranged(shell: &mut Shell, from: u64, to: u64, bang: bool) {
+fn ranged(shell: &mut Shell, from: u64, to: u64, bang: bool, ranged: bool) {
+    shell.give("ranged", Value::Bool(ranged));
     shell.give("from", Value::U64(from));
     shell.give("to", Value::U64(to));
     shell.give("bang", Value::Bool(bang));
 }
 
-/// The name an rd stands at, which is which of the eleven a call is on.
+/// The name an rd stands at, which is which name a call is on.
 ///
 /// # Errors
 /// As `Op::Info`; `Unsupported` for an rd with no name.

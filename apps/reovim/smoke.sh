@@ -796,6 +796,28 @@ keys jumps : q Enter
 ended jumps
 [[ "$ENDED" == 0 ]] || fail "the jumps pane did not quit"
 
+# --- :g deletes marked lines; one undo restores the whole run -------
+mkdir "$DIR/marked"
+printf 'one\nTODO two\nthree\nTODO four\nfive\n' > "$DIR/marked/a"
+start marked "$DIR/marked" "$BIN a"
+editing marked a
+keys marked : g / T O D O / d Enter
+shown marked '^one$'
+shown marked '^three$'
+shown marked '^five$'
+if "${TMUX[@]}" capture-pane -p -t marked | grep -q '^TODO '
+then
+    fail "global left a marked line"
+fi
+keys marked u
+shown marked '^TODO two$'
+shown marked '^TODO four$'
+keys marked : h e l p Space g l o b a l Enter
+shown marked 'global \[spec\]'
+keys marked : q ! Enter
+ended marked
+[[ "$ENDED" == 0 ]] || fail "the marked pane did not quit"
+
 # --- :cli: a shell in a region of its own ----------------------------
 # `:cli` is Vim asking its Client for this region in the Plugin the
 # name `cli` stands for, over where the `:` line's own lines stand:

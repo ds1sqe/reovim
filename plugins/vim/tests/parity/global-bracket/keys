@@ -1,0 +1,1 @@
+:g/x/s//y/<CR>gg'[x:wq<CR>

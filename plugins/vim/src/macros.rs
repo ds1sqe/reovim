@@ -156,13 +156,14 @@ impl Vim {
         Effect::Moved
     }
 
+    /// Edits of a fed or global run share its first revision.
     pub(crate) fn continued(&mut self, effect: &mut Effect) {
         let edits: &mut [Edit] = match effect {
             Effect::Edit(edit) => core::slice::from_mut(edit),
             Effect::Edits(edits) => edits,
             _ => return,
         };
-        if !self.macros.fed {
+        if !(self.macros.fed || self.global.busy) {
             return;
         }
         for edit in edits {

@@ -208,6 +208,9 @@ fn the_listing_computes_the_short_form_of_every_name() {
         "edit",
         "explore",
         "cli",
+        "global",
+        "vglobal",
+        "delete",
     ];
     assert_eq!(names, all, "the order a `:` line resolves a name in");
 
@@ -217,7 +220,10 @@ fn the_listing_computes_the_short_form_of_every_name() {
     let short: Vec<String> = names.iter().map(|n| short(&names, n)).collect();
     assert_eq!(
         short,
-        ["w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl"]
+        [
+            "w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl", "g",
+            "v", "d"
+        ]
     );
 
     // Nothing under PATH is reached by a beginning of its name: `wa`

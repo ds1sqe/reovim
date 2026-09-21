@@ -19,6 +19,7 @@ extern crate alloc;
 
 pub mod bins;
 mod command;
+mod global;
 mod jumps;
 mod macros;
 mod marks;
@@ -168,6 +169,9 @@ pub enum Effect {
 /// the whole line to the shell.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ex {
+    /// Whether a range was explicitly typed, even when it is one line.
+    /// `:g/x/d` is false; `:1g/x/d` is true.
+    pub ranged: bool,
     pub from: u64,
     pub to: u64,
     pub line: String,
@@ -375,6 +379,7 @@ pub struct Vim {
     macros: macros::Macros,
     bell: bool,
     // One stay.
+    global: global::Global,
     mode: Mode,
     pending: Pending,
     /// The next insert edit joins the revision under way.
@@ -682,7 +687,13 @@ impl Vim {
     /// and sets no `[`, `]` or `.`.
     fn marked(&mut self, edit: &Edit) {
         let source = self.source;
-        self.marks.moved(edit, &mut self.files, &mut self.jumps.list, source);
+        self.marks.moved(
+            edit,
+            &mut self.files,
+            &mut self.jumps.list,
+            source,
+            &mut self.global.lines,
+        );
     }
 
     /// The last real char before byte `end` of the text now held, a
@@ -1400,6 +1411,7 @@ impl Vim {
         self.macros.fed = false;
         self.macros.joined = false;
         self.bell = false;
+        self.global = global::Global::default();
         self.keep_want = false;
         self.indent = 0;
         self.clipboard = None;

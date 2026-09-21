@@ -198,7 +198,7 @@ impl Vim {
     /// first token no such name begins is the line for clients/sh,
     /// whole and as it was typed. E492 comes back from there for a
     /// first token PATH has not, as it always did.
-    fn ex(&mut self, line: &str) -> Effect {
+    pub(crate) fn ex(&mut self, line: &str) -> Effect {
         let line = line.trim();
         let Some((range, rest)) = self.range(line) else {
             self.error("E20: Mark not set");
@@ -209,6 +209,7 @@ impl Vim {
             return self.addressed(range, rest.len() < line.len());
         }
         Effect::Line(Ex {
+            ranged: rest.len() < line.len(),
             from: range.0 as u64,
             to: range.1 as u64,
             line: String::from(rest),
@@ -360,6 +361,9 @@ impl Vim {
                 |below| below + text.len() - (end - start),
             ));
             edits.push(edit);
+        }
+        if last.is_none() && self.global.busy {
+            return Effect::Nothing;
         }
         let Some(line) = last else { return self.not_found() };
         self.cursor = self.first_non_blank(line);

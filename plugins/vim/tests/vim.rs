@@ -9,7 +9,12 @@ use reovim_plugin_vim::{Edit, Effect, Ex, Key, Mode, Quit, Visual};
 /// The `:` line `keys` left for the Client to run: the range it read
 /// off the front, and the rest of it as it was typed.
 fn ex(from: u64, to: u64, line: &str) -> Effect {
-    Effect::Line(Ex { from, to, line: line.to_string() })
+    Effect::Line(Ex {
+        ranged: from != 0 || to != 0,
+        from,
+        to,
+        line: line.to_string(),
+    })
 }
 
 #[test]

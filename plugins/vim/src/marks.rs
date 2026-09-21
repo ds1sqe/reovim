@@ -7,7 +7,7 @@
 //! keeps each line's own first byte, as it stood before the edit,
 //! and `moved` reads it, then brings it up to date for the next one.
 
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, VecDeque};
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::Rd;
@@ -170,19 +170,48 @@ fn retain_files(
     files.retain(|_, (rd, pos)| retain_file(index, source, *rd, pos, edit));
 }
 
+/// Move the sorted run once per edit, counting its newlines only once.
+fn move_lines(index: Index<'_>, lines: &mut VecDeque<usize>, edit: &Edit) {
+    let (starts, length) = index;
+    let first = line_of(starts, edit.at);
+    let reach = edit.at + edit.len;
+    let removed = starts.partition_point(|&s| s <= reach) - first - 1;
+    let inserted = edit.text.matches('\n').count();
+    lines.retain_mut(|line| {
+        let start = starts[*line];
+        let end = starts.get(*line + 1).copied().unwrap_or(length);
+        let whole = if *line + 1 < starts.len() {
+            edit.at <= start && end <= reach
+        } else {
+            edit.at < start && end <= reach
+        };
+        if whole && edit.len > 0 {
+            return false;
+        }
+        if start > reach || (edit.len == 0 && start == reach) {
+            *line = (*line + inserted).saturating_sub(removed);
+        } else if start > edit.at {
+            *line = first + inserted;
+        }
+        true
+    });
+}
+
 impl Marks {
     /// Every local mark, of `files` every one whose source is
     /// `source`, and of `jumps` every one of `source` too (`None`
     /// included, a Buffer over nothing moving its own; never dropped
     /// for a wholly taken line, `retain_local`'s own rule for `'` and
-    /// the other special marks), moved by `edit`; `starts` and
-    /// `length` brought up to date after.
+    /// the other special marks), moved by `edit`. The global run's
+    /// sorted `lines` shift or disappear with their text. `starts`
+    /// and `length` are brought up to date after.
     pub(crate) fn moved(
         &mut self,
         edit: &Edit,
         files: &mut BTreeMap<char, (Rd, Pos)>,
         jumps: &mut [Jump],
         source: Option<Rd>,
+        lines: &mut VecDeque<usize>,
     ) {
         let Self { local, starts, length } = self;
         let index = (starts.as_slice(), *length);
@@ -193,6 +222,7 @@ impl Marks {
         for jump in jumps.iter_mut().filter(|jump| jump.source == source) {
             retain_local(index, '\'', &mut jump.pos, edit);
         }
+        move_lines(index, lines, edit);
         self.reindex_after(edit);
     }
 
@@ -217,7 +247,7 @@ impl Marks {
 
 #[cfg(test)]
 mod tests {
-    use alloc::collections::BTreeMap;
+    use alloc::collections::{BTreeMap, VecDeque};
     use alloc::string::String;
     use alloc::vec;
     use alloc::vec::Vec;
@@ -244,6 +274,21 @@ mod tests {
         (starts, text.len())
     }
 
+    #[test]
+    fn a_marked_line_below_an_edit_shifts_and_a_taken_one_goes() {
+        let (starts, length) = fresh("a\nb\nc\nd\n");
+        let mut marks = Marks { starts, length, ..Marks::default() };
+        let mut lines = alloc::collections::VecDeque::from([1, 2, 3]);
+        marks.moved(
+            &edit(2, 2, ""),
+            &mut BTreeMap::new(),
+            &mut [],
+            None,
+            &mut lines,
+        );
+        assert_eq!(lines, alloc::collections::VecDeque::from([1, 2]));
+    }
+
     fn at(line: usize, column: usize) -> Pos {
         Pos { line, column }
     }
@@ -259,7 +304,7 @@ mod tests {
         }
         let mut files = BTreeMap::new();
         let mut jumps = Vec::new();
-        marks.moved(edit, &mut files, &mut jumps, None);
+        marks.moved(edit, &mut files, &mut jumps, None, &mut VecDeque::new());
         let mut after = String::from(text);
         after.replace_range(edit.at..edit.at + edit.len, &edit.text);
         let want = fresh(&after);
@@ -450,7 +495,13 @@ mod tests {
         files.insert('A', (source, at(2, 0)));
         files.insert('B', (elsewhere, at(2, 0)));
         let mut jumps = Vec::new();
-        marks.moved(&edit(0, 0, "new\n"), &mut files, &mut jumps, Some(source));
+        marks.moved(
+            &edit(0, 0, "new\n"),
+            &mut files,
+            &mut jumps,
+            Some(source),
+            &mut VecDeque::new(),
+        );
         assert_eq!(files[&'A'], (source, at(3, 0)), "shifted with its source");
         assert_eq!(
             files[&'B'],
@@ -470,7 +521,13 @@ mod tests {
             Jump { source: Some(source), pos: at(2, 0) },
             Jump { source: Some(elsewhere), pos: at(2, 0) },
         ];
-        marks.moved(&edit(0, 0, "new\n"), &mut files, &mut jumps, Some(source));
+        marks.moved(
+            &edit(0, 0, "new\n"),
+            &mut files,
+            &mut jumps,
+            Some(source),
+            &mut VecDeque::new(),
+        );
         assert_eq!(jumps[0].pos, at(3, 0), "shifted with its source");
         assert_eq!(jumps[1].pos, at(2, 0), "another source, untouched");
     }
@@ -485,7 +542,13 @@ mod tests {
         let source = Rd(1);
         let mut files = BTreeMap::new();
         let mut jumps = vec![Jump { source: Some(source), pos: at(1, 0) }];
-        marks.moved(&edit(2, 2, ""), &mut files, &mut jumps, Some(source));
+        marks.moved(
+            &edit(2, 2, ""),
+            &mut files,
+            &mut jumps,
+            Some(source),
+            &mut VecDeque::new(),
+        );
         assert_eq!(jumps[0].pos, at(1, 0), "the edit's own first line");
     }
 }

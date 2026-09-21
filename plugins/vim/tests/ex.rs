@@ -1,4 +1,4 @@
-//! The eleven names of the `:` line as Drivers under `/self/vim/bin`,
+//! The names of the `:` line as Drivers under `/self/vim/bin`,
 //! over the tui and the rig.
 //!
 //! What the corpus pins is what a person types; what is pinned here is

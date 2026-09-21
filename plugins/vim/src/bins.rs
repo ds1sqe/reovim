@@ -1,11 +1,11 @@
-//! The eleven names of Vim's `:` line, Drivers under `/self/vim/bin`.
+//! The names of Vim's `:` line, Drivers under `/self/vim/bin`.
 //!
 //! A run here is the arm `ex` used to have: one effect, handed to the
 //! same `act` a key's effect goes through, and what Vim would have said
 //! in its status row as the bytes of the run's output cell. A name
 //! prints; it does not fault, and an `Error` is what the tree refused.
 //!
-//! A declaration is a shape and not a name, so the eleven have five,
+//! A declaration is a shape and not a name, shared by matching names,
 //! and the rd a call comes in on is which name it is — where a Module
 //! whose names each have a shape of their own tells them apart by the
 //! api's hash. What a name takes is its declaration and nothing beside
@@ -47,7 +47,7 @@ reovim_sdk::declare! {
 }
 
 reovim_sdk::declare! {
-    /// `substitute`, the one name that reads the range.
+    /// `substitute`, its pattern and replacement over a range.
     api subst ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
@@ -62,7 +62,25 @@ reovim_sdk::declare! {
     record Args { options: utf8(128) }
 }
 
-/// The eleven, in the order a `:` line resolves one, each with the
+reovim_sdk::declare! {
+    /// A global selection and the command to run on every marked line.
+    api each ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args {
+        bang: bool, ranged: bool, from: u64, to: u64, spec: utf8(512)
+    }
+}
+
+reovim_sdk::declare! {
+    /// Whole lines deleted into an optional register.
+    api lines ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { from: u64, to: u64, register: utf8(8) }
+}
+
+/// The names, in the order a `:` line resolves one, each with the
 /// declaration of the shape it takes.
 ///
 /// `:w` is `write` because it stands before `wq`, `:s` is `substitute`
@@ -71,7 +89,7 @@ reovim_sdk::declare! {
 /// registered in and the order `children(/self/vim/bin)` lists them,
 /// which is where the abbreviation is read from; nothing lists a short
 /// form by hand.
-pub(crate) fn declared() -> [(&'static str, Decl); 11] {
+pub(crate) fn declared() -> [(&'static str, Decl); 14] {
     let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
     [
         ("write", file.clone()),
@@ -85,17 +103,20 @@ pub(crate) fn declared() -> [(&'static str, Decl); 11] {
         ("edit", file.clone()),
         ("explore", file),
         ("cli", bang),
+        ("global", each::decl()),
+        ("vglobal", each::decl()),
+        ("delete", lines::decl()),
     ]
 }
 
 /// One call on a name of Vim's: the rd it came in on is the name, and
-/// the name says which of the five shapes to decode the input as. The
+/// the name says which shape to decode the input as. The
 /// api the Kernel checked says the same thing, an rd here reporting one
 /// declaration and no other, so the rd alone is read.
 ///
 /// # Errors
-/// `Unsupported` for an rd none of the eleven stands at or a number
-/// none of the five declares, else what the run says.
+/// `Unsupported` for an rd none of the names stands at or a number
+/// no shape declares, else what the run says.
 pub(crate) fn dispatch(
     vim: &Editor,
     ctx: &dyn Calls,
@@ -113,6 +134,8 @@ pub(crate) fn dispatch(
         }
         "substitute" => subst::dispatch(vim, ctx, rd, number, input),
         "set" => option::dispatch(vim, ctx, rd, number, input),
+        "global" | "vglobal" => each::dispatch(vim, ctx, rd, number, input),
+        "delete" => lines::dispatch(vim, ctx, rd, number, input),
         _ => Err(Error::Unsupported),
     }
 }
@@ -207,6 +230,32 @@ impl option::Api for Editor {
         args: option::Args,
     ) -> Result<Rd, Error> {
         self.did(ctx, rd, move |vim| vim.set(&args.options))
+    }
+}
+
+impl each::Api for Editor {
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: each::Args,
+    ) -> Result<Rd, Error> {
+        let invert = args.bang || named(ctx, rd)? == "vglobal";
+        let range = args.ranged.then_some((line(args.from), line(args.to)));
+        self.globally(ctx, rd, range, &args.spec, invert)
+    }
+}
+
+impl lines::Api for Editor {
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: lines::Args,
+    ) -> Result<Rd, Error> {
+        self.did(ctx, rd, |vim| {
+            vim.delete((line(args.from), line(args.to)), &args.register)
+        })
     }
 }
 
