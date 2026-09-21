@@ -885,8 +885,12 @@ buffers=/session/1/client/1/self/dev/buffers
 listed="$("$BIN" cli ls "$buffers")"
 [[ "$listed" == $'1\n2' ]] \
     || fail "after :bd the listing is $(tr '\n' ' ' <<< "$listed"), not 1 2"
-! "$BIN" cli cat "$buffers/0/source" >/dev/null 2>&1 \
-    || fail "the closed draft still answers"
+refused="$("$BIN" cli cat "$buffers/0/source" 2>&1 >/dev/null)" \
+    && fail "the closed draft still answers"
+# A name the Client does not hold is not there, as the Kernel's own
+# lookup of one says, and not an op the Client cannot do.
+[[ "$refused" == *': invalid' ]] \
+    || fail "the closed draft says ${refused##*: }, not invalid"
 "$BIN" cli cat "$buffers/1/source" >/dev/null \
     || fail "the kept draft does not answer"
 keys several : c l i Enter

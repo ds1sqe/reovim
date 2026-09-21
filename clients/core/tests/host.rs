@@ -435,6 +435,41 @@ fn an_unregistered_rd_is_invalid_and_its_handle_gone() {
 }
 
 #[test]
+fn a_name_a_listed_container_does_not_hold_is_invalid() {
+    let rig = Rig::new();
+    let (host, module) = over(&rig);
+    let calls = host.own();
+    let ctx: &dyn Calls = &calls;
+    let mine = host.calls(module);
+
+    // A Container served by a Driver with no `lookup` of its own
+    // (`Deep`): what it holds is what it registered, and `children`
+    // answers from the table, the Driver having nothing to add.
+    let dir = Flags::READ.union(Flags::CONTAINER);
+    let bag = mine.register(DriverId(1), SELF, Some("bag")).unwrap();
+    mine.report(bag, dir, &[]).unwrap();
+    let one = mine.register(DriverId(1), bag, Some("one")).unwrap();
+    mine.report(one, Flags::READ, &[]).unwrap();
+    assert_eq!(ops::children(ctx, bag), Ok(vec![one]));
+    assert_eq!(cell::resolve(ctx, bag, "one"), Ok(one));
+
+    // So a name it does not hold is not there, which is what the
+    // Kernel says of a name that is not under a row of its own, and
+    // not something this Client cannot do.
+    assert_eq!(cell::resolve(ctx, bag, "nope"), Err(Error::Invalid));
+
+    // A row that is no Container holds no names at all: nothing can
+    // look one up under it, which is what `Unsupported` says.
+    let deep = cell::resolve(ctx, ROOT, "/self/deep").unwrap();
+    assert_eq!(cell::resolve(ctx, deep, "nope"), Err(Error::Unsupported));
+
+    // A Driver with a `lookup` of its own answers for itself, as ever.
+    let x = cell::resolve(ctx, ROOT, "/self/x").unwrap();
+    assert_eq!(cell::resolve(ctx, x, "nope"), Err(Error::Invalid));
+    assert_eq!(cell::resolve(ctx, ROOT, "/self/nope"), Err(Error::Invalid));
+}
+
+#[test]
 fn one_cursor_and_one_sys_decls_over_both_sides() {
     let rig = Rig::new();
     let (host, _) = over(&rig);

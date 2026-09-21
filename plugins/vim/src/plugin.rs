@@ -940,7 +940,8 @@ impl Editor {
         Ok(())
     }
 
-    /// List only drafts that expose an actual source identity.
+    /// List only drafts that expose an actual source identity: one
+    /// whose `source` is not there ([`missing`]) is passed over.
     fn listed(&self, ctx: &dyn Calls) -> Result<Vec<Listed>, Error> {
         let (root, dir) = {
             let vim = self.vim.borrow();
@@ -952,7 +953,7 @@ impl Editor {
         for draft in ops::children(ctx, list)? {
             let child = match ops::lookup(ctx, draft, "source") {
                 Ok(child) => child,
-                Err(Error::Gone | Error::Unsupported) => continue,
+                Err(error) if missing(error) => continue,
                 Err(error) => return Err(error),
             };
             let source = decode(&ops::bytes(ctx, child)?)?;
@@ -1778,6 +1779,14 @@ fn ranged(shell: &mut Shell, from: u64, to: u64, bang: bool, ranged: bool) {
 /// As `Op::Info`; `Unsupported` for an rd with no name.
 pub fn named(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
     ops::info(ctx, rd)?.name.ok_or(Error::Unsupported)
+}
+
+/// Whether a failed lookup says the name is simply not there: a draft
+/// over nothing holds no `source` row, which the Client answers
+/// `Invalid` for as the Kernel's own lookup does, and one whose row
+/// went while a listing walked is `Gone`.
+const fn missing(error: Error) -> bool {
+    matches!(error, Error::Gone | Error::Invalid)
 }
 
 /// `path`, which is under the mirror's own root, as a path of the

@@ -70,7 +70,8 @@ impl Scene {
             let got: Rd = reovim_sdk::decode(&held).unwrap();
             assert_eq!(got, scene.rd(&format!("/module/fs/root/{file}")));
         } else {
-            assert!(matches!(source, Err(Error::Gone | Error::Unsupported)));
+            let missing = matches!(source, Err(Error::Gone | Error::Invalid));
+            assert!(missing, "a draft over nothing: {source:?}");
         }
         scene
     }
@@ -421,7 +422,7 @@ fn bd_closes_current_unnamed_and_named_missing_drafts() {
         let draft = s.draft("0");
         assert!(matches!(
             ops::lookup(&s.host.own(), draft, "source"),
-            Err(Error::Gone | Error::Unsupported)
+            Err(Error::Gone | Error::Invalid)
         ));
         s.go("ix<Esc>:bd<CR>");
         assert_eq!(
@@ -576,7 +577,7 @@ fn fixture_scratch_and_stale_drafts_have_the_required_lifecycle() {
     let scratch = s.draft("1");
     assert!(matches!(
         ops::lookup(&s.host.own(), scratch, "source"),
-        Err(Error::Gone | Error::Unsupported)
+        Err(Error::Gone | Error::Invalid)
     ));
     assert_eq!(lines(&mut s.tui), [""]);
     s.go("ix<Esc>");

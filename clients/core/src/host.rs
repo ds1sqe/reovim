@@ -920,9 +920,10 @@ fn lookup(host: &Host, rd: Rd, name: &str) -> Answer {
         }
         return Ok(out);
     }
-    let (owner, child) = {
+    let (owner, flags, child) = {
         let s = host.state.borrow();
-        (s.node(rd)?.owner, s.child(rd, name))
+        let node = s.node(rd)?;
+        (node.owner, node.flags, s.child(rd, name))
     };
     if let Some(child) = child {
         return Ok(Out::Rd(child));
@@ -931,7 +932,25 @@ fn lookup(host: &Host, rd: Rd, name: &str) -> Answer {
         return Err(Error::Invalid);
     };
     let d = host.driver(module, driver)?;
-    Ok(Out::Rd(ready(d.lookup(&host.calls(module), rd, name))?))
+    let found = ready(d.lookup(&host.calls(module), rd, name));
+    Ok(Out::Rd(named(flags, found)?))
+}
+
+/// The answer to a lookup the Driver would not make. A Driver with no
+/// `lookup` of its own leaves the names under its Container to what it
+/// registered, which is what [`children`] answers with, the Driver
+/// having nothing to add there either: a name that is not in the table
+/// is not there, and `Invalid` is what the Kernel's own `lookup` says
+/// of one (`dispatch::lookup`, for a row of the Kernel's). `Unsupported`
+/// stands where the rd is no Container: it holds no names at all, so
+/// looking one up under it is the one thing nobody can do.
+const fn named(flags: Flags, found: Result<Rd, Error>) -> Result<Rd, Error> {
+    match found {
+        Err(Error::Unsupported) if flags.contains(Flags::CONTAINER) => {
+            Err(Error::Invalid)
+        }
+        other => other,
+    }
 }
 
 /// The cell of the declaration `name` names under the server's
