@@ -387,6 +387,7 @@ impl Vim {
         self.found.from = from;
         self.found.after.clear();
         self.found.before.clear();
+        self.found.skipped.clear();
         self.found.filled = Filled::More;
     }
 
@@ -669,11 +670,15 @@ impl Vim {
         Some(line[first..stop].into())
     }
 
-    /// `hlsearch`'s byte spans on the lines shown, read off the runs:
-    /// the entries inside the window's bytes, each taking at least the
-    /// char it sits on, as nvim shows an empty match. `room` is how
-    /// many spans the View has left once the selection has taken its
-    /// own.
+    /// `hlsearch`'s byte spans on the lines shown, read off the runs,
+    /// each entry `skipped` names left out: the entries inside the
+    /// window's bytes, each taking at least the char it sits on, as
+    /// nvim shows an empty match. `room` is how many spans the View
+    /// has left once the selection has taken its own.
+    ///
+    /// `skipped` is empty while the list fills, so a run still filling
+    /// marks everything it holds; `begun` is the door that keeps it
+    /// so, clearing it with the runs it begins again.
     pub(crate) fn search_spans(
         &self,
         top: usize,
@@ -687,10 +692,15 @@ impl Vim {
         let from = self.line_at(top).unwrap_or(0);
         let upto =
             self.line_at(top.saturating_add(height)).unwrap_or(self.text.len());
+        let skipped = &self.found.skipped;
         let shown = |run: &Vec<(usize, usize)>| {
             let first = run.partition_point(|(at, _)| *at < from);
             let last = run.partition_point(|(at, _)| *at < upto);
-            run[first..last].to_vec()
+            run[first..last]
+                .iter()
+                .copied()
+                .filter(|(at, _)| skipped.binary_search(at).is_err())
+                .collect::<Vec<_>>()
         };
         let mut marks = shown(&self.found.before);
         marks.extend(shown(&self.found.after));

@@ -77,6 +77,28 @@ fn hlsearch_marks_every_match_until_noh() {
     assert_eq!(said(&mut tui), "E486: Pattern not found: B");
 }
 
+/// `x*` matches the empty string at every column, including each
+/// line's end; nvim's own per-line search never finds the one there
+/// that the match before it already reached, so `hlsearch` leaves it
+/// out too, once the list is whole. `b\|$` is the same for one match
+/// a literal reaches rather than another zero-width one.
+#[test]
+fn hlsearch_marks_the_entries_the_count_counts() {
+    let (_rig, host, _vim, mut tui) = over("search-hls-skipped", b"ab\ncd\n");
+    typed(&mut tui, ":set hls<CR>/x*<CR>");
+    assert_eq!(
+        marks(&host),
+        [(0, 1), (1, 2), (3, 4), (4, 5)],
+        "not the two line ends x* also matches"
+    );
+    typed(&mut tui, "/b\\|$<CR>");
+    assert_eq!(
+        marks(&host),
+        [(1, 2), (5, 6)],
+        "not the line end b already reached"
+    );
+}
+
 #[test]
 fn the_lookup_passes_the_entries_before_the_cursor_on_its_line() {
     // The list is begun at the start of the cursor's own line, so the
@@ -657,4 +679,49 @@ fn the_row_fills_then_counts_with_no_key() {
     }
     assert_eq!(said(&mut tui), counted);
     assert_eq!(counting.reads.get(), reads, "and nothing is read for it");
+}
+
+/// `begun` clears `skipped` with the runs it clears, so a list still
+/// filling never reads a byte set the last pattern's own skips left
+/// behind. `x*`'s own skips are every line's end; `$` matches every
+/// line's end too, so a `$` search right after an `x*` one is the
+/// case where a stale `skipped` would drop the most — all of it,
+/// until `$`'s own list turns whole and overwrites it.
+#[test]
+fn a_new_list_clears_the_skip_the_last_pattern_left() {
+    let mut text = String::from("ab\ncd\n");
+    text.push_str(&"e\n".repeat(3));
+    let rig = Rig::new("search-hls-skip-cleared");
+    rig.file("file", text.as_bytes());
+    let host = rig.searching(Some(1));
+    let vim = Editor::new();
+    let mut tui =
+        opened(&host, one(vim.clone()), Clip::none(), "", Some("file"), None)
+            .unwrap();
+    typed(&mut tui, ":set hls<CR>/x*<CR>");
+    while vim.engine().counted().is_none() {
+        tui.tick().unwrap();
+    }
+    assert_eq!(vim.engine().counted(), Some((2, 7)), "x*'s own list is whole");
+    assert_eq!(
+        marks(&host),
+        [(0, 1), (1, 2), (3, 4), (4, 5), (6, 7), (8, 9), (10, 11)],
+        "none of the five line ends x* also matches"
+    );
+
+    typed(&mut tui, "/$<CR>");
+    assert_eq!(vim.engine().counted(), None, "$'s own list is still filling");
+    assert_eq!(
+        marks(&host),
+        [(2, 3), (5, 6), (7, 8)],
+        "what $ has found so far, none of it dropped by x*'s own skips"
+    );
+
+    tui.tick().unwrap();
+    assert_eq!(vim.engine().counted(), Some((1, 5)), "$'s own list is whole");
+    assert_eq!(
+        marks(&host),
+        [(2, 3), (5, 6), (7, 8), (9, 10), (11, 12)],
+        "every line end, $ skipping none of its own"
+    );
 }
