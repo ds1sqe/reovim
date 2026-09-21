@@ -10,9 +10,11 @@
 //! dash names: by the field's whole name, a `bool` set and any other
 //! type taking the next token, or letter by letter, each letter naming
 //! a `bool` by its own one-letter name or by its first letter, case for
-//! case. Every other field is a positional, filled in declared order
-//! and then the sequence, a `utf8` taking the token and a number taking
-//! it parsed.
+//! case. Two dashes read only the whole name that follows them, never
+//! letter by letter, so `--col` is `col` and `--z` is a Miss where no
+//! field is named `z`. Every other field is a positional, filled in
+//! declared order and then the sequence, a `utf8` taking the token and
+//! a number taking it parsed.
 
 use alloc::boxed::Box;
 use alloc::format;
@@ -107,7 +109,17 @@ fn flags<'a>(
             left.push(token);
             continue;
         };
-        let Some(at) = whole(shell, fields, letters) else {
+        // Two dashes: `letters` still carries the one `dashed` left
+        // unstripped, so a leading dash there means the token had two,
+        // and what follows is read as the whole name, never letter by
+        // letter. A lone `--` has nothing after the second dash, which
+        // is a name no field has, so it Misses like any other.
+        let two = letters.strip_prefix('-');
+        let at = if let Some(rest) = two {
+            whole(shell, fields, rest).ok_or_else(|| missed(token))?
+        } else if let Some(at) = whole(shell, fields, letters) {
+            at
+        } else {
             let each = each(shell, fields, letters, values);
             each.ok_or_else(|| missed(token))?;
             continue;

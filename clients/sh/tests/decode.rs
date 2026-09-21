@@ -100,3 +100,58 @@ fn a_field_the_host_gave_a_value_for_is_no_token_of_the_line() {
     shell.give("long", Value::Utf8("yes".to_string()));
     assert_eq!(typed(ctx, &mut shell, "ls -l /bin"), by_hand);
 }
+
+#[test]
+fn two_dashes_are_the_flags_whole_name() {
+    let rig = Rig::new("sh-two-dashes");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    shell.screen(80, true);
+
+    // A `--name` token reads as the field of that whole name, the same
+    // field `-name` and its first letter already read.
+    let args = ls::Args {
+        long: true,
+        all: false,
+        w: false,
+        cwd: ROOT,
+        width: 80,
+        color: true,
+        targets: vec!["/bin".to_string()],
+    };
+    let by_hand = called(ctx, "ls", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "ls --long /bin"), by_hand);
+
+    // `--` before a name no field has is a Miss: two dashes read no
+    // letter by letter, even where `-la` would read `l` and `a` as
+    // two fields each.
+    assert_eq!(
+        typed(ctx, &mut shell, "ls --zzz /bin"),
+        "ls --zzz: usage: ls [-l] [-a] [-w] [targets..]"
+    );
+    assert_eq!(
+        typed(ctx, &mut shell, "ls --la /bin"),
+        "ls --la: usage: ls [-l] [-a] [-w] [targets..]",
+        "no letter-by-letter reading under two dashes"
+    );
+
+    // One dash under the whole name, and one dash under the first
+    // letter, are unchanged.
+    assert_eq!(
+        typed(ctx, &mut shell, "ls -long /bin"),
+        by_hand,
+        "one dash, the whole name"
+    );
+    assert_eq!(
+        typed(ctx, &mut shell, "ls -l /bin"),
+        by_hand,
+        "one dash, the first letter"
+    );
+
+    // A lone `--` names no field either: today's Miss, unchanged.
+    assert_eq!(
+        typed(ctx, &mut shell, "ls --"),
+        "ls --: usage: ls [-l] [-a] [-w] [targets..]"
+    );
+}
