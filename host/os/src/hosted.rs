@@ -70,6 +70,11 @@ pub fn stat(path: &str) -> Result<Stat, Error> {
     Ok(Stat { kind, len: meta.len(), mtime })
 }
 
+/// One opened file, read to EOF without a separate pathname stat.
+pub fn read_all(path: &str) -> Result<Vec<u8>, Error> {
+    std::fs::read(path).map_err(Error::from)
+}
+
 pub fn read(path: &str, at: u64, len: usize) -> Result<Vec<u8>, Error> {
     let mut file = File::open(path)?;
     file.seek(SeekFrom::Start(at))?;
@@ -306,6 +311,19 @@ pub fn runtime() -> Result<String, Error> {
     Ok(dir)
 }
 
+/// The config directory is selected without creating it.
+pub fn config() -> Result<String, Error> {
+    config_of(std::env::var("XDG_CONFIG_HOME").ok(), std::env::var("HOME").ok())
+        .ok_or(Error::NotFound)
+}
+
+fn config_of(xdg: Option<String>, home: Option<String>) -> Option<String> {
+    xdg.filter(|path| Path::new(path).is_absolute()).or_else(|| {
+        let home = home.filter(|path| !path.is_empty())?;
+        Path::new(&home).join(".config").into_os_string().into_string().ok()
+    })
+}
+
 pub fn work() -> Result<String, Error> {
     let dir = std::env::current_dir()?;
     dir.into_os_string().into_string().map_err(|_| Error::Io)
@@ -508,6 +526,27 @@ mod tests {
 
     use super::decode;
     use crate::term::Key;
+
+    #[test]
+    fn config_is_xdg_where_absolute_else_home() {
+        let cases = [
+            (Some("/x"), Some("/home/me"), Some("/x")),
+            (Some(""), Some("/home/me"), Some("/home/me/.config")),
+            (Some("relative"), Some("/home/me"), Some("/home/me/.config")),
+            (None, Some("/home/me"), Some("/home/me/.config")),
+            (Some("/x"), None, Some("/x")),
+            (None, None, None),
+            (Some("relative"), None, None),
+            (None, Some(""), None),
+        ];
+        for (xdg, home, expected) in cases {
+            let actual = super::config_of(
+                xdg.map(alloc::string::String::from),
+                home.map(alloc::string::String::from),
+            );
+            assert_eq!(actual.as_deref(), expected);
+        }
+    }
 
     /// crossterm gives ESC and a char arriving in one read as the char
     /// with `ALT`; Control wins where both are set, and Alt with a key

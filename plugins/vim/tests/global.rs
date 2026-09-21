@@ -127,6 +127,22 @@ fn a_line_that_fails_ends_the_run() {
     assert_eq!(lines(&mut tui), ["b", "a", "a"]);
 }
 
+/// A marked line's command that asks the region away ends the run
+/// as one that fails does: the lines after it would run over a
+/// Buffer this stay no longer shows. The cursor stands where the run
+/// stopped, the first marked line, not the last.
+#[test]
+fn a_line_that_leaves_ends_the_run() {
+    let rig = Rig::new("global-line-leaves");
+    rig.file("note", b"a\nb\na\n");
+    let vim = Editor::new();
+    let mut tui = editor(&rig.host(), &vim);
+    typed(&mut tui, "G");
+    assert_eq!(vim.engine().position(), (2, 0));
+    typed(&mut tui, ":g/a/cli<CR>");
+    assert_eq!(vim.engine().position(), (0, 0));
+}
+
 #[test]
 fn a_global_in_a_macro_joins_its_run() {
     let rig = Rig::new("global-macro");

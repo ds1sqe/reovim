@@ -14,6 +14,10 @@ pub fn stat(_: &str) -> Result<Stat, Error> {
     Err(Error::Unsupported)
 }
 
+pub fn read_all(_: &str) -> Result<Vec<u8>, Error> {
+    Err(Error::Unsupported)
+}
+
 pub fn read(_: &str, _: u64, _: usize) -> Result<Vec<u8>, Error> {
     Err(Error::Unsupported)
 }
@@ -101,6 +105,10 @@ pub fn clipboard_write(_: &[u8]) -> Result<(), Error> {
 }
 
 pub fn runtime() -> Result<String, Error> {
+    Err(Error::Unsupported)
+}
+
+pub fn config() -> Result<String, Error> {
     Err(Error::Unsupported)
 }
 

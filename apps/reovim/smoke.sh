@@ -10,6 +10,8 @@ DIR="$(mktemp -d /tmp/reovim-smoke.XXXXXXXX)"
 readonly BIN DIR
 TMUX=(tmux -L "reovim-smoke-$$")
 export XDG_RUNTIME_DIR="$DIR/run"
+mkdir -p "$DIR/config"
+export XDG_CONFIG_HOME="$DIR/config"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=smoke GIT_AUTHOR_EMAIL=smoke@reovim
 export GIT_COMMITTER_NAME=smoke GIT_COMMITTER_EMAIL=smoke@reovim
@@ -891,6 +893,46 @@ keys several C-d
 keys several : q Enter
 ended several
 [[ "$ENDED" == 0 ]] || fail "the several tree did not quit"
+
+# --- startup lines, and the config directory's fallback/isolation -----
+mkdir -p "$DIR/rc" "$DIR/rc-home/reovim"
+printf 'foo\n' > "$DIR/rc/f"
+printf '# mine\nset ic\nnosuch\n' > "$DIR/rc-home/reovim/init"
+start rc "$DIR/rc" "XDG_CONFIG_HOME='$DIR/rc-home' $BIN f"
+editing rc f
+if "${TMUX[@]}" capture-pane -p -t rc | grep -q 'E492'
+then
+    fail "the init failure leaked into the first frame"
+fi
+keys rc / F o o Enter x
+shown rc '^oo$'
+init_lines="$("$BIN" cli dmesg -t | grep '^init:')"
+[[ "$init_lines" == 'init:3: E492: Not an editor command: nosuch' ]] \
+    || fail "init diagnostics: $init_lines"
+keys rc u : q Enter
+ended rc
+[[ "$ENDED" == 0 ]] || fail "the init pane did not quit"
+
+# Only a child gets this owned HOME; the user's config is never written.
+mkdir -p "$DIR/rc-default-home/.config/reovim"
+printf 'set ic\n' > "$DIR/rc-default-home/.config/reovim/init"
+start rc-default "$DIR/rc" \
+    "HOME='$DIR/rc-default-home' XDG_CONFIG_HOME=relative $BIN f"
+editing rc-default f
+keys rc-default / F o o Enter x
+shown rc-default '^oo$'
+keys rc-default u : q Enter
+ended rc-default
+[[ "$ENDED" == 0 ]] || fail "the default config pane did not quit"
+
+start rc-empty "$DIR/rc" \
+    "HOME='$DIR/rc-default-home' XDG_CONFIG_HOME='$DIR/config' $BIN f"
+editing rc-empty f
+keys rc-empty / F o o Enter
+shown rc-empty 'E486: Pattern not found: Foo'
+keys rc-empty : q Enter
+ended rc-empty
+[[ "$ENDED" == 0 ]] || fail "the isolated config pane did not quit"
 
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's

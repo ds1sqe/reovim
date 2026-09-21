@@ -135,3 +135,22 @@ fn replace_writes_a_hard_link_in_place() {
     assert_eq!(fs::read(&other, 0, 8).unwrap(), b"two", "through the link");
     assert_eq!(std::fs::metadata(&file).unwrap().ino(), inode, "in place");
 }
+
+#[test]
+fn read_all_reads_to_eof_and_reports_absence() {
+    let dir = Dir::new("whole");
+    let file = dir.path("f");
+    assert_eq!(fs::read_all(&file), Err(Error::NotFound));
+    std::fs::write(&file, b"first\n").unwrap();
+    assert_eq!(fs::read_all(&file).unwrap(), b"first\n");
+    let next = dir.path("next");
+    std::fs::write(&next, b"second, longer capture\nlast line\n").unwrap();
+    std::fs::rename(next, &file).unwrap();
+    assert_eq!(
+        fs::read_all(&file).unwrap(),
+        b"second, longer capture\nlast line\n"
+    );
+    std::fs::write(&file, [0xff]).unwrap();
+    assert_eq!(fs::read_all(&file).unwrap(), [0xff]);
+    assert_eq!(fs::read_all(&dir.path("")), Err(Error::Io));
+}

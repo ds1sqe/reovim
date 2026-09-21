@@ -18,8 +18,8 @@
 //! until the next key.
 //!
 //! The cells served are `view` and Vim's own state. A whole read of
-//! `view` is one frame: the keys Vim has not taken, each run; the
-//! flush that ends a revision; the rows the region has now; then the
+//! `view` is one frame: captured startup lines once, then the keys Vim
+//! has not taken; the flush, the rows the region has now; then the
 //! View. The rest — the mode, the keys of a command that
 //! has not fired, the registers — are made at the read out of what the
 //! engine holds, so nothing is stored twice and nothing goes stale. No
@@ -93,6 +93,8 @@ pub struct Editor {
     queue: RefCell<VecDeque<Queued>>,
     spent: Cell<usize>,
     closing: Cell<Option<(Rd, Option<Rd>)>>,
+    /// Captured startup lines, taken once at the first Vim frame.
+    init: RefCell<Option<String>>,
 }
 
 /// Provenance controls recording, cancellation and the execution budget.
@@ -127,6 +129,8 @@ struct Stay {
     stale: Cell<bool>,
     /// A file switch leaves the queued input for the following stay.
     leaving: Cell<bool>,
+    /// A successful request to replace this stay or leave the editor.
+    asked: Cell<bool>,
 }
 
 /// What a read of one of Vim's own rds is a read of: the rds `start`
@@ -153,6 +157,18 @@ impl Editor {
     #[must_use]
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
+    }
+
+    /// Startup lines held until this editor's first frame, run only once.
+    /// The caller captures the file; this portable Plugin reads no file.
+    ///
+    /// ```
+    /// let editor = reovim_plugin_vim::Editor::with_init("set ic\n".into());
+    /// let module = editor.booted();
+    /// ```
+    #[must_use]
+    pub fn with_init(text: String) -> Rc<Self> {
+        Rc::new(Self { init: RefCell::new(Some(text)), ..Self::default() })
     }
 
     /// Its Module and its one Driver, for a table to give. Every start
@@ -232,6 +248,7 @@ impl Module for Editor {
             outputs: cell::Cells::default(),
             stale: Cell::new(false),
             leaving: Cell::new(false),
+            asked: Cell::new(false),
         };
         *self.stay.borrow_mut() = Some(Rc::new(stay));
         let mut vim = self.vim.borrow_mut();
@@ -346,7 +363,11 @@ impl Editor {
     /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
         let rows = self.sized(ctx)?;
-        if !self.stay()?.leaving.get() {
+        let init = self.init.borrow_mut().take();
+        if let Some(text) = init {
+            self.began(ctx, &text)?;
+        }
+        if !self.stay()?.asked.get() {
             let keys = self.stay()?.surface.region()?.keys(ctx)?;
             self.queue.borrow_mut().extend(keys.into_iter().map(Queued::Typed));
         }
@@ -363,9 +384,58 @@ impl Editor {
         Ok(encode(&self.vim.borrow_mut().view(rows)))
     }
 
+    /// Run captured lines once, preserving the opening frame's message.
+    fn began(&self, ctx: &dyn Calls, text: &str) -> Result<(), Error> {
+        let opening = core::mem::take(&mut self.vim.borrow_mut().message);
+        let result = init_lines(self, ctx, text);
+        self.vim.borrow_mut().message = opening;
+        result
+    }
+
+    /// Each line has its own execution boundary, but typed-command effects.
+    fn init_line(
+        &self,
+        ctx: &dyn Calls,
+        number: usize,
+        line: &str,
+        more: bool,
+    ) -> Result<bool, Error> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return Ok(true);
+        }
+        let effect = {
+            let mut vim = self.vim.borrow_mut();
+            vim.macros.fed = false;
+            vim.macros.joined = false;
+            vim.ex(line)
+        };
+        let result = self.act(ctx, effect);
+        let (message, failed) = {
+            let mut vim = self.vim.borrow_mut();
+            (core::mem::take(&mut vim.message), vim.rung())
+        };
+        result?;
+        let level = if failed { 4 } else { 6 };
+        if !message.is_empty() {
+            logged(ctx, level, &format!("init:{number}: {message}"))?;
+        }
+        let asked = self.stay()?.asked.get();
+        if asked && more {
+            logged(
+                ctx,
+                4,
+                &format!(
+                    "init:{number}: left; the lines after it were not run"
+                ),
+            )?;
+        }
+        Ok(!asked)
+    }
+
     /// Run a key without holding a queue borrow across Driver calls.
     fn step(&self, ctx: &dyn Calls) -> Result<bool, Error> {
-        if self.stay()?.leaving.get() {
+        if self.stay()?.asked.get() {
             return Ok(false);
         }
         let Some(queued) = self.queue.borrow_mut().pop_front() else {
@@ -609,12 +679,13 @@ impl Editor {
         result
     }
 
-    /// No borrow is held while a line calls back through the tree.
+    /// No borrow is held while a line calls back through the tree. A
+    /// line that rang, or asked the region away, is the run's last.
     fn global_step(&self, ctx: &dyn Calls) -> Result<bool, Error> {
         let next = self.vim.borrow_mut().next_marked();
         let Some(effect) = next else { return Ok(false) };
         self.act(ctx, effect)?;
-        Ok(!self.vim.borrow().ringing() && !self.stay()?.leaving.get())
+        Ok(!self.vim.borrow().ringing() && !self.stay()?.asked.get())
     }
 
     /// The name a first token stands for: the first under Vim's own
@@ -834,10 +905,8 @@ impl Editor {
     /// Write-all visits every modified candidate before deciding to exit.
     fn quit(&self, ctx: &dyn Calls, how: Quit) -> Result<(), Error> {
         match how {
-            Quit::Abort => return self.stay()?.surface.region()?.ends(ctx, 1),
-            Quit::All(true) => {
-                return self.stay()?.surface.region()?.ends(ctx, 0);
-            }
+            Quit::Abort => return self.ended(ctx, 1),
+            Quit::All(true) => return self.ended(ctx, 0),
             Quit::WriteAll => return self.quit_written_all(ctx),
             _ => {}
         }
@@ -852,13 +921,22 @@ impl Editor {
         if self.guard_others(ctx, true)? {
             return Ok(());
         }
-        self.stay()?.surface.region()?.ends(ctx, 0)
+        self.ended(ctx, 0)
     }
 
     fn quit_written_all(&self, ctx: &dyn Calls) -> Result<(), Error> {
         if self.save_all(ctx)? {
-            self.stay()?.surface.region()?.ends(ctx, 0)?;
+            self.ended(ctx, 0)?;
         }
+        Ok(())
+    }
+
+    /// The way out taken: the region ended, and this stay asked, so
+    /// no line or key after runs over it.
+    fn ended(&self, ctx: &dyn Calls, code: u8) -> Result<(), Error> {
+        let stay = self.stay()?;
+        stay.surface.region()?.ends(ctx, code)?;
+        stay.asked.set(true);
         Ok(())
     }
 
@@ -1275,6 +1353,7 @@ impl Editor {
                 line: 0,
             },
         )?;
+        stay.asked.set(true);
         if file && matches!(plugin, "" | "vim") {
             stay.leaving.set(true);
         }
@@ -1733,6 +1812,27 @@ fn made(
     decode(&out)
 }
 
+/// Stop on a successful departure without interpreting another line.
+fn init_lines(
+    editor: &Editor,
+    ctx: &dyn Calls,
+    text: &str,
+) -> Result<(), Error> {
+    let mut lines = text.lines().enumerate().peekable();
+    while let Some((index, line)) = lines.next() {
+        if !editor.init_line(ctx, index + 1, line, lines.peek().is_some())? {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Startup diagnostics share the Kernel's bounded log and severity levels.
+fn logged(ctx: &dyn Calls, level: u8, text: &str) -> Result<(), Error> {
+    let log = cell::resolve(ctx, ROOT, "/sys/log")?;
+    ops::put(ctx, log, format!("<{level}>{text}").into_bytes()).map(|_| ())
+}
+
 /// What a run printed, its cell closed where the run came back open: a
 /// Driver that follows is read this once and no more, one row of a
 /// status line having nowhere to put more.
@@ -1859,6 +1959,22 @@ mod macro_queue_tests {
         .unwrap();
         tui.frame(80, 24).unwrap();
         (rig, editor, host, tui)
+    }
+
+    #[test]
+    fn init_departure_does_not_run_queued_input_in_the_old_stay() {
+        for command in ["cli", "q", "explore"] {
+            let (_rig, editor, host, _tui) = scene(command);
+            *editor.init.borrow_mut() = Some(String::from(command));
+            editor.queue.borrow_mut().push_back(Queued::Typed(Key::Char('x')));
+            editor.framed(&host.own()).unwrap();
+            assert_eq!(editor.engine().text(), "abc\n", "{command}");
+            assert!(editor.stay().unwrap().asked.get());
+            assert!(matches!(
+                editor.queue.borrow().front(),
+                Some(Queued::Typed(Key::Char('x')))
+            ));
+        }
     }
 
     #[test]

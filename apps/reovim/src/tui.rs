@@ -37,8 +37,9 @@ type Serve<'a> = &'a mut dyn FnMut() -> Result<(), Fail>;
 /// One `Editor` across every swap of the region (01.0): what a stay
 /// keeps of Vim's state outlives it, and a second stay is a second
 /// `Stay` over the one engine, not a fresh one.
-fn table() -> Table {
-    let vim = reovim_plugin_vim::Editor::new();
+fn table(init: Option<String>) -> Table {
+    use reovim_plugin_vim::Editor;
+    let vim = init.map_or_else(Editor::new, Editor::with_init);
     Box::new(move |want| {
         let made = match want {
             Want::Named("vim") | Want::Cell => ("vim", vim.booted()),
@@ -127,9 +128,10 @@ fn run(
     (dir, files): (&str, &[String]),
     serve: Serve,
 ) -> Result<u8, Fail> {
+    let init = captured_config(&host.own())?;
     let line = line.map(|line| u64::try_from(line).unwrap_or(u64::MAX));
     let file = files.first().map(String::as_str);
-    let dev = dev::boot(&host, table(), clip(), dir, file, line)?;
+    let dev = dev::boot(&host, table(init), clip(), dir, file, line)?;
     drafts(&host.own(), files)?;
     // The tui takes the Host; what answers a remote holds it too.
     let served = host.clone();
@@ -157,18 +159,39 @@ fn drafts(ctx: &dyn Calls, files: &[String]) -> Result<(), Error> {
         if let Err(error) = opened
             && index > 0
         {
-            warned(ctx, file, error)?;
+            warned(ctx, &format!("open {file}: {}", Fault::Kernel(error)))?;
         }
     }
     Ok(())
 }
 
-/// One name that did not become a draft: `<4>open PATH: CAUSE` in
-/// `/sys/log`, `CAUSE` as [`Fault::Kernel`] prints it.
-fn warned(ctx: &dyn Calls, file: &str, error: Error) -> Result<(), Error> {
+/// Capture the config directory's startup file before any Plugin starts.
+fn captured_config(ctx: &dyn Calls) -> Result<Option<String>, Error> {
+    let Ok(directory) = reovim_host::dirs::config() else { return Ok(None) };
+    let path = format!("{directory}/reovim/init");
+    match captured(&path) {
+        Ok(text) => Ok(text),
+        Err(cause) => {
+            warned(ctx, &format!("init: {path}: {cause}"))?;
+            Ok(None)
+        }
+    }
+}
+
+/// One read to EOF, decoded whole before the caller can run any line.
+fn captured(path: &str) -> Result<Option<String>, &'static str> {
+    let bytes = match reovim_host::fs::read_all(path) {
+        Ok(bytes) => bytes,
+        Err(reovim_host::Error::NotFound) => return Ok(None),
+        Err(_) => return Err("unreadable"),
+    };
+    String::from_utf8(bytes).map(Some).map_err(|_| "not UTF-8")
+}
+
+/// A startup failure in the shared diagnostic stream.
+fn warned(ctx: &dyn Calls, text: &str) -> Result<(), Error> {
     let entry = cell::resolve(ctx, ROOT, "/sys/log")?;
-    let said = format!("<4>open {file}: {}", Fault::Kernel(error));
-    ops::put(ctx, entry, said.into_bytes()).map(|_| ())
+    ops::put(ctx, entry, format!("<4>{text}").into_bytes()).map(|_| ())
 }
 
 fn drive(tui: &mut Tui, serve: Serve, host: &Host) -> Result<u8, Fail> {
@@ -301,6 +324,22 @@ mod tests {
     use crate::local::Local;
     use crate::server;
 
+    #[test]
+    fn a_capture_is_the_text_or_why_not() {
+        let dir = std::env::temp_dir()
+            .join(format!("reovim-capture-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        let file = dir.join("init");
+        let path = file.to_str().unwrap();
+        assert_eq!(super::captured(path), Ok(None));
+        std::fs::write(&file, b"set ic\n").unwrap();
+        assert_eq!(super::captured(path), Ok(Some("set ic\n".into())));
+        std::fs::write(&file, [0xff]).unwrap();
+        assert_eq!(super::captured(path), Err("not UTF-8"));
+        assert_eq!(super::captured(dir.to_str().unwrap()), Err("unreadable"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
     /// `a`, `b` and a directory `d` on disk, `missing` not: `drafts`
     /// over the four, the ask (`dev::boot`'s own `file`) among them,
     /// makes two, in order, and says the other two once each, but not
@@ -320,7 +359,7 @@ mod tests {
         };
         let client = Local::client(&kernel, None).unwrap();
         let Ok(host) = client::over(client) else { panic!("no host") };
-        dev::boot(&host, table(), clip(), "", Some("a"), None).unwrap();
+        dev::boot(&host, table(None), clip(), "", Some("a"), None).unwrap();
 
         let own = host.own();
         let ctx: &dyn Calls = &own;

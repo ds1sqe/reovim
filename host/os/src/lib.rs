@@ -78,6 +78,21 @@ pub mod fs {
         backend::stat(path)
     }
 
+    /// One opened file read to EOF. Atomic pathname replacement selects
+    /// either file; concurrent in-place writes are not a snapshot.
+    ///
+    /// ```
+    /// fn load(path: &str) -> Result<Vec<u8>, reovim_host::Error> {
+    ///     reovim_host::fs::read_all(path)
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    /// As [`read`], including `Io` for a directory.
+    pub fn read_all(path: &str) -> Result<Vec<u8>, Error> {
+        backend::read_all(path)
+    }
+
     /// Up to `len` bytes of the file at `path` from offset `at`; fewer
     /// at the end.
     ///
@@ -409,11 +424,35 @@ pub mod dirs {
         backend::runtime()
     }
 
+    /// The config directory, selected without creating it.
+    ///
+    /// ```
+    /// let directory = reovim_host::dirs::config();
+    /// if let Ok(directory) = directory {
+    ///     assert!(!directory.is_empty());
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    /// `NotFound` when no base is available; `Unsupported` without a backend.
+    pub fn config() -> Result<String, Error> {
+        backend::config()
+    }
+
     /// The working directory.
     ///
     /// # Errors
     /// `Io` when there is none; `Unsupported` without a backend.
     pub fn work() -> Result<String, Error> {
         backend::work()
+    }
+}
+
+#[cfg(all(test, not(feature = "std")))]
+mod empty_tests {
+    #[test]
+    fn config_and_whole_file_read_are_unsupported_without_a_backend() {
+        assert_eq!(super::dirs::config(), Err(super::Error::Unsupported));
+        assert_eq!(super::fs::read_all("init"), Err(super::Error::Unsupported));
     }
 }

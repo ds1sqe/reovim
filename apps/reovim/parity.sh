@@ -16,6 +16,8 @@ TMUX=(tmux -L "reovim-parity-$$")
 # Each case's editor listens; its socket goes here, not in the user's
 # runtime directory.
 export XDG_RUNTIME_DIR="$DIR/run"
+mkdir -p "$DIR/config"
+export XDG_CONFIG_HOME="$DIR/config"
 # The session of the case under way, one per case on one server.
 SESSION=""
 # tmux kills the pane's shell, not the editor under it, so an editor

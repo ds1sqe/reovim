@@ -10,3 +10,11 @@ Modules below.
   the first FILE shown and the rest opened as drafts.
 - `web`: the browser app. An editor page opens the gui Client over a
   WebSocket, bridged by `bridge.mjs` to reovim's Unix socket.
+
+The terminal app captures `reovim/init` in the config directory before
+starting a Plugin. Its lines run once at the first Vim frame through the
+same command path as typed lines. Blank lines and leading `#` comments are
+skipped. Diagnostics go to `dmesg`; an error does not stop the next line,
+while a successful region switch or quit ends the script. Typed commands'
+partial effects remain after an error; this is not transactional settings
+validation. Config selection belongs to the host adapter.
