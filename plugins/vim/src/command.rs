@@ -14,8 +14,10 @@ type Lines = (usize, usize);
 
 impl Vim {
     /// `:`, `/` or `?`: the prompt opens over an empty line of the
-    /// two, the mode to return to kept.
+    /// two, the mode to return to kept, and the want with it: nvim's
+    /// `nv_colon` and `nv_search` leave `curswant` alone.
     pub(crate) fn prompt(&mut self, prompt: char, count: usize) -> Effect {
+        self.keep_want = true;
         self.prompt.at = prompt;
         self.prompt.line().put(0, "");
         // `:` from a selection leaves it and names its lines.
@@ -32,8 +34,12 @@ impl Vim {
 
     /// One key on the command line, which is the shell's line editor:
     /// its acts, and before them the keys Vim reads itself, the two
-    /// ways out of the prompt and the wildmenu's own.
+    /// ways out of the prompt and the wildmenu's own. No key on the
+    /// line moves the cursor, so every one keeps the want; what the
+    /// line runs sets it where it lands, as nvim's ex commands do
+    /// through `beginline`.
     pub(crate) fn command(&mut self, key: Key) -> Effect {
+        self.keep_want = true;
         match key {
             // The line editor makes nothing of Esc, and keeps the line
             // on a Backspace that has nothing to take; here both leave
@@ -169,6 +175,8 @@ impl Vim {
         let count = core::mem::take(&mut self.pending.count);
         if self.prompt.at != ':' {
             let forward = self.prompt.at == '/';
+            // A search is a motion: the want is set where it lands.
+            self.keep_want = false;
             return self.searched(line, forward, count.max(1));
         }
         self.repeat.record.clear();
@@ -367,8 +375,11 @@ impl Vim {
             return Effect::Nothing;
         }
         let Some(line) = last else { return self.not_found() };
+        // Where nvim's `do_sub` ends: `beginline(BL_WHITE | BL_FIX)`,
+        // the want set there.
         self.cursor = self.first_non_blank(line);
         self.clamp();
+        self.want = self.wanted();
         self.joining = false;
         Effect::Edits(edits)
     }

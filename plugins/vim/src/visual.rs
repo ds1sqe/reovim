@@ -17,11 +17,12 @@ pub enum Visual {
 
 /// A selection, kept for `gv`: its ends are the marks `<` and `>`,
 /// which an edit since moves with the text, `backward` saying which
-/// end was the cursor's.
+/// end was the cursor's, `want` the column it wanted there, as nvim's
+/// `vi_curswant` keeps it.
 #[derive(Clone, Copy, Debug)]
 pub struct Selection {
     pub kind: Visual,
-    pub to_end: bool,
+    pub want: usize,
     pub backward: bool,
 }
 
@@ -74,7 +75,7 @@ impl Vim {
             self.marks.local.insert('<', lo);
             self.marks.local.insert('>', hi);
             self.last_visual =
-                Some(Selection { kind, to_end: self.to_end, backward });
+                Some(Selection { kind, want: self.want, backward });
         }
         self.mode = Mode::Normal;
         self.clamp();
@@ -82,7 +83,9 @@ impl Vim {
     }
 
     /// `gv`: the last selection again, its ends read from `<` and
-    /// `>`, wherever an edit since has moved them.
+    /// `>`, wherever an edit since has moved them, and its want back
+    /// with them, as nvim's `nv_gv_cmd` restores `vi_curswant`: a `$`
+    /// selection reaches every line's end again.
     pub(crate) fn reselect(&mut self) -> Effect {
         let Some(last) = self.last_visual else { return Effect::Nothing };
         let (Some(&lo), Some(&hi)) =
@@ -94,7 +97,8 @@ impl Vim {
         let (anchor, cursor) = if last.backward { (hi, lo) } else { (lo, hi) };
         self.anchor = anchor.min(self.bound());
         self.cursor = cursor.min(self.bound());
-        self.to_end = last.to_end;
+        self.want = last.want;
+        self.keep_want = true;
         self.mode = Mode::Visual(last.kind);
         Effect::Moved
     }
