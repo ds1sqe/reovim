@@ -44,7 +44,7 @@ use reovim_kernel_interface::{
 use reovim_sdk::dynamic::Value;
 use reovim_sdk::path;
 use reovim_sdk::walk::ROOT;
-use reovim_sdk::{cell, decode, encode, ops};
+use reovim_sdk::{cell, decode, encode, ops, progress};
 use reovim_search_api::{ENTRY, entries, search};
 use reovim_text_api::{history, publish, text};
 
@@ -88,6 +88,7 @@ fn holding(ctx: &dyn Calls, view: Rd, want: &Want) -> Result<Sought, Error> {
             held,
             matches,
             at: 0,
+            progress: cell::resolve(ctx, view, "progress")?,
         })
     };
     found().inspect_err(|_| {
@@ -197,6 +198,11 @@ struct Stay {
     search: Option<Rd>,
     /// The view Vim holds open, and where it has read to.
     sought: RefCell<Option<Sought>>,
+    /// How many reads of `matches` this frame has made: zeroed at the
+    /// head of `framed`, and spent by a key's own `act`, by a wait's
+    /// crank and by `wanted` alike, so no frame reads more than
+    /// `READS` times however the reads are asked for.
+    reads: Cell<usize>,
     /// The rds under Vim's home, as `start` was answered with them.
     cells: Cells,
     /// What the runs of Vim's own names printed, until each is read
@@ -222,6 +228,9 @@ struct Sought {
     held: Handle,
     matches: Handle,
     at: u64,
+    /// The view's own `progress`, which the row's three numbers are
+    /// read from after each slice. A read of it cranks nothing.
+    progress: Rd,
 }
 
 /// What a read of one of Vim's own rds is a read of: the rds `start`
@@ -350,6 +359,7 @@ impl Module for Editor {
             surface,
             search: cell::resolve(ctx, ROOT, "/self/search/open").ok(),
             sought: RefCell::new(None),
+            reads: Cell::new(0),
             cells,
             outputs: cell::Cells::default(),
             stale: Cell::new(false),
@@ -484,6 +494,7 @@ impl Editor {
     /// has now; the View.
     fn framed(&self, ctx: &dyn Calls) -> Result<Vec<u8>, Error> {
         let rows = self.sized(ctx)?;
+        self.stay()?.reads.set(0);
         let init = self.init.borrow_mut().take();
         if let Some(text) = init {
             self.began(ctx, &text)?;
@@ -499,8 +510,12 @@ impl Editor {
         // already stale skips it: the row already says W12, and a
         // flush of a draft already known stale would cost a read of
         // it back for nothing.
+        // A frame that ends waiting ends no revision either: a run
+        // that waits at a search is one revision still, and the edit
+        // typed just before it goes down at the landing.
         let mode = self.vim.borrow().mode();
-        if mode != Mode::Insert && !self.stay()?.stale.get() {
+        let waiting = self.vim.borrow().waiting();
+        if mode != Mode::Insert && !self.stay()?.stale.get() && !waiting {
             self.stale(ctx, |ctx| self.sync(ctx))?;
         }
         Ok(encode(&self.vim.borrow_mut().view(rows)))
@@ -560,18 +575,79 @@ impl Editor {
         if self.stay()?.asked.get() {
             return Ok(false);
         }
+        // While a search waits the queue stands: the frame cranks the
+        // fill instead, and the keys behind it run in the frame the
+        // landing happens in.
+        if self.vim.borrow().waiting() {
+            return self.waited(ctx);
+        }
         let Some(queued) = self.queue.borrow_mut().pop_front() else {
             return Ok(false);
         };
         let effect = self.key(queued);
+        let result = self.performed(ctx, effect);
+        self.vim.borrow_mut().macros.fed = false;
+        result?;
+        self.tail();
+        Ok(true)
+    }
+
+    /// One turn of a frame while a search waits: the key that ends it,
+    /// or one crank of its fill. `false` where the frame has spent its
+    /// reads, which is what ends the frame and leaves the rest to the
+    /// next one.
+    fn waited(&self, ctx: &dyn Calls) -> Result<bool, Error> {
+        if let Some(cut) = self.interrupting() {
+            // Drained through the key: the typed keys that stood
+            // behind the search go with it, and what was typed after
+            // it runs.
+            self.queue.borrow_mut().drain(..=cut);
+            self.vim.borrow_mut().interrupted();
+            self.tail();
+            return Ok(true);
+        }
+        if self.stay()?.reads.get() >= READS {
+            return Ok(false);
+        }
+        let wanted = self.vim.borrow_mut().wants();
+        let Some(want) = wanted else { return Ok(false) };
+        let effect = self.sought(ctx, &want)?;
+        self.performed(ctx, effect)?;
+        self.tail();
+        Ok(true)
+    }
+
+    /// Where the key that ends a wait stands in the queue: the first
+    /// `<C-c>` anywhere in it, or an `<Esc>` that is its front key.
+    ///
+    /// An `<Esc>` behind another key belongs to that key, `ix<Esc>`
+    /// typed while a search waits being an insert at the landing; a
+    /// fed one is a key of its run and waits as any other does.
+    fn interrupting(&self) -> Option<usize> {
+        let queue = self.queue.borrow();
+        let ctrl_c = queue
+            .iter()
+            .position(|queued| matches!(queued, Queued::Typed(Key::Ctrl('c'))));
+        let esc = matches!(queue.front(), Some(Queued::Typed(Key::Esc)));
+        ctrl_c.or_else(|| esc.then_some(0))
+    }
+
+    /// One effect performed as a key's is, with the clipboard after
+    /// it; a failure leaves nothing queued behind it.
+    fn performed(&self, ctx: &dyn Calls, effect: Effect) -> Result<(), Error> {
         let result =
             self.act(ctx, effect).and_then(|()| self.write_clipped(ctx));
-        self.vim.borrow_mut().macros.fed = false;
         if result.is_err() {
             self.queue.borrow_mut().clear();
             self.vim.borrow_mut().held = Held::default();
         }
-        result?;
+        result
+    }
+
+    /// The tail every key and every crank has: what was let go back at
+    /// the queue's front, then the bell or the budget dropping what a
+    /// macro fed.
+    fn tail(&self) {
         // What this key let go goes to the queue's front, before the
         // bell's check below, so a bell drops a macro's released keys
         // with the rest of its run. A released key that lets go of
@@ -594,7 +670,6 @@ impl Editor {
         if exhausted {
             self.says(&format!("@: stopped after {BUDGET} keys"));
         }
-        Ok(true)
     }
 
     /// Fed context survives the engine call until its whole effect finishes.
@@ -758,6 +833,14 @@ impl Editor {
     /// no wait outlives it.
     fn sought(&self, ctx: &dyn Calls, want: &Want) -> Result<Effect, Error> {
         let stay = self.stay()?;
+        // The frame's own bound: with none left this reads nothing,
+        // hands nothing to the engine and answers nothing, which ends
+        // the loop above and leaves the rest to the next frame.
+        let made = stay.reads.get();
+        if made >= READS {
+            return Ok(Effect::Nothing);
+        }
+        stay.reads.set(made + 1);
         let Some(open) = stay.search else {
             return Ok(self.answered(want.epoch, &[], Filled::Absent));
         };
@@ -813,31 +896,48 @@ impl Editor {
         stay: &Stay,
         epoch: u64,
     ) -> Result<Effect, Error> {
-        let (h, at) = {
+        let (h, at, progress) = {
             let held = stay.sought.borrow();
             let sought = held.as_ref().ok_or(Error::Closed)?;
-            (sought.matches, sought.at)
+            (sought.matches, sought.at, sought.progress)
         };
         let len = u32::try_from(READ * ENTRY).unwrap_or(u32::MAX);
-        match ops::read(ctx, h, at, len) {
-            Ok(bytes) if bytes.is_empty() => {
-                Ok(self.answered(epoch, &[], Filled::Whole))
-            }
+        let (found, filled) = match ops::read(ctx, h, at, len) {
+            Ok(bytes) if bytes.is_empty() => (Vec::new(), Filled::Whole),
             Ok(bytes) => {
                 onward(stay, bytes.len());
-                Ok(self.answered(epoch, &listed(&bytes), Filled::More))
+                (listed(&bytes), Filled::More)
             }
-            Err(Error::Busy) => Ok(self.answered(epoch, &[], Filled::More)),
+            Err(Error::Busy) => (Vec::new(), Filled::More),
             Err(error @ (Error::NoSpace | Error::Invalid)) => {
                 let kept = ops::read(ctx, h, at, len).unwrap_or_default();
                 onward(stay, kept.len());
-                Ok(self.answered(epoch, &listed(&kept), refused(error)))
+                (listed(&kept), refused(error))
             }
             Err(error) => {
                 self.answered(epoch, &[], Filled::Refused);
-                Err(error)
+                return Err(error);
             }
+        };
+        // The row's three numbers, while there is more to come. Both
+        // reads are of a local rd and crank nothing.
+        if filled == Filled::More {
+            self.told(ctx, progress)?;
         }
+        Ok(self.answered(epoch, &found, filled))
+    }
+
+    /// How far the fill has gone, for the row: the two numbers the
+    /// view's `progress` holds, and what its own stamps make of them.
+    /// A Host with no clock stamps one time for both, and there is no
+    /// measure of what is left there.
+    fn told(&self, ctx: &dyn Calls, progress: Rd) -> Result<(), Error> {
+        let found = progress::read(ctx, progress)?;
+        let info = ops::info(ctx, progress)?;
+        let measured = info.mtime != info.ctime;
+        let eta = measured.then(|| progress::eta(&info, &found)).flatten();
+        self.vim.borrow_mut().filling(found.done, found.total, eta);
+        Ok(())
     }
 
     /// What `matched` made of one read.
@@ -864,10 +964,7 @@ impl Editor {
         if gone {
             unsought(ctx, &stay);
         }
-        let mut left = READS;
-        while left > 0 && self.filling(ctx)? {
-            left -= 1;
-        }
+        while self.filling(ctx)? {}
         Ok(())
     }
 
@@ -875,6 +972,9 @@ impl Editor {
     /// wants none: the marks are off, the list is as full as it will
     /// get, or `:noh` hid it.
     fn filling(&self, ctx: &dyn Calls) -> Result<bool, Error> {
+        if self.stay()?.reads.get() >= READS {
+            return Ok(false);
+        }
         let wanted = self.vim.borrow_mut().wants();
         let Some(want) = wanted else { return Ok(false) };
         let effect = self.sought(ctx, &want)?;

@@ -12,15 +12,16 @@ use std::rc::Rc;
 
 use common::{cat, one};
 use reovim_client::dev::Clip;
-use reovim_client::{Host, Rd};
+use reovim_client::{Host, Rd, Rvm, SELF, bin};
 use reovim_client_api::notation::keys;
 use reovim_client_api::{Key, MATCH, NONE, window};
-use reovim_client_tui::Tui;
+use reovim_client_tui::{Step, Tui};
 use reovim_kernel_interface::{
     Calls, Driver, Error, Hash, Module, Reply, Rights,
 };
 use reovim_module_search::Search;
 use reovim_plugin_vim::Editor;
+use reovim_plugin_vim::bins::subst;
 use reovim_rig::{Rig, lines, listed, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
@@ -333,5 +334,291 @@ fn ten_idle_frames_read_nothing() {
         ops::info(&ctx, progress).unwrap().mtime,
         mtime,
         "and so no slice"
+    );
+}
+
+/// A text of about 4 KiB: two-byte lines of `a`, and `zzz` alone on
+/// the last. At the budget the cases below spend, a frame's four
+/// slices cover some 256 offsets of it, so a search over it stands
+/// across many frames.
+fn long() -> Vec<u8> {
+    let mut text = "a\n".repeat(2047);
+    text.push_str("zzz\n");
+    text.into_bytes()
+}
+
+/// An editor over `text` whose search Module spends at most `budget`
+/// on one slice, so a search over a text of any size waits.
+fn spending(
+    name: &str,
+    text: &[u8],
+    budget: usize,
+) -> (Rig, Rc<Host>, Rc<Editor>, Tui) {
+    let rig = Rig::new(name);
+    rig.file("file", text);
+    let host = rig.searching(Some(budget));
+    let vim = Editor::new();
+    let tui =
+        opened(&host, one(vim.clone()), Clip::none(), "", Some("file"), None)
+            .unwrap();
+    (rig, host, vim, tui)
+}
+
+/// Frames with no key until the search that waits has landed, and how
+/// many it took.
+fn landed(tui: &mut Tui, vim: &Rc<Editor>) -> usize {
+    for frames in 1..200 {
+        tui.tick().unwrap();
+        if !vim.engine().waiting() {
+            return frames;
+        }
+    }
+    panic!("the search never landed");
+}
+
+/// `text`'s keys as one write of the keyboard, so the frame after
+/// them finds every one of them in its queue at once.
+fn together(host: &Rc<Host>, text: &str) {
+    let ctx = host.own();
+    let keyboard = cell::resolve(&ctx, SELF, "dev/input/keyboard").unwrap();
+    let mut codes = Vec::new();
+    for key in keys(text).unwrap() {
+        codes.extend(key.code().to_le_bytes());
+    }
+    ops::put(&ctx, keyboard, codes).unwrap();
+}
+
+#[test]
+fn a_long_search_answers_moved_then_lands_where_the_whole_one_lands() {
+    let (_rig, _host, vim, mut tui) = spending("search-long", &long(), 64);
+    typed(&mut tui, "/zzz<CR>");
+    assert_eq!(vim.engine().position(), (0, 0), "nothing has moved yet");
+    assert!(vim.engine().waiting(), "and the search stands");
+    let frames = landed(&mut tui, &vim);
+    assert!(frames > 1, "it took one frame alone");
+    assert!(frames < 100, "it took {frames} frames");
+
+    // Where the same search lands with no budget to run out of.
+    let (_rig, _host, whole, mut tui) = over("search-long-whole", &long());
+    typed(&mut tui, "/zzz<CR>");
+    assert!(!whole.engine().waiting(), "one slice covered it");
+    assert_eq!(vim.engine().position(), whole.engine().position());
+}
+
+#[test]
+fn an_operator_deletes_on_landing_and_one_u_undoes_it() {
+    let (_rig, _host, vim, mut tui) =
+        spending("search-long-operator", &long(), 64);
+    let before = vim.engine().text().to_string();
+    typed(&mut tui, "d/zzz<CR>");
+    assert!(vim.engine().waiting());
+    assert_eq!(
+        vim.engine().text(),
+        before,
+        "nothing is deleted while it waits"
+    );
+    landed(&mut tui, &vim);
+    assert_eq!(vim.engine().text(), "zzz\n", "the delete ran at the landing");
+    typed(&mut tui, "u");
+    assert_eq!(vim.engine().text(), before, "and one `u` takes it back");
+}
+
+#[test]
+fn keys_typed_meanwhile_run_after_it_in_order() {
+    let (_rig, _host, vim, mut tui) =
+        spending("search-long-queued", &long(), 64);
+    let before = vim.engine().text().to_string();
+    typed(&mut tui, "/zzz<CR>");
+    typed(&mut tui, "ix<Esc>");
+    assert!(vim.engine().waiting(), "the keys wait behind the search");
+    assert_eq!(vim.engine().text(), before, "and change nothing meanwhile");
+    landed(&mut tui, &vim);
+    assert!(
+        vim.engine().text().ends_with("\nxzzz\n"),
+        "the `x` stands at the match"
+    );
+}
+
+#[test]
+fn ctrl_c_anywhere_and_esc_at_the_front_end_it() {
+    // A first line of two chars, so the `l` after the interrupt has
+    // somewhere to go.
+    let mut text = String::from("ab\n");
+    text.push_str(&"a\n".repeat(2046));
+    text.push_str("zzz\n");
+    let (_rig, host, vim, mut tui) =
+        spending("search-long-interrupt", text.as_bytes(), 64);
+    let before = vim.engine().text().to_string();
+    typed(&mut tui, "d/zzz<CR>");
+    assert!(vim.engine().waiting());
+    // The `x` stood behind the search, so it goes through the `<C-c>`
+    // with it; the `l` was typed after and runs.
+    together(&host, "x<C-c>l");
+    tui.tick().unwrap();
+    assert!(!vim.engine().waiting(), "the interrupt ended the wait");
+    assert_eq!(vim.engine().text(), before, "the text is whole");
+    assert_eq!(vim.engine().position(), (0, 1), "one to the right");
+    assert_eq!(cat(&host, "pending"), "", "no operator is left waiting");
+    assert_eq!(said(&mut tui), "", "and nothing is said");
+
+    typed(&mut tui, "0d/zzz<CR>");
+    assert!(vim.engine().waiting());
+    together(&host, "<Esc>l");
+    tui.tick().unwrap();
+    assert!(!vim.engine().waiting(), "an Esc at the front ends it too");
+    assert_eq!(vim.engine().text(), before);
+    assert_eq!(vim.engine().position(), (0, 1));
+    assert_eq!(cat(&host, "pending"), "");
+}
+
+#[test]
+fn a_macro_waits_at_its_search_and_is_one_undo_step() {
+    // The macro's own two lines, then the long text. Its search is
+    // anchored, so the line it leaves behind — `/^zzz` — is no match
+    // of its own and the landing is the text's last line.
+    let mut text = String::from("x/^zzz\nx\n");
+    text.push_str(&String::from_utf8(long()).unwrap());
+    let (rig, _host, vim, mut tui) =
+        spending("search-long-macro", text.as_bytes(), 64);
+    let mut other = rig.client();
+    let source = other.resolve("/module/fs/root/file").unwrap();
+    let buffer = other.resolve(&format!("/module/text/{}", source.0)).unwrap();
+    let before = other.read_all(buffer).unwrap();
+
+    typed(&mut tui, "\"a2yy@a");
+    assert!(vim.engine().waiting(), "the run waits at its search");
+    assert_eq!(
+        other.read_all(buffer).unwrap(),
+        before,
+        "the frame that waits ends no revision"
+    );
+    landed(&mut tui, &vim);
+    assert!(
+        vim.engine().text().starts_with("/^zzz\nx\n"),
+        "{}",
+        &vim.engine().text()[..16]
+    );
+    assert!(vim.engine().text().ends_with("\nzz\n"), "the landing's `x`");
+    typed(&mut tui, "u");
+    assert_eq!(vim.engine().text(), String::from_utf8(before).unwrap());
+}
+
+#[test]
+fn a_replayed_n_waits_like_a_typed_one() {
+    let (_rig, _host, vim, mut tui) =
+        spending("search-long-repeat", &long(), 64);
+    let before = vim.engine().text().to_string();
+    typed(&mut tui, "/zzz<CR>");
+    landed(&mut tui, &vim);
+    typed(&mut tui, "ggdn");
+    assert_eq!(vim.engine().text(), "zzz\n", "the list it landed from held it");
+    typed(&mut tui, "u");
+    assert_eq!(vim.engine().text(), before, "and the undo drops that list");
+    // Twice: the second `.` is over a list the second `u` dropped too.
+    for _ in 0..2 {
+        typed(&mut tui, ".");
+        assert!(vim.engine().waiting(), "a replayed `n` waits as a typed one");
+        landed(&mut tui, &vim);
+        assert_eq!(vim.engine().text(), "zzz\n", "and deletes what `dn` did");
+        typed(&mut tui, "u");
+        assert_eq!(vim.engine().text(), before);
+    }
+}
+
+#[test]
+fn a_spent_offset_is_e363_and_length_alone_is_not() {
+    let mut text = "a\n".repeat(2047);
+    text.push_str(&"a".repeat(30));
+    text.push('\n');
+    let (_rig, _host, vim, mut tui) =
+        spending("search-long-spent", text.as_bytes(), 64);
+    typed(&mut tui, "/\\(a*\\)*b<CR>");
+    assert!(vim.engine().waiting(), "a long text alone never says E363");
+    landed(&mut tui, &vim);
+    assert_eq!(
+        said(&mut tui),
+        "E363: pattern costs more than the matcher will spend: \\(a*\\)*b"
+    );
+}
+
+/// The percent the row holds, in thousandths.
+fn percent(row: &str) -> u64 {
+    let (_, rest) = row.split_once("]  ").expect(row);
+    let (shown, _) = rest.split_once('%').expect(row);
+    let (units, thousandths) = shown.split_once('.').expect(row);
+    units.parse::<u64>().unwrap() * 1000 + thousandths.parse::<u64>().unwrap()
+}
+
+#[test]
+fn the_row_moves_with_no_key() {
+    let (_rig, _host, vim, mut tui) = spending("search-long-row", &long(), 64);
+    typed(&mut tui, "/zzz<CR>");
+    let mut last = 0;
+    let mut seen = 0;
+    while vim.engine().waiting() {
+        assert_eq!(tui.tick().unwrap(), Step::Changed, "the row moved");
+        if !vim.engine().waiting() {
+            break;
+        }
+        let row = said(&mut tui);
+        assert!(row.starts_with("/zzz  [?/0+]  "), "{row}");
+        let now = percent(&row);
+        assert!(now > last, "{now} is not past {last}");
+        last = now;
+        seen += 1;
+    }
+    assert!(seen > 1, "only {seen} rows were drawn");
+}
+
+#[test]
+fn a_host_with_no_clock_shows_no_eta() {
+    let rig = Rig::new("search-long-clockless");
+    rig.file("file", &long());
+    // A Host whose clock answers 0, as host/os's empty one does: the
+    // `progress` rd's own stamps are then one time, and there is no
+    // measure of what is left.
+    let host = Rc::new(Host::over(rig.client(), || 0));
+    bin::boot(&host, Rvm::none()).unwrap();
+    let search = Rc::new(Search::with_budget(64));
+    host.load("search", search.clone(), vec![search]).unwrap();
+    let vim = Editor::new();
+    let mut tui =
+        opened(&host, one(vim.clone()), Clip::none(), "", Some("file"), None)
+            .unwrap();
+    typed(&mut tui, "/zzz<CR>");
+    let mut seen = 0;
+    while vim.engine().waiting() {
+        tui.tick().unwrap();
+        if !vim.engine().waiting() {
+            break;
+        }
+        let row = said(&mut tui);
+        assert!(row.contains('%'), "{row}");
+        assert!(!row.contains('~'), "no clock, no time left: {row}");
+        seen += 1;
+    }
+    assert!(seen > 1, "only {seen} rows were drawn");
+}
+
+#[test]
+fn a_call_from_elsewhere_that_edits_ends_the_wait() {
+    let (_rig, host, vim, mut tui) =
+        spending("search-long-called", &long(), 64);
+    typed(&mut tui, "d/zzz<CR>");
+    assert!(vim.engine().waiting());
+    // A name of Vim's own, run from a Client of its own while the
+    // search waits: it edits, so it ends the wait.
+    let ctx = host.own();
+    let rd = cell::resolve(&ctx, ROOT, "/self/vim/bin/substitute").unwrap();
+    let args = subst::Args { from: 0, to: 0, spec: String::from("/a/z/") };
+    ops::call_by_name(&ctx, rd, "run", encode(&args)).unwrap();
+    assert!(!vim.engine().waiting(), "the edit ended it");
+    assert_eq!(cat(&host, "pending"), "", "no operator is left waiting");
+    assert!(vim.engine().text().starts_with("z\na\n"), "the substitute's own");
+    tui.tick().unwrap();
+    tui.tick().unwrap();
+    assert!(
+        vim.engine().text().starts_with("z\na\n"),
+        "and no frame after it deletes"
     );
 }

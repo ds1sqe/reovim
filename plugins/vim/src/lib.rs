@@ -786,6 +786,16 @@ impl Vim {
         self.found.after.clear();
         self.found.before.clear();
         self.found.filled = Filled::More;
+        self.found.shown = None;
+        // An edit from anywhere ends a wait, and here alone: the list
+        // the motion waited on is gone, so there is nothing left to
+        // run it again on. Unconditional, this would put `pending`
+        // back at every edit, and a record left would hold `d/b<CR>`
+        // before the next change's own keys.
+        if self.found.waiting.take().is_some() {
+            self.pending = Pending::default();
+            self.repeat.record.clear();
+        }
         let source = self.source;
         self.marks.moved(
             edit,
@@ -1636,6 +1646,7 @@ impl Vim {
     fn processed(&mut self, key: Key, past: bool) -> Effect {
         let shown = !self.message.is_empty();
         self.message.clear();
+        self.found.shown = None;
         let taken = self.bound_key(key, past);
         let effect = taken.unwrap_or_else(|| self.acted(key));
         let message = shown || !self.message.is_empty();
@@ -1974,9 +1985,10 @@ impl Vim {
     pub fn status(&self) -> String {
         let mut status = match self.mode {
             _ if !self.message.is_empty() => self.message.clone(),
+            Mode::Command => self.prompt_status(),
+            _ if self.waiting() || self.found.shown.is_some() => self.row(),
             Mode::Normal => String::new(),
             Mode::Insert => String::from("-- INSERT --"),
-            Mode::Command => self.prompt_status(),
             Mode::Visual(Visual::Char) => String::from("-- VISUAL --"),
             Mode::Visual(Visual::Line) => String::from("-- VISUAL LINE --"),
             Mode::Visual(Visual::Block) => String::from("-- VISUAL BLOCK --"),

@@ -821,3 +821,109 @@ fn a_wait_runs_again_as_its_key_came() {
         "the repeat's own re-run left the last change alone"
     );
 }
+
+#[test]
+fn a_reload_ends_the_wait() {
+    let mut vim = on("ab\n");
+    assert_eq!(typed(&mut vim, "d/b<CR>"), want(&vim, "b", 0));
+    assert!(vim.waiting(), "the operator and its search stand");
+    // Another Client's edit, read back: the list the wait was of goes
+    // at `marked`, and the wait goes with it.
+    vim.loaded(b"xy\n");
+    assert!(!vim.waiting(), "the reload ended it");
+    assert_eq!(vim.showcmd(), "", "the operator went with it");
+    typed(&mut vim, "x");
+    assert_eq!(vim.text(), "y\n");
+    typed(&mut vim, ".");
+    assert_eq!(vim.text(), "\n", "the record was the `x` alone");
+}
+
+#[test]
+fn an_interrupt_puts_pending_back() {
+    let mut vim = on("ab\nab\n");
+    typed(&mut vim, "x");
+    assert_eq!(vim.text(), "b\nab\n");
+    assert_eq!(typed(&mut vim, "2d/b<CR>"), want(&vim, "b", 0));
+    assert_eq!(vim.showcmd(), "2d");
+    vim.rung();
+    vim.interrupted();
+    assert!(!vim.waiting(), "the wait is over");
+    assert_eq!(vim.showcmd(), "", "the operator and its count are back");
+    assert!(vim.rung(), "the interrupt rings, so a run ends at it");
+    assert_eq!(vim.position(), (0, 0), "the cursor never moved");
+    assert_eq!(vim.text(), "b\nab\n", "and nothing was deleted");
+    assert_eq!(vim.status(), "", "nothing is said");
+    typed(&mut vim, "x");
+    assert_eq!(vim.text(), "\nab\n");
+    typed(&mut vim, "j.");
+    assert_eq!(vim.text(), "\nb\n", "`.` is the change after it, alone");
+}
+
+#[test]
+fn the_row_words_percent_found_and_eta() {
+    // Two entries, neither of which answers a forward search from the
+    // cursor over a list still filling: it waits, and the row is of
+    // the list it waits on.
+    let mut vim = on("ab\nb\n");
+    typed(&mut vim, "j");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 3));
+    assert_eq!(
+        vim.matched(epoch, &[(3, 1), (1, 1)], Filled::More),
+        want(&vim, "b", 3)
+    );
+    assert!(vim.waiting());
+    vim.filling(421_180, 1_000_000, Some(2_500_000_000));
+    assert_eq!(vim.status(), "/b  [?/2+]  42.118%  ~3s");
+    vim.filling(42_005, 100_000, None);
+    assert_eq!(vim.status(), "/b  [?/2+]  42.005%", "the thousandths padded");
+    vim.filling(0, 0, None);
+    assert_eq!(vim.status(), "/b  [?/2+]", "nothing measured, no percent");
+    vim.filling(421_180, 1_000_000, Some(2_500_000_000));
+    vim.set("zzz");
+    assert_eq!(vim.status(), "E518: Unknown option: zzz", "a message wins");
+    vim.rung();
+    typed(&mut vim, "qa");
+    assert_eq!(
+        vim.status(),
+        "/b  [?/2+]  42.118%  ~3s recording @a",
+        "the record's own words follow the row"
+    );
+
+    // A landing over a list still filling keeps the row, and the list
+    // is filled on for it.
+    let mut vim = on("ab\nb\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 0));
+    assert_eq!(vim.matched(epoch, &[(1, 1)], Filled::More), Effect::Moved);
+    assert_eq!(vim.position(), (0, 1));
+    vim.filling(1_000, 4_000, None);
+    assert_eq!(vim.status(), "/b  [?/1+]  25.000%");
+    assert!(vim.wants().is_some(), "the row's own list is filled on");
+    assert_eq!(typed(&mut vim, "0"), Effect::Moved);
+    assert_eq!(vim.status(), "", "and the next key takes the row");
+    // `N` reverses the last search's direction, and the row leads with
+    // the way it searched, not with the way `/` went.
+    assert_eq!(typed(&mut vim, "N"), want(&vim, "b", 0));
+    vim.filling(1_000, 4_000, None);
+    assert_eq!(vim.status(), "?b  [?/1+]  25.000%");
+    vim.matched(vim.epoch(), &[], Filled::Whole);
+    assert_eq!(vim.status(), "", "a whole list has no row");
+
+    // A landing an operator made shows none: the text is filled again
+    // for nobody.
+    let mut vim = on("ab\nb\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "y/b<CR>"), want(&vim, "b", 0));
+    vim.matched(epoch, &[(1, 1)], Filled::More);
+    assert_eq!(vim.status(), "", "a yank's landing shows no row");
+    let mut vim = on("ab\nb\n");
+    let epoch = vim.epoch();
+    assert_eq!(typed(&mut vim, "d/b<CR>"), want(&vim, "b", 0));
+    assert_eq!(
+        vim.matched(epoch, &[(1, 1)], Filled::More),
+        edit(0, 1, "", false)
+    );
+    assert_eq!(vim.status(), "", "nor does a delete's");
+    assert!(vim.wants().is_none(), "and nothing is filled for one");
+}

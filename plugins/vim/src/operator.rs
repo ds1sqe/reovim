@@ -294,7 +294,7 @@ impl Vim {
             Motion::Lines | Motion::Object { .. } => Effect::Nothing,
             Motion::Search { forward } => self.search(forward, n),
             Motion::SearchAgain { reversed } => {
-                self.search(self.search.forward != reversed, n)
+                self.search(self.again(reversed), n)
             }
             Motion::Star { forward } => self.star(forward, n),
         };

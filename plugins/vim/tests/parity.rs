@@ -96,6 +96,13 @@ fn replay(case: &Path) -> Result<(), String> {
     for key in keys {
         let step =
             tui.key(key).map_err(|fault| format!("{name}: {fault:?}"))?;
+        // No frame of a corpus case ends with a search still waiting:
+        // every case here is over a text one slice covers, and a case
+        // whose end state depended on a later frame would be no
+        // comparison with nvim, which blocks.
+        if vim.engine().waiting() {
+            return Err(format!("{name}: a frame ended waiting"));
+        }
         if let Step::Quit(code) = step {
             quit = Some(code);
             break;

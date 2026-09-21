@@ -1291,6 +1291,43 @@ keys numbered : q ! Enter
 ended numbered
 [[ "$ENDED" == 0 ]] || fail "the numbered-register editor did not quit"
 
+# --- a long search goes on a slice a frame, and says how far ---------
+# A file far past what one slice covers: the row counts up with no key
+# typed, the screen stays live under it, and `<C-c>` ends the wait
+# where it stands, the cursor never having moved. What anybody outside
+# sees of it is the view under the Client's own `/self/search` and the
+# two numbers of its `progress`.
+mkdir -p "$DIR/long"
+{ seq -f 'line %07g' 645000; echo zzzq; } > "$DIR/long/big"
+start long "$DIR/long" "$BIN big"
+editing long big
+lastrow() {
+    "${TMUX[@]}" capture-pane -p -t long | tail -n 1
+}
+keys long / z z z q Enter
+first="$(lastrow)"
+[[ "$first" == *%* ]] || fail "the row says no percent: $first"
+lself=/session/1/client/1/self
+sought="$("$BIN" cli ls "$lself/search")"
+[[ "$sought" == *open* ]] || fail "self/search lists no open: $sought"
+view="$(awk '{ print $NF }' <<< "$sought" | grep -x '[0-9][0-9]*' | tail -n 1)"
+[[ -n "$view" ]] || fail "self/search names no view: $sought"
+numbers="$("$BIN" cli cat "$lself/search/$view/progress" | od -An -tu8)"
+filled="$(awk '{ print $1 }' <<< "$numbers")"
+whole="$(awk '{ print $2 }' <<< "$numbers")"
+[[ -n "$filled" && -n "$whole" && "$filled" -le "$whole" ]] \
+    || fail "progress reads '$numbers'"
+sleep 0.3
+second="$(lastrow)"
+[[ "$second" == *%* ]] || fail "the row stopped saying how far: $second"
+[[ "$first" != "$second" ]] || fail "the row never moved: $first"
+keys long C-c
+shown long 'big  1:1  r'
+[[ "$(lastrow)" != *%* ]] || fail "the row outlived it: $(lastrow)"
+keys long : q Enter
+ended long
+[[ "$ENDED" == 0 ]] || fail "the long pane did not quit"
+
 # --- start to first frame -------------------------------------------
 before="$EPOCHREALTIME"
 start time "$DIR" "$BIN other"

@@ -7,10 +7,11 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt::Write as _;
 
 use reovim_search_api::LINE;
 
-use crate::{Effect, Motion, Vim};
+use crate::{Effect, Motion, Pending, Vim};
 
 /// The most spans a `View` carries (clients/core/api's declaration).
 pub const SPANS: usize = 4096;
@@ -101,6 +102,12 @@ pub struct Found {
     pub before: Vec<(usize, usize)>,
     pub filled: Filled,
     pub waiting: Option<Waiting>,
+    /// `done`, `total` and what is left, as the last read of the
+    /// view's `progress` left them: the row's three numbers.
+    pub progress: Option<(u64, u64, Option<u64>)>,
+    /// The way a landing over a list still filling searched. The row
+    /// stands until the next key, which is what clears it.
+    pub shown: Option<bool>,
 }
 
 /// What the lookup made of the list: where to land, that there is
@@ -230,6 +237,72 @@ impl Vim {
         Effect::Nothing
     }
 
+    /// Which way `n` and `N` go: the last search's own direction, and
+    /// its reverse for `N`. The motion runs by it and the row leads
+    /// with it, so `N` after `/foo` says `?foo` as nvim's message
+    /// does.
+    pub(crate) const fn again(&self, reversed: bool) -> bool {
+        self.search.forward != reversed
+    }
+
+    /// Whether a motion is waiting for entries it has not been handed
+    /// yet, which is what a frame that takes no key is doing.
+    #[must_use]
+    pub const fn waiting(&self) -> bool {
+        self.found.waiting.is_some()
+    }
+
+    /// `<C-c>`, or `<Esc>` as the next key, while a search waits: the
+    /// wait dropped where it stands and the command behind it with
+    /// it. The bell drops what a macro fed; nothing is said, nothing
+    /// has moved, and the view stays open for whoever still wants it.
+    pub fn interrupted(&mut self) {
+        self.found.waiting = None;
+        self.pending = Pending::default();
+        self.repeat.record.clear();
+        self.repeat.first = false;
+        self.ring();
+    }
+
+    /// How far the fill of the list Vim holds has gone: the two
+    /// numbers of the view's `progress` and the time its own stamps
+    /// leave, which the Plugin reads after each slice.
+    pub const fn filling(&mut self, done: u64, total: u64, eta: Option<u64>) {
+        self.found.progress = Some((done, total, eta));
+    }
+
+    /// The row a list still filling shows: the way it searched and the
+    /// pattern, how many entries are held, how far the fill has gone
+    /// and how long that leaves.
+    ///
+    /// The first number is `?` while the list fills. A match's rank is
+    /// the entries before it, and the ones before `from`'s own line
+    /// arrive only after the wrap, so no rank is known until the list
+    /// is whole.
+    pub(crate) fn row(&self) -> String {
+        let forward = match self.found.waiting.map(|waiting| waiting.motion) {
+            Some(Motion::Search { forward } | Motion::Star { forward }) => {
+                forward
+            }
+            Some(Motion::SearchAgain { reversed }) => self.again(reversed),
+            _ => self.found.shown.unwrap_or(self.search.forward),
+        };
+        let lead = if forward { '/' } else { '?' };
+        let held = self.found.after.len() + self.found.before.len();
+        let pattern = &self.search.pattern;
+        let mut row = alloc::format!("{lead}{pattern}  [?/{held}+]");
+        let Some((done, total, eta)) = self.found.progress else { return row };
+        if total > 0 {
+            // Thousandths, so `42.005%` is never read as `42.5%`.
+            let scaled = u128::from(done) * 100_000 / u128::from(total);
+            let _ = write!(row, "  {}.{:03}%", scaled / 1000, scaled % 1000);
+        }
+        if let Some(eta) = eta {
+            let _ = write!(row, "  ~{}s", eta.div_ceil(1_000_000_000));
+        }
+        row
+    }
+
     /// The key of the list the options and the pattern name now.
     fn keyed(&self) -> (String, bool, bool) {
         let Search { pattern, options, .. } = &self.search;
@@ -281,7 +354,7 @@ impl Vim {
     ) -> Option<Effect> {
         let forward = match motion {
             Motion::Search { forward } => forward,
-            Motion::SearchAgain { reversed } => self.search.forward != reversed,
+            Motion::SearchAgain { reversed } => self.again(reversed),
             Motion::Star { forward } => {
                 self.starred(forward).then_some(forward)?
             }
@@ -328,6 +401,11 @@ impl Vim {
         let before = entries.iter().filter(|entry| entry.0 < start);
         self.found.before.extend(before.copied());
         self.found.filled = filled;
+        // The row is of a list still filling; one that has stopped
+        // has no more to say.
+        if filled != Filled::More {
+            self.found.shown = None;
+        }
         // A list nobody waits for — `hlsearch`'s — would else be
         // opened again at every edit, each paying the whole budget.
         if filled == Filled::Spent {
@@ -366,6 +444,14 @@ impl Vim {
     /// A list it begins is from the first byte of the first line
     /// shown, so the window's own rows fill first.
     pub fn wants(&mut self) -> Option<Want> {
+        // A waiting motion's list is what the frame must fill, and a
+        // row shown over one still filling is what the next frame
+        // moves: either comes before `hlsearch`'s own.
+        let row =
+            self.found.shown.is_some() && self.found.filled == Filled::More;
+        if self.found.waiting.is_some() || row {
+            return Some(self.asking());
+        }
         let Search { pattern, options, stale, .. } = &self.search;
         if !options.hlsearch || *stale || pattern.is_empty() || self.lossy {
             return None;
@@ -392,10 +478,22 @@ impl Vim {
             return self.word("E35: No previous regular expression");
         }
         match self.found.nth(self.cursor, forward, n, &self.text) {
-            Looked::At(at) => self.onto(at),
+            Looked::At(at) => self.alighted(at, forward),
             Looked::None => self.not_found(),
             Looked::Unknown => self.unanswered(),
         }
+    }
+
+    /// The landing: the cursor onto `at`, and the row over a list
+    /// still filling. Nothing is shown under an operator: the edit
+    /// would drop the list the row is of, and a text filled again for
+    /// a row is a fill nobody asked for.
+    fn alighted(&mut self, at: usize, forward: bool) -> Effect {
+        let effect = self.onto(at);
+        if self.found.filled == Filled::More && !self.pending.running {
+            self.found.shown = Some(forward);
+        }
+        effect
     }
 
     /// The cursor onto `at`: the entry itself, or the last char of
