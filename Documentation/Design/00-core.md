@@ -109,7 +109,10 @@ Lower and upper are positions, not kinds; a Driver does both.
 - Children are lazy: resolving a name asks the Container's Driver
   `lookup`, which registers the child then. An empty name means
   "register all children now"; the Kernel asks once before the first
-  `children` on that rd.
+  `children` on that rd. A Module's home is the Kernel's rd and its
+  missing names are the Module's: a name the home holds no child of is
+  the Module's first Driver's to answer, and a Module whose first
+  Driver has no `lookup` leaves it `Invalid`.
 - `read` fills `len`; 0 with `Ready(Ok)` is EOF. A stream Driver
   ignores `at`. Where a Driver has frames, one `read` or `write` is one
   frame; per-frame metadata is a package api, not a Kernel op.

@@ -295,6 +295,65 @@ fn lookup_registers_the_child_inside_the_slot() {
     assert_eq!(test.runs(), 2);
 }
 
+/// A Module that registers nothing and whose Driver takes every slot's
+/// default, `lookup` among them.
+struct Quiet;
+
+impl Module for Quiet {
+    fn start(&self, _: &dyn Calls, _: Rd) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl Driver for Quiet {}
+
+/// A Quiet Module loaded beside the Test one under `name`, with
+/// `drivers` of its own, and its home.
+fn quiet(rig: &Rig, name: &str, drivers: usize) -> Rd {
+    let module = Rc::new(Quiet);
+    let driver: Rc<dyn Driver> = module.clone();
+    rig.kernel.load(name, module, vec![driver; drivers]).unwrap();
+    rig.lookup(rig.lookup(ROOT, "module"), name)
+}
+
+#[test]
+fn home_asks_the_modules_first_driver_for_a_name_it_lacks() {
+    let (rig, test) = fresh();
+    let home = rig.lookup(rig.lookup(ROOT, "module"), "t");
+    // What `start` registered is the table's; the slot is not asked.
+    assert_eq!(rig.lookup(home, "cell"), test.cell());
+    let runs = test.runs();
+    let made = rig.lookup(home, "made");
+    assert_eq!(rig.ok(Op::Parent { rd: made }), Out::Rd(home));
+    assert_eq!(test.runs(), runs + 1, "the Driver was asked once");
+    assert_eq!(rig.lookup(home, "made"), made, "cached; not asked again");
+    assert_eq!(test.runs(), runs + 1);
+}
+
+#[test]
+fn a_home_without_a_lookup_answers_invalid() {
+    let (rig, _) = fresh();
+    // One with a Driver that has no `lookup`, one with no Driver.
+    for home in [quiet(&rig, "q", 1), quiet(&rig, "n", 0)] {
+        let op = Op::Lookup { rd: home, name: "made".into() };
+        assert_eq!(rig.err(op), Error::Invalid);
+    }
+}
+
+#[test]
+fn children_of_a_home_list_what_stands() {
+    let (rig, test) = fresh();
+    let home = rig.lookup(rig.lookup(ROOT, "module"), "t");
+    let runs = test.runs();
+    let standing = Out::Rds(vec![test.cell(), test.dir()]);
+    assert_eq!(rig.ok(Op::Children { rd: home }), standing);
+    assert_eq!(test.runs(), runs, "a home is never asked to list");
+    // A name the home made stands in the listing afterwards.
+    let made = rig.lookup(home, "made");
+    let after = Out::Rds(vec![test.cell(), test.dir(), made]);
+    assert_eq!(rig.ok(Op::Children { rd: home }), after);
+}
+
 #[test]
 fn register_follows_the_parent_owner() {
     let (rig, test) = fresh();

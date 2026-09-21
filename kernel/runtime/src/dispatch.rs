@@ -4,8 +4,8 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Caller, Error, Handle, Hash, ModuleId, Op, Out, Rd, Reply, Rights, Token,
-    allows, check_call, part,
+    Caller, DriverId, Error, Handle, Hash, ModuleId, Op, Out, Rd, Reply,
+    Rights, Token, allows, check_call, part,
 };
 
 use reovim_kernel_interface::Kind;
@@ -210,12 +210,42 @@ fn lookup(k: &Kernel, caller: Caller, rd: Rd, name: &str) -> Answer {
         return Ok(Reply::ok(Out::Rd(child)));
     }
     drop(s);
-    let Owner::Driver { module, driver } = owner else {
+    let Some((module, driver)) = serving(owner) else {
         return Err(Error::Invalid);
     };
+    // A Module that registered no Driver at all answers `Invalid`,
+    // which is `driver_index`'s own word for a `DriverId` it lacks.
     let (index, d) = k.served(module, driver)?;
-    let reply = d.lookup(&k.calls(module), rd, name);
+    let reply = named(owner, d.lookup(&k.calls(module), rd, name));
     finish(k, caller, None, Some((module, index)), reply, Out::Rd)
+}
+
+/// Which Driver answers for a name `rd` holds no child of: the one the
+/// row was registered with, and a Module's first for its own home, so a
+/// Module may make a child when it is asked for one rather than
+/// register a row for every rd it might ever serve. The Client's own
+/// tree says the same of `/self/<name>` (`clients/core`, `serving`).
+const fn serving(owner: Owner) -> Option<(ModuleId, DriverId)> {
+    match owner {
+        Owner::Driver { module, driver } => Some((module, driver)),
+        Owner::Kernel(Node::Home(module)) => Some((module, DriverId(0))),
+        Owner::Kernel(_) => None,
+    }
+}
+
+/// The answer to a lookup a home's Driver would not make. A Module
+/// whose first Driver has no `lookup` leaves the names under its home
+/// to what it registered, and a name that is not in the table is not
+/// there: `Invalid`, which a Kernel Container's missing name has
+/// always answered. A Driver's own rows are untouched and keep the
+/// word their Driver said.
+const fn named(owner: Owner, reply: Reply<Rd>) -> Reply<Rd> {
+    match (owner, reply) {
+        (Owner::Kernel(_), Reply::Ready(Err(Error::Unsupported))) => {
+            Reply::Ready(Err(Error::Invalid))
+        }
+        (_, other) => other,
+    }
 }
 
 fn open(k: &Kernel, caller: Caller, rd: Rd, rights: Rights) -> Answer {
