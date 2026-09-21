@@ -81,11 +81,12 @@ fn one_editor_started_twice_serves_every_cell() {
             "recording",
             "options",
             "keymap",
+            "point",
             "bin"
         ]
     );
     assert_eq!(listed(&host, "/self/vim/registers").len(), 38);
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 23);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 24);
     assert_eq!(cat(&host, "mode"), "normal\n");
     assert_eq!(cat(&host, "pending"), "");
     assert_eq!(cat(&host, "registers/a"), "one\n", "yanked before the swap");

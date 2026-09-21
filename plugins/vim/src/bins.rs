@@ -96,6 +96,18 @@ reovim_sdk::declare! {
     record Args { keys: utf8(64), line: utf8(512) }
 }
 
+reovim_sdk::declare! {
+    /// `point`: where the cursor or the selection is, and how to
+    /// spell it. The range reaches it as the environment its host
+    /// set, as `global`'s does.
+    api point ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args {
+        ranged: bool, from: u64, to: u64, col: bool, relative: bool
+    }
+}
+
 /// The names, in the order a `:` line resolves one, each with the
 /// declaration of the shape it takes.
 ///
@@ -105,7 +117,7 @@ reovim_sdk::declare! {
 /// registered in and the order `children(/self/vim/bin)` lists them,
 /// which is where the abbreviation is read from; nothing lists a short
 /// form by hand.
-pub(crate) fn declared() -> [(&'static str, Decl); 23] {
+pub(crate) fn declared() -> [(&'static str, Decl); 24] {
     let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
     [
         ("write", file.clone()),
@@ -133,6 +145,9 @@ pub(crate) fn declared() -> [(&'static str, Decl); 23] {
         // Last, after `wqall`: `:b` is `buffer` still and `:bi` is
         // this one, the listing being the whole of the ex rule.
         ("bind", bound::decl()),
+        // And after `bind`: `:p` is this one, no other name of Vim's
+        // beginning with it, and `:po` is this one too.
+        ("point", point::decl()),
     ]
 }
 
@@ -184,6 +199,7 @@ pub(crate) fn dispatch(
         "delete" => lines::dispatch(vim, ctx, rd, number, input),
         "buffer" | "bdelete" => numbered::dispatch(vim, ctx, rd, number, input),
         "bind" => bound::dispatch(vim, ctx, rd, number, input),
+        "point" => point::dispatch(vim, ctx, rd, number, input),
         _ => Err(Error::Unsupported),
     }
 }
@@ -285,6 +301,26 @@ impl bound::Api for Editor {
     ) -> Result<Rd, Error> {
         let bound::Args { keys, line } = args;
         self.did(ctx, rd, move |vim| vim.bind(&keys, &line))
+    }
+}
+
+impl point::Api for Editor {
+    /// `:[range]point [-c] [-r]`: one line, the point, printed and
+    /// nothing else. A range is a selection's, as `binding` and the
+    /// `:` prompt both set it from the marks `<` and `>`.
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: point::Args,
+    ) -> Result<Rd, Error> {
+        let point::Args { ranged, from, to, col, relative } = args;
+        let range = ranged.then(|| (line(from), line(to)));
+        let said = self.pointed(ctx, col, relative, range);
+        self.did(ctx, rd, move |vim| {
+            vim.message = said;
+            Effect::Nothing
+        })
     }
 }
 

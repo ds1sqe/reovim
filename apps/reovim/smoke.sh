@@ -957,7 +957,8 @@ holds "$DIR/bound/f" 'ne'
 keys bound : b i n d Space '<' L e a d e r '>' q Space q u i t Enter
 vim=/session/1/client/1/self/vim
 keymap="$("$BIN" cli cat "$vim/keymap")"
-wanted=$'bind <Leader>q quit\nbind <Leader>w write\nbind <M-x> cli'
+wanted=$'bind <Leader>q quit\nbind <Leader>w write'
+wanted+=$'\nbind <Leader>y point > /self/dev/clipboard\nbind <M-x> cli'
 [[ "$keymap" == "$wanted" ]] \
     || fail "the keymap holds $(tr '\n' ' ' <<< "$keymap")"
 [[ "$("$BIN" cli cat "$vim/options/leader")" == '<Space>' ]] \
@@ -975,6 +976,57 @@ editing bound f
 keys bound Space q
 ended bound
 [[ "$ENDED" == 0 ]] || fail "the bound pane did not quit"
+
+# --- the point, and <Leader>y that shares it -------------------------
+# `point` prints where the cursor or the selection is, in the grammar
+# a compiler, a grep and this editor all read. The key is a binding
+# like any other: `point > /self/dev/clipboard`, no sequence of the
+# Plugin's own. The leader here is the Space this pane's init set,
+# and `<Leader>p` shows the same road to a file, which every machine
+# has where a clipboard tool is not always there.
+mkdir -p "$DIR/point"
+seq -f 'line-%02g' 20 > "$DIR/point/README.md"
+mkdir -p "$DIR/point-home/reovim"
+{
+    printf 'set leader=<Space>\n'
+    printf 'bind <Leader>p point > /module/fs/root%s/point/out\n' "$DIR"
+} > "$DIR/point-home/reovim/init"
+: > "$DIR/point/out"
+start point "$DIR/point" "XDG_CONFIG_HOME='$DIR/point-home' $BIN README.md"
+editing point README.md
+pself=/session/1/client/1/self
+keys point 1 2 G
+[[ "$("$BIN" cli cat "$pself/vim/point")" == "$DIR/point/README.md:12" ]] \
+    || fail "the cell says $("$BIN" cli cat "$pself/vim/point")"
+
+# A binding from normal mode, and one from visual, whose line runs
+# over `'<,'>` as nvim's `:` from a selection does.
+keys point Space p
+holds "$DIR/point/out" "$DIR/point/README.md:12"
+keys point V 2 j Space p
+holds "$DIR/point/out" "$DIR/point/README.md:12-14"
+
+# The default `<Leader>y` is the same line into the clipboard cell,
+# which needs a tool on the machine's PATH.
+tool=no
+for name in wl-copy xclip xsel pbcopy; do
+    command -v "$name" > /dev/null 2>&1 && tool=yes
+done
+if [[ "$tool" == yes ]]; then
+    keys point 1 2 G Space y
+    [[ "$("$BIN" cli cat "$pself/dev/clipboard")" \
+        == "$DIR/point/README.md:12" ]] \
+        || fail "the clipboard holds $("$BIN" cli cat "$pself/dev/clipboard")"
+    keys point V 2 j Space y
+    [[ "$("$BIN" cli cat "$pself/dev/clipboard")" \
+        == "$DIR/point/README.md:12-14" ]] \
+        || fail "the selection is $("$BIN" cli cat "$pself/dev/clipboard")"
+else
+    printf 'smoke.sh: no clipboard tool on PATH; <Leader>y not checked\n'
+fi
+keys point : q Enter
+ended point
+[[ "$ENDED" == 0 ]] || fail "the point pane did not quit"
 
 # --- the : line runs a Driver under /bin too -------------------------
 # A first token no name under `/self/vim/bin` begins is the shell's

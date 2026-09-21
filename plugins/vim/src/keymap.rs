@@ -70,10 +70,15 @@ pub struct Keymap {
 }
 
 impl Default for Keymap {
-    /// `<M-x>` opens the cli buffer, and the leader is `\`, as Vim's
-    /// `mapleader` has it. `bind <M-x>` may take the one binding away.
+    /// `<Leader>y` hands the point to the clipboard and `<M-x>`
+    /// opens the cli buffer; the leader is `\`, as Vim's `mapleader`
+    /// has it. `bind KEYS` may take either binding away.
     fn default() -> Self {
         let mut map = BTreeMap::new();
+        map.insert(
+            String::from("<Leader>y"),
+            String::from("point > /self/dev/clipboard"),
+        );
         map.insert(String::from("<M-x>"), String::from("cli"));
         Self { map, leader: String::from("\\") }
     }
@@ -218,7 +223,9 @@ mod tests {
         assert_eq!(vim.keymap.fact(&keys("<CR>").unwrap()), quit);
         assert_eq!(
             vim.keymap.text(),
-            "bind <Enter> quit\nbind <M-x> cli\n",
+            "bind <Enter> quit\n\
+             bind <Leader>y point > /self/dev/clipboard\n\
+             bind <M-x> cli\n",
             "one binding of those keys, beside the default"
         );
     }

@@ -123,6 +123,7 @@ fn the_registers_are_listed_by_every_name_one_can_have() {
             "recording",
             "options",
             "keymap",
+            "point",
             "bin"
         ]
     );

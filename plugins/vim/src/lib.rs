@@ -85,6 +85,10 @@ pub const DIVERGENCES: &[Divergence] = &[Divergence {
     vi: "the wildmenu, one candidate as several, and no help",
 }];
 
+/// What a name of Vim's says of a Buffer over nothing: a write has
+/// no file to write and a point has no path to name.
+pub(crate) const E32: &str = "E32: No file name";
+
 /// One change to the text, already made in Vim: `len` bytes at `at`
 /// became `text`.
 ///
@@ -1412,15 +1416,94 @@ impl Vim {
 
     /// A binding's line, through the `:` door and settled as a typed
     /// line is. In visual it leaves visual first, as a typed `:` does,
-    /// so the line runs with no range and finds no live selection.
+    /// so the line finds no live selection, and then it runs over
+    /// `'<,'>` as nvim's `:` from a selection does, typed or mapped.
     fn binding(&mut self, line: &str) -> Effect {
-        if matches!(self.mode, Mode::Visual(_)) {
+        let selected = matches!(self.mode, Mode::Visual(_));
+        if selected {
             self.leave_visual();
         }
         // `run`'s own settle is no part of this: the lookup answers
         // only where nothing is pending, so `repeat.record` is empty
         // wherever a binding runs and there is nothing to settle.
-        self.ex(line)
+        let effect = self.ex(line);
+        let Effect::Line(mut ex) = effect else { return effect };
+        if selected && !ex.ranged {
+            (ex.ranged, ex.from, ex.to) = self.selected();
+        }
+        Effect::Line(ex)
+    }
+
+    /// The range `'<,'>` names now: the lines of the marks `<` and
+    /// `>`, which `leave_visual` set. A line of its own address keeps
+    /// it, as `:'<,'>%s` does in nvim, so this is asked for only where
+    /// there is none.
+    fn selected(&self) -> (bool, u64, u64) {
+        let ends = self.marks.local.get(&'<').zip(self.marks.local.get(&'>'));
+        ends.map_or((false, 0, 0), |(lo, hi)| {
+            (true, lo.line as u64, hi.line as u64)
+        })
+    }
+
+    /// Where the cursor or the selection is, as a compiler, a grep or
+    /// this editor reads it: `PATH:LOCATOR`.
+    ///
+    /// `path` is the file the Buffer is over, absolute or from where
+    /// the editor stands, which is the Plugin's to resolve; a Buffer
+    /// over nothing has none. `range` is the `:` line's, and says the
+    /// locator is a selection's.
+    ///
+    /// ```
+    /// let mut vim = reovim_plugin_vim::Vim::default();
+    /// vim.loaded(b"one\ntwo\n");
+    /// let point = vim.point(Some("/a"), false, None);
+    /// assert_eq!(point, Ok(String::from("/a:1")));
+    /// assert_eq!(vim.point(None, false, None), Err("E32: No file name"));
+    /// ```
+    ///
+    /// # Errors
+    /// `E32: No file name` for a Buffer over nothing.
+    pub fn point(
+        &self,
+        path: Option<&str>,
+        col: bool,
+        range: Option<(usize, usize)>,
+    ) -> Result<String, &'static str> {
+        let path = path.ok_or(E32)?;
+        Ok(alloc::format!("{path}:{}", self.locator(col, range)))
+    }
+
+    /// The locator of the text view: `LINE`, `LINE:COL` under `col`,
+    /// `FROM-TO` for a linewise selection and `LINE:COL-LINE:COL` for
+    /// a charwise or block one, the corners in text order. Lines and
+    /// columns count from 1 and a column is bytes, as nvim's `line()`
+    /// and `col()` say them.
+    fn locator(&self, col: bool, range: Option<(usize, usize)>) -> String {
+        let Some((from, to)) = range else { return self.here(col) };
+        let ends = self.marks.local.get(&'<').zip(self.marks.local.get(&'>'));
+        let kind = self.last_visual.map(|last| last.kind);
+        match (kind, ends) {
+            (Some(Visual::Char | Visual::Block), Some((lo, hi))) => {
+                alloc::format!(
+                    "{}:{}-{}:{}",
+                    lo.line + 1,
+                    lo.column + 1,
+                    hi.line + 1,
+                    hi.column + 1
+                )
+            }
+            _ => alloc::format!("{}-{}", from + 1, to + 1),
+        }
+    }
+
+    /// Where the cursor is: its line, and its column beside it under
+    /// `col`.
+    fn here(&self, col: bool) -> String {
+        let at = self.pos_at(self.cursor);
+        if !col {
+            return alloc::format!("{}", at.line + 1);
+        }
+        alloc::format!("{}:{}", at.line + 1, at.column + 1)
     }
 
     /// KEYS bound to LINE, which `/self/vim/bin/bind` runs: no LINE

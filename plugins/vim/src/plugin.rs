@@ -49,12 +49,12 @@ use reovim_text_api::{history, publish, text};
 use crate::command::{Typed, options, typed};
 use crate::keymap::{Held, Stroke};
 use crate::macros::BUDGET;
-use crate::{Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Switch, Vim, bins};
+use crate::{
+    E32, Edit, Effect, Ex, Key, Land, Mode, Pos, Quit, Switch, Vim, bins,
+};
 
 /// What `:q` says to unsaved changes.
 const E37: &str = "E37: No write since last change (add ! to override)";
-/// What a write says on a Buffer over nothing.
-const E32: &str = "E32: No file name";
 /// What a write says when the file it would make is there already.
 const E13: &str = "E13: File exists (add ! to override)";
 /// What a write says when the host would not make the file.
@@ -157,6 +157,8 @@ struct Cells {
     options: BTreeMap<Rd, &'static str>,
     /// `/self/vim/keymap`'s own rd.
     keymap: Rd,
+    /// `/self/vim/point`'s own rd: `point` with no argument.
+    point: Rd,
     /// `/self/vim/bin`, whose listing is the order a `:` line resolves
     /// a name in.
     bin: Rd,
@@ -366,6 +368,8 @@ impl Editor {
             vim.shown(name)?
         } else if rd == cells.keymap {
             vim.keymap.text()
+        } else if rd == cells.point {
+            format!("{}\n", self.pointed(ctx, false, false, None))
         } else {
             vim.stored(*cells.registers.get(&rd)?)
         };
@@ -672,6 +676,48 @@ impl Editor {
         }
         let said = core::mem::take(&mut self.vim.borrow_mut().message);
         self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
+    }
+
+    /// Where the cursor or the selection is, as `/self/vim/bin/point`
+    /// and `/self/vim/point` both read it: the path the Plugin
+    /// resolves and the locator the engine spells, or what a Buffer
+    /// over nothing says instead.
+    pub(crate) fn pointed(
+        &self,
+        ctx: &dyn Calls,
+        col: bool,
+        relative: bool,
+        range: Option<(usize, usize)>,
+    ) -> String {
+        let path = self.wherever(ctx, relative).ok().flatten();
+        let vim = self.vim.borrow();
+        vim.point(path.as_deref(), col, range).unwrap_or_else(String::from)
+    }
+
+    /// The file the Buffer is over as a path of the person's:
+    /// absolute under the mirror's root, or from where the editor
+    /// stands under `relative`. `None` for a Buffer over nothing.
+    fn wherever(
+        &self,
+        ctx: &dyn Calls,
+        relative: bool,
+    ) -> Result<Option<String>, Error> {
+        let (source, root, cwd) = {
+            let vim = self.vim.borrow();
+            (vim.source, vim.root.unwrap_or(ROOT), vim.cwd.unwrap_or(ROOT))
+        };
+        let Some(source) = source else { return Ok(None) };
+        let root = ops::where_is(ctx, root)?;
+        let under = |rd| -> Result<String, Error> {
+            let at = ops::where_is(ctx, rd)?;
+            let rest = at.strip_prefix(&root).unwrap_or(&at);
+            Ok(rooted(rest.trim_start_matches('/')))
+        };
+        let path = under(source)?;
+        if !relative {
+            return Ok(Some(path));
+        }
+        Ok(Some(from_dir(&under(cwd)?, &path)))
     }
 
     /// Mark first, then run each line after releasing the engine borrow.
@@ -1410,9 +1456,17 @@ impl Editor {
         ranged(&mut shell, ex.from, ex.to, bang, ex.ranged);
         // The rest of the line fills this name's own positionals: a
         // token each at blanks and the last taking the rest, by Vim's
-        // own rule, so `:w my file` is one name still.
-        let args = cut(arg, bins::positionals(&name));
-        let out = match sh::ran(ctx, &shell, &name, &args) {
+        // own rule, so `:w my file` is one name still. A name that
+        // takes no text has no such rule, so what follows it is the
+        // shell's own line — its words, its `>` and its `|` — over
+        // Vim's names, which stand first on PATH.
+        let taken = bins::positionals(&name);
+        let ran = if taken == 0 && !arg.is_empty() {
+            sh::run(ctx, &mut shell, &format!("{name} {arg}"))
+        } else {
+            sh::ran(ctx, &shell, &name, &cut(arg, taken))
+        };
+        let out = match ran {
             Ok(ran) => printed(ctx, ran),
             Err(miss) => {
                 self.fails(&format!("{miss}"));
@@ -1752,6 +1806,7 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
         options.insert(read(over, name, one)?, name);
     }
     let keymap = read(home, "keymap", one)?;
+    let point = read(home, "point", one)?;
     let bin = read(home, "bin", held)?;
     for (name, decl) in bins::declared() {
         node(bin, name, held, core::slice::from_ref(&decl))?;
@@ -1766,6 +1821,7 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
         recording,
         options,
         keymap,
+        point,
         bin,
     })
 }
@@ -1860,6 +1916,22 @@ const fn missing(error: Error) -> bool {
 /// from where the editor stands.
 fn rooted(path: &str) -> String {
     format!("/{path}")
+}
+
+/// `path` from `dir`, both names under the mirror's root: the names
+/// they do not share, and `..` for each of `dir`'s that is left.
+fn from_dir(dir: &str, path: &str) -> String {
+    let split = |at: &str| -> Vec<String> {
+        at.split('/')
+            .filter(|part| !part.is_empty())
+            .map(String::from)
+            .collect()
+    };
+    let (dir, path) = (split(dir), split(path));
+    let same = dir.iter().zip(&path).take_while(|(a, b)| a == b).count();
+    let mut out: Vec<&str> = alloc::vec![".."; dir.len() - same];
+    out.extend(path[same..].iter().map(String::as_str));
+    out.join("/")
 }
 
 /// The directory `name` under `dir`, made when it is not there yet;

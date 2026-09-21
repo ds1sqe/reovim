@@ -106,10 +106,17 @@ fn bind_with_no_line_unbinds() {
 #[test]
 fn a_bad_notation_is_said_and_nothing_bound() {
     let (_rig, mut tui, host, _seen) = three("bind-bad-notation");
-    assert_eq!(cat(&host, "keymap"), "bind <M-x> cli\n");
+    assert_eq!(
+        cat(&host, "keymap"),
+        "bind <Leader>y point > /self/dev/clipboard\nbind <M-x> cli\n"
+    );
     typed(&mut tui, ":bind <lt>Nope> cli<CR>");
     assert_eq!(said(&mut tui), "E474: Invalid argument: <Nope>");
-    assert_eq!(cat(&host, "keymap"), "bind <M-x> cli\n", "as it was");
+    assert_eq!(
+        cat(&host, "keymap"),
+        "bind <Leader>y point > /self/dev/clipboard\nbind <M-x> cli\n",
+        "as it was"
+    );
 }
 
 #[test]
@@ -117,7 +124,7 @@ fn help_bind_says_its_form() {
     let (_rig, mut tui, host, _seen) = three("bind-help");
     typed(&mut tui, ":help bind<CR>");
     assert_eq!(said(&mut tui), "bind [keys] [line]");
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 23);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 24);
 
     // `bind` stands after `wqall`, so `:b` resolves to `buffer` still.
     typed(&mut tui, ":e other<CR>:b 0<CR>");
@@ -168,7 +175,10 @@ fn two_keys_that_read_the_same_answer_in_the_maps_order() {
     typed(&mut tui, ":set leader=\\<CR>");
     assert_eq!(
         cat(&host, "keymap"),
-        "bind <Leader>w write\nbind <M-x> cli\nbind \\w quit\n"
+        "bind <Leader>w write\n\
+         bind <Leader>y point > /self/dev/clipboard\n\
+         bind <M-x> cli\n\
+         bind \\w quit\n"
     );
 
     // Both read `\w` now; the first in the map's order answers, so
@@ -179,7 +189,10 @@ fn two_keys_that_read_the_same_answer_in_the_maps_order() {
     // One unbind takes both, and there is nothing left to take.
     typed(&mut tui, ":bind \\w<CR>");
     assert_eq!(said(&mut tui), "");
-    assert_eq!(cat(&host, "keymap"), "bind <M-x> cli\n");
+    assert_eq!(
+        cat(&host, "keymap"),
+        "bind <Leader>y point > /self/dev/clipboard\nbind <M-x> cli\n"
+    );
     typed(&mut tui, ":bind \\w<CR>");
     assert_eq!(said(&mut tui), "E31: No such mapping");
 }
@@ -202,6 +215,7 @@ fn the_five_option_cells() {
             "recording",
             "options",
             "keymap",
+            "point",
             "bin"
         ]
     );
@@ -238,7 +252,9 @@ fn the_keymap_cell_is_a_script_that_makes_it() {
     typed(&mut tui, ":bind <lt>M-x><CR>");
     let script = cat(&host, "keymap");
     assert_eq!(
-        script, "bind <Leader>w write\n",
+        script,
+        "bind <Leader>w write\n\
+         bind <Leader>y point > /self/dev/clipboard\n",
         "an unbound default is no line"
     );
 
@@ -254,7 +270,12 @@ fn the_keymap_cell_is_a_script_that_makes_it() {
         opened(&host, table, Clip::none(), "", Some("note"), None).unwrap();
     typed(&mut tui, "x\\w");
     assert_eq!(second.disk("note"), b"ne\ntwo\nthree\n");
-    assert_eq!(cat(&host, "keymap"), "bind <Leader>w write\nbind <M-x> cli\n");
+    assert_eq!(
+        cat(&host, "keymap"),
+        "bind <Leader>w write\n\
+         bind <Leader>y point > /self/dev/clipboard\n\
+         bind <M-x> cli\n"
+    );
 }
 
 #[test]
@@ -281,6 +302,23 @@ fn a_bound_line_in_visual_finds_no_selection() {
     // end of a line the line itself edited.
     typed(&mut tui, "d");
     assert_eq!(lines(&mut tui)[..1], ["a"]);
+    assert_eq!(cat(&host, "mode"), "normal\n");
+}
+
+#[test]
+fn a_bound_line_from_visual_carries_the_range() {
+    let (_rig, mut tui, host, _seen) = three("bind-visual-range");
+    typed(&mut tui, ":bind gd delete<CR>");
+
+    // A line of its own address keeps it, as `:'<,'>%s` does in nvim.
+    typed(&mut tui, ":bind gp %point<CR>");
+    typed(&mut tui, "Vjgp");
+    assert_eq!(said(&mut tui), "/note:1-3", "the line's own `%` won");
+
+    // nvim runs a `:` line from visual over `'<,'>`, typed or mapped:
+    // the binding leaves visual and the line it runs sees the marks.
+    typed(&mut tui, "ggVjgd");
+    assert_eq!(lines(&mut tui)[..1], ["three"], "two lines went");
     assert_eq!(cat(&host, "mode"), "normal\n");
 }
 
@@ -506,9 +544,18 @@ fn keys_with_a_blank_and_a_line_with_a_newline_are_refused() {
         ran("<Space>a", "write\nquit"),
         "E474: Invalid argument: write\nquit"
     );
-    assert_eq!(cat(&host, "keymap"), "bind <M-x> cli\n", "as it was");
+    assert_eq!(
+        cat(&host, "keymap"),
+        "bind <Leader>y point > /self/dev/clipboard\nbind <M-x> cli\n",
+        "as it was"
+    );
     assert_eq!(ran("<Space>b", "write"), "");
-    assert_eq!(cat(&host, "keymap"), "bind <M-x> cli\nbind <Space>b write\n");
+    assert_eq!(
+        cat(&host, "keymap"),
+        "bind <Leader>y point > /self/dev/clipboard\n\
+         bind <M-x> cli\n\
+         bind <Space>b write\n"
+    );
 }
 
 #[test]
