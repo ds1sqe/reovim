@@ -552,8 +552,9 @@ impl Vim {
     /// operator, after `:help exclusive`'s adjustments: an exclusive
     /// motion ending at a line's start ends at the end of the line
     /// before instead (rule 1), and from a line's first non-blank or
-    /// earlier it takes whole lines (rule 2). `None` when the motion
-    /// goes nowhere.
+    /// earlier it takes whole lines (rule 2). `None` when a walk goes
+    /// nowhere; a jump that lands where it started is a span of no
+    /// width there (see `still_a_place`).
     fn span(&mut self, motion: Motion, n: usize) -> Option<Span> {
         if let Motion::Object { inner, kind } = motion {
             return self.object_span(inner, kind, n);
@@ -572,12 +573,7 @@ impl Vim {
         self.pending.running = false;
         let end = self.cursor;
         (self.cursor, self.want, self.keep_want) = (start, want, keep);
-        if moved == Effect::Nothing
-            && !matches!(
-                motion,
-                Motion::Line(_) | Motion::High | Motion::Middle | Motion::Low
-            )
-        {
+        if moved == Effect::Nothing && !self.still_a_place(motion) {
             return None;
         }
         let (from, to) = if end >= start { (start, end) } else { (end, start) };
@@ -592,6 +588,25 @@ impl Vim {
             kind = Extent::Linewise;
         }
         Some((from, to.min(self.text.len()), kind))
+    }
+
+    /// Whether a motion that moved nothing still names the place the
+    /// cursor stands on, which is a span of no width there rather
+    /// than a failed motion. The jumps do: `G`, `H`, `M` and `L`
+    /// always name a line, and a mark names one when it is set in
+    /// this Buffer, so `d'a` on the mark's own line takes that line
+    /// while `d'z` unset and `d'A` of another file's mark still fail.
+    /// A walk (`w`, `f`, `j`) that goes nowhere is a failed motion.
+    fn still_a_place(&self, motion: Motion) -> bool {
+        match motion {
+            Motion::Line(_) | Motion::High | Motion::Middle | Motion::Low => {
+                true
+            }
+            Motion::Mark { name, .. } => {
+                matches!(self.found_mark(name), Some((None, _)))
+            }
+            _ => false,
+        }
     }
 
     /// `n` lines down for `dd` and the like: nvim's `cursor_down`,
