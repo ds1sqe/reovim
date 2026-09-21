@@ -15,7 +15,10 @@
 //! the flush answers `Stale` — another Client's run landing in front
 //! of this one — nothing is sent again: the draft reads back whole,
 //! so an edit it refused is off the screen too, and the row says W12
-//! until the next key.
+//! until the next key. Where the Buffer instead has no room for the
+//! state the operation would make, the draft takes the server's head
+//! back, the row says which operation was refused, and the editor
+//! stands: only an answer that is nobody's about this text ends it.
 //!
 //! The cells served are `view` and Vim's own state. A whole read of
 //! `view` is one frame: captured startup lines once, then the keys Vim
@@ -117,6 +120,24 @@ const fn refused(error: Error) -> Filled {
     match error {
         Error::NoSpace => Filled::Spent,
         _ => Filled::Refused,
+    }
+}
+
+/// What the row calls the operation an edit going down is, which is
+/// what a flush of the draft carries whoever asked for it.
+const EDIT: &str = "edit";
+
+/// The Buffer operation `effect` is, as the row names it; `None` for
+/// an effect that asks the Buffer nothing, whose every refusal
+/// belongs to somebody else and ends the editor.
+const fn asked(effect: &Effect) -> Option<&'static str> {
+    match effect {
+        Effect::Edit(_) | Effect::Edits(_) => Some(EDIT),
+        Effect::Undo => Some("undo"),
+        Effect::Redo => Some("redo"),
+        Effect::Save(_) | Effect::SaveAs(..) | Effect::SaveAll => Some("write"),
+        Effect::Reload(_) => Some("reload"),
+        _ => None,
     }
 }
 
@@ -516,7 +537,7 @@ impl Editor {
         let mode = self.vim.borrow().mode();
         let waiting = self.vim.borrow().waiting();
         if mode != Mode::Insert && !self.stay()?.stale.get() && !waiting {
-            self.stale(ctx, |ctx| self.sync(ctx))?;
+            self.stale(ctx, Some(EDIT), |ctx| self.sync(ctx))?;
         }
         Ok(encode(&self.vim.borrow_mut().view(rows)))
     }
@@ -720,25 +741,53 @@ impl Editor {
         draft::Call(&mut ctx, self.handle()?).sync()
     }
 
-    /// Every `Err(Stale)` `done` may answer, caught in one place: the
-    /// draft read back whole, so an edit it refused is off the screen
-    /// too; W12 said until the next key; the stay marked so `framed`'s
-    /// own closing `sync` says it once and not every frame's. Any
-    /// other answer, `done`'s own.
+    /// Every `Err` `done` may answer that the editor stands after,
+    /// caught in one place.
+    ///
+    /// `Stale` — another Client's run landing in front of this one —
+    /// is the draft read back whole, so an edit it refused is off the
+    /// screen too; W12 said until the next key; the stay marked so
+    /// `framed`'s own closing `sync` says it once and not every
+    /// frame's.
+    ///
+    /// `asked` names the Buffer operation `done` is, where it is one.
+    /// `NoSpace` there is the Buffer with no room for the state that
+    /// operation would make, which is a word the editor stands after:
+    /// [`Self::balked`]. Any other answer is `done`'s own and goes up,
+    /// which ends the editor.
     fn stale(
         &self,
         ctx: &dyn Calls,
+        asked: Option<&str>,
         done: impl FnOnce(&dyn Calls) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        match done(ctx) {
-            Err(Error::Stale) => {
-                self.reloaded(ctx)?;
-                self.fails(W12);
-                self.stay()?.stale.set(true);
-                Ok(())
-            }
-            other => other,
+        let error = match done(ctx) {
+            Err(error) => error,
+            other => return other,
+        };
+        if error == Error::Stale {
+            self.reloaded(ctx)?;
+            self.fails(W12);
+            self.stay()?.stale.set(true);
+            return Ok(());
         }
+        let Some(what) = asked.filter(|_| error == Error::NoSpace) else {
+            return Err(error);
+        };
+        self.balked(ctx, what)
+    }
+
+    /// The Buffer had no room for what `what` would have made: the
+    /// draft takes the server's head in place of it, so the screen is
+    /// what went down; the row says which operation was refused, and
+    /// rings, which ends any replay; and nothing typed behind the
+    /// refusal runs, as at any other failed key.
+    fn balked(&self, ctx: &dyn Calls, what: &str) -> Result<(), Error> {
+        self.reload(ctx, true)?;
+        self.fails(&format!("E: {what} refused: no space"));
+        self.queue.borrow_mut().clear();
+        self.vim.borrow_mut().held = Held::default();
+        Ok(())
     }
 
     /// The draft read whole into the engine: what a flush that moved
@@ -771,10 +820,11 @@ impl Editor {
         self.vim.borrow_mut().error(message);
     }
 
-    /// What `effect` asks of the Client, every `Stale` it may answer
-    /// caught in [`Self::stale`].
+    /// What `effect` asks of the Client, every answer the editor
+    /// stands after caught in [`Self::stale`].
     fn act(&self, ctx: &dyn Calls, effect: Effect) -> Result<(), Error> {
-        self.stale(ctx, |ctx| match effect {
+        let asked = asked(&effect);
+        self.stale(ctx, asked, |ctx| match effect {
             Effect::Nothing | Effect::Moved => Ok(()),
             Effect::Replay(keys) => {
                 self.replayed(keys, false);
@@ -1601,7 +1651,7 @@ impl Editor {
             return Err(error);
         }
         if draft == current {
-            self.stale(ctx, |_| Err(Error::Stale))?;
+            self.stale(ctx, None, |_| Err(Error::Stale))?;
         }
         self.fails(&format!(
             "W12: buffer {} changed in another Client and here",
@@ -2503,6 +2553,7 @@ mod macro_queue_tests {
         }
     }
 
+    /// The scene every case below stands on: `a` open, `b` beside it.
     fn scene(
         name: &str,
     ) -> (
@@ -2511,7 +2562,31 @@ mod macro_queue_tests {
         Rc<reovim_client::Host>,
         reovim_client_tui::Tui,
     ) {
-        let rig = reovim_rig::Rig::new(name);
+        staged(reovim_rig::Rig::new(name))
+    }
+
+    /// The same scene over a text Module with room for `a` and no
+    /// more: its four bytes are the whole limit, so the state a first
+    /// edit would make is refused `NoSpace`.
+    fn refusing(
+        name: &str,
+    ) -> (
+        reovim_rig::Rig,
+        Rc<Editor>,
+        Rc<reovim_client::Host>,
+        reovim_client_tui::Tui,
+    ) {
+        staged(reovim_rig::Rig::holding(name, b"abc\n".len()))
+    }
+
+    fn staged(
+        rig: reovim_rig::Rig,
+    ) -> (
+        reovim_rig::Rig,
+        Rc<Editor>,
+        Rc<reovim_client::Host>,
+        reovim_client_tui::Tui,
+    ) {
         rig.file("a", b"abc\n");
         rig.file("b", b"def\n");
         let host = rig.host();
@@ -2532,6 +2607,44 @@ mod macro_queue_tests {
         .unwrap();
         tui.frame(80, 24).unwrap();
         (rig, editor, host, tui)
+    }
+
+    /// The Buffer refuses the state an `x` would make: the row says
+    /// so, the text on the screen is what went down, nothing is left
+    /// queued and the editor takes the next key.
+    #[test]
+    fn an_edit_the_buffer_refuses_is_a_word_and_the_editor_stands() {
+        let (_rig, editor, _host, mut tui) = refusing("refused-edit");
+        assert_eq!(reovim_rig::lines(&mut tui), ["abc"]);
+        let step = reovim_rig::typed(&mut tui, "x");
+        assert_eq!(step, reovim_client_tui::Step::Changed);
+        assert_eq!(reovim_rig::said(&mut tui), "E: edit refused: no space");
+        assert_eq!(reovim_rig::lines(&mut tui), ["abc"], "the text stands");
+        assert!(editor.queue.borrow().is_empty(), "the queue stood");
+        // The editor is still here: the next key runs, and says its
+        // own word over the refusal's.
+        reovim_rig::typed(&mut tui, ":nohlsearch\r");
+        assert_eq!(reovim_rig::lines(&mut tui), ["abc"]);
+        assert_ne!(reovim_rig::said(&mut tui), "E: edit refused: no space");
+    }
+
+    /// Keys behind a refused edit do not run: the second `x` flushes
+    /// what the first spliced before its own edit, and that flush is
+    /// what the Buffer refuses, so the `l` behind it goes with the
+    /// queue and the row keeps the refusal's word.
+    #[test]
+    fn the_keys_behind_a_refused_edit_go_with_the_queue() {
+        let (_rig, editor, host, _tui) = refusing("refused-queue");
+        let keys = ['x', 'x', 'l'].map(|c| Queued::Typed(Key::Char(c)));
+        editor.queue.borrow_mut().extend(keys);
+        editor.framed(&host.own()).unwrap();
+        assert_eq!(editor.engine().text(), "abc\n", "nothing went down");
+        assert!(editor.queue.borrow().is_empty(), "a key behind it stood");
+        assert_eq!(
+            editor.engine().message,
+            "E: edit refused: no space",
+            "a key behind the refusal ran and said its own word"
+        );
     }
 
     #[test]

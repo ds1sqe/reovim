@@ -165,14 +165,22 @@ fn run(
 /// first is not said: not on disk it is the new file the ask already
 /// names, and a directory is the explorer's, `table` answering it a
 /// `Want::Container`.
-fn drafts(ctx: &dyn Calls, files: &[&str]) -> Result<(), Error> {
+///
+/// The first name having no room in the Buffers is the one refusal
+/// this stops at: it is the name the region was opened on, so nothing
+/// opens at all, and [`Fail::Big`] names that file, where `no space`
+/// alone names none. A later name that is too big is skipped and
+/// said, as any other the open refuses.
+fn drafts(ctx: &dyn Calls, files: &[&str]) -> Result<(), Fail> {
     for (index, file) in files.iter().enumerate() {
-        let opened =
-            cell::resolve(ctx, ROOT, &format!("/module/fs/root/{file}"))
-                .and_then(|source| drafted(ctx, Some(source)));
-        if let Err(error) = opened
-            && index > 0
-        {
+        let path = format!("/module/fs/root/{file}");
+        let opened = cell::resolve(ctx, ROOT, &path)
+            .and_then(|source| drafted(ctx, Some(source)));
+        let Err(error) = opened else { continue };
+        if index == 0 && error == Error::NoSpace {
+            return Err(Fail::Big(String::from(*file)));
+        }
+        if index > 0 {
             warned(ctx, &format!("open {file}: {}", Fault::Kernel(error)))?;
         }
     }
@@ -399,7 +407,9 @@ mod tests {
 
         let own = host.own();
         let ctx: &dyn Calls = &own;
-        drafts(ctx, &["a", "b", "missing", "d"]).unwrap();
+        let Ok(()) = drafts(ctx, &["a", "b", "missing", "d"]) else {
+            panic!("a name the opening should pass over stopped it")
+        };
 
         let list = cell::resolve(ctx, ROOT, "/self/dev/buffers").unwrap();
         let made = ops::children(ctx, list).unwrap();
@@ -421,6 +431,51 @@ mod tests {
         assert!(holds("open missing:"), "the log: {said:?}");
         assert!(holds("open d:"), "the log: {said:?}");
         assert!(!holds("open a:"), "the log: {said:?}");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The first file having no room in the Buffers: the opening
+    /// stops there and the word names that file, which `no space` on
+    /// its own does not. Behind a name that opened, the same file is
+    /// skipped and said, as any other name the open refuses.
+    #[test]
+    fn a_first_file_past_what_the_editor_holds_is_named() {
+        let dir = std::env::temp_dir()
+            .join(format!("reovim-too-big-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("a"), "alpha").unwrap();
+        // Sparse: no byte of it is written, and the read of it is
+        // what a Buffer of 64 MiB refuses.
+        let big = std::fs::File::create(dir.join("big")).unwrap();
+        big.set_len(65 << 20).unwrap();
+        drop(big);
+        let root = dir.to_str().unwrap();
+
+        let Ok((kernel, _modules)) = server::boot(root, &[]) else {
+            panic!("the server did not boot")
+        };
+        let client = Local::client(&kernel, None).unwrap();
+        let Ok(host) = client::over(client) else { panic!("no host") };
+        let table = table(None);
+        dev::boot(&host, table, clip(), "", Some("big"), None, "").unwrap();
+
+        let own = host.own();
+        let ctx: &dyn Calls = &own;
+        let Err(fail) = drafts(ctx, &["big"]) else {
+            panic!("a file the editor cannot hold was opened")
+        };
+        assert_eq!(fail.to_string(), "big: more than the editor holds");
+
+        let Ok(()) = drafts(ctx, &["a", "big"]) else {
+            panic!("a name behind one that opened stopped the opening")
+        };
+        let entry = cell::resolve(ctx, ROOT, "/sys/log").unwrap();
+        let said = ops::bytes(ctx, entry).unwrap();
+        let said: Vec<String> =
+            log::parse(&said).iter().map(log::Entry::text).collect();
+        let holds = |text: &str| said.iter().any(|line| line.contains(text));
+        assert!(holds("open big: no space"), "the log: {said:?}");
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

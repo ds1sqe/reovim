@@ -4,8 +4,10 @@ use std::rc::{Rc, Weak};
 
 use reovim_client::{Carrier, Client, Clip, Fault, Host, Rvm, bin};
 use reovim_host::{clock, mem};
+use reovim_kernel_interface::Booted;
 use reovim_kernel_runtime::{Connection, Heap, Kernel, Limits, NoLoader};
 use reovim_module_search::Search;
+use reovim_module_text::Text;
 use reovim_sdk::ops;
 
 /// The process heap as the host counts it, in the Kernel's own shape.
@@ -78,13 +80,33 @@ impl Rig {
     /// As [`Self::new`].
     #[must_use]
     pub fn with(test: &str, limits: Limits) -> Self {
+        Self::built(test, limits, None)
+    }
+
+    /// For the test named `test`, whose text Module holds at most
+    /// `bytes` across every state of every Buffer: what a case over a
+    /// Buffer that refuses the state an edit would make stands on. A
+    /// file of exactly `bytes` opens and leaves no room for a second
+    /// state.
+    ///
+    /// # Panics
+    /// As [`Self::new`].
+    #[must_use]
+    pub fn holding(test: &str, bytes: usize) -> Self {
+        Self::built(test, Limits::default(), Some(bytes))
+    }
+
+    /// The three constructors in one; `held` is the limit the text
+    /// Module is given, `None` being the Module's own.
+    fn built(test: &str, limits: Limits, held: Option<usize>) -> Self {
         let name = format!("reovim-rig-{}-{test}", std::process::id());
         let dir = std::env::temp_dir().join(name);
         std::fs::create_dir_all(&dir).unwrap();
         let kernel = Kernel::new(clock::now, heap, limits);
+        let driver = Rc::new(held.map_or_else(Text::new, Text::with_limit));
         let booted = [
             ("fs", reovim_module_fs::boot(dir.to_str().unwrap())),
-            ("text", reovim_module_text::boot("")),
+            ("text", Booted { module: driver.clone(), drivers: vec![driver] }),
             ("coreutils", reovim_module_coreutils::boot("")),
             ("sysutils", reovim_module_sysutils::boot("")),
         ];

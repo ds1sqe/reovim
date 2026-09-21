@@ -34,6 +34,10 @@ pub enum Fail {
     Client(Fault),
     /// One typed line, as the shell says it.
     Cli(Miss),
+    /// A file the editor has no room for, as the name was given. The
+    /// Buffers hold a bounded number of bytes in all, and one file
+    /// past that opens in no editor.
+    Big(String),
     /// A `--sys NAME=VALUE` the Kernel refused; nothing has started.
     Sys(String, String, reovim_kernel_interface::Error),
     /// SIGTERM or SIGHUP: the terminal restored, nothing written.
@@ -47,6 +51,7 @@ impl fmt::Display for Fail {
             Self::Host(error) => write!(f, "host: {error:?}"),
             Self::Client(fault) => write!(f, "{fault}"),
             Self::Cli(miss) => write!(f, "{miss}"),
+            Self::Big(name) => write!(f, "{name}: more than the editor holds"),
             Self::Sys(name, value, error) => {
                 write!(f, "--sys {name}={value}: {}", Fault::Kernel(*error))
             }
