@@ -203,11 +203,13 @@ declare! {
     /// where it is.
     ///
     /// [`Input`] is one key on its way in, a [`Press`] kept whole with
-    /// an `origin` ([`origin`](crate::origin)) saying whose it is: the
-    /// user's, a macro's, a `.`'s, or a held prefix's release where it
-    /// matched nothing. A synthetic key carries the `Press` of the key
-    /// that made it, so no clock and no source is invented and a
-    /// recorded stream replays.
+    /// an `origin` ([`origin`](crate::origin)) saying whose it is —
+    /// the user's, a macro's or a `.`'s — and `released` saying
+    /// whether a held prefix that matched nothing let it go, which is
+    /// a second fact and not another origin: a macro's released key
+    /// is still the macro's. A synthetic key carries the `Press` of
+    /// the key that made it, so no clock and no source is invented
+    /// and a recorded stream replays.
     ///
     /// [`Outcome`] is what one `Input` decided: a `kind`
     /// ([`kind`](crate::kind)) and the payload that kind names, the
@@ -243,7 +245,7 @@ declare! {
     /// unanswered, 0 for none. The host reads no other field of a
     /// resolver.
     api resolver ver 1 {}
-    record Input { press: Press, origin: u64 }
+    record Input { press: Press, origin: u64, released: bool }
     record Edit { at: u64, len: u64, text: utf8(65536), join: bool }
     record Line { ranged: bool, from: u64, to: u64, line: utf8(4096) }
     record Open { path: utf8(4096), bang: bool, locator: utf8(64) }
@@ -263,7 +265,9 @@ declare! {
                    pending: bool, waiting: u64 }
 }
 
-/// Whose a [`resolver::Input`] is, its `origin`.
+/// Whose a [`resolver::Input`] is, its `origin`. Whether a failed
+/// prefix let that key go is `released` beside it, not an origin of
+/// its own: a key keeps its maker through the release.
 pub mod origin {
     /// A key the user typed, which is every key with a clock and a
     /// source of its own.
@@ -272,9 +276,6 @@ pub mod origin {
     pub const FED: u64 = 1;
     /// A key a `.` repeats, carrying the `Press` of the `.`.
     pub const REPEAT: u64 = 2;
-    /// A key a held prefix gives back where the prefix matched
-    /// nothing, carrying the prefix's own `Press`.
-    pub const RELEASED: u64 = 3;
 }
 
 /// What a [`resolver::Outcome`] is, its `kind`; a field no kind here

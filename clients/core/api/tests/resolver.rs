@@ -42,6 +42,10 @@ const KINDS: [u64; 22] = [
     kind::FED,
 ];
 
+/// Whose a key is: every origin an `Input` may carry, which a
+/// release keeps rather than trading away.
+const ORIGINS: [u64; 3] = [origin::TYPED, origin::FED, origin::REPEAT];
+
 /// The value's bytes read back as the value.
 fn round_trip<T: Debug + Decode + Encode + PartialEq>(value: &T) {
     let back: T = decode(&encode(value)).expect("one value");
@@ -144,7 +148,11 @@ const fn blank_state() -> State {
 
 #[test]
 fn every_record_round_trips() {
-    round_trip(&Input { press: press(), origin: origin::TYPED });
+    round_trip(&Input {
+        press: press(),
+        origin: origin::TYPED,
+        released: false,
+    });
     round_trip(&edit());
     round_trip(&line());
     round_trip(&open());
@@ -248,12 +256,16 @@ fn a_matched_reply_carries_its_entries_and_filled() {
 
 #[test]
 fn a_synthetic_input_carries_the_press_that_made_it() {
-    let typed = Input { press: press(), origin: origin::TYPED };
+    let typed =
+        Input { press: press(), origin: origin::TYPED, released: false };
     // The `@a` and the `.` invent no clock and no source: each
     // synthetic key carries the `Press` of the key that made it, and
     // a failed prefix's release carries the prefix's own.
-    let synthetic = [origin::FED, origin::REPEAT, origin::RELEASED]
-        .map(|origin| Input { press: typed.press.clone(), origin });
+    let synthetic = [origin::FED, origin::REPEAT].map(|origin| Input {
+        press: typed.press.clone(),
+        origin,
+        released: false,
+    });
     for input in &synthetic {
         assert_eq!(input.press, typed.press);
         assert_ne!(input.origin, typed.origin);
@@ -263,9 +275,26 @@ fn a_synthetic_input_carries_the_press_that_made_it() {
     assert_eq!(back.press.when, press().when);
     assert_eq!(back.press.source, press().source);
     assert_eq!(back.press.key, press().key);
-    let origins =
-        [origin::TYPED, origin::FED, origin::REPEAT, origin::RELEASED];
-    assert_eq!(distinct(&origins), 4);
+    assert_eq!(distinct(&ORIGINS), 3);
+}
+
+#[test]
+fn a_released_input_says_a_release_apart_from_whose_key_it_is() {
+    // Whose a key is and whether a failed prefix let it go are two
+    // facts, not one tag: a macro's released key is still the
+    // macro's, so a bell drops it and a person's key beside it
+    // stands.
+    for origin in ORIGINS {
+        let released = Input { press: press(), origin, released: true };
+        round_trip(&released);
+        let back: Input = decode(&encode(&released)).expect("one input");
+        assert_eq!(back.origin, origin, "whose the key is");
+        assert!(back.released, "and that it was let go");
+        assert_eq!(back.press, press(), "with the press it was taken with");
+        let fresh = Input { released: false, ..released };
+        let fresh: Input = decode(&encode(&fresh)).expect("one input");
+        assert!(!fresh.released, "a key no prefix has let go yet");
+    }
 }
 
 #[test]

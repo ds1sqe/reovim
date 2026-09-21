@@ -48,10 +48,15 @@ pub fn tapped(key: Key) -> Input {
 }
 
 /// One key of `origin`, for a test that hands the engine its inputs
-/// itself: `FED` a macro's, `REPEAT` a `.`'s, `RELEASED` one a failed
-/// prefix let go.
+/// itself: `FED` a macro's, `REPEAT` a `.`'s.
 pub fn as_of(key: Key, origin: u64) -> Input {
     input(key, origin, 0)
+}
+
+/// One key of `origin` that a failed prefix let go, as the queue
+/// hands it back: whose it is, and that it is not looked up again.
+pub fn let_go(key: Key, origin: u64) -> Input {
+    Input { released: true, ..input(key, origin, 0) }
 }
 
 /// The queue's own two turns around one effect: the keys a failed
@@ -76,8 +81,14 @@ fn ran(vim: &mut Vim, effect: Effect) -> Effect {
 /// What `released()` holds, each through `past` and at the front, so
 /// a key that lets go of more is drained before what follows it.
 fn drained(vim: &mut Vim, mut last: Effect) -> Effect {
-    while let Some(input) = vim.released() {
-        last = vim.key(input);
+    let mut released = vim.released();
+    while !released.is_empty() {
+        last = vim.key(released.remove(0));
+        // A released key may let go of more — an unbound Alt among
+        // them — which belong in front of what still stands.
+        let mut more = vim.released();
+        more.append(&mut released);
+        released = more;
     }
     last
 }

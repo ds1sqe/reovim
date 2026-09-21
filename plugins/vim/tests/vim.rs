@@ -4,7 +4,7 @@ mod common;
 
 use std::fmt::Write as _;
 
-use common::{as_of, edit, on, tapped, typed};
+use common::{as_of, edit, let_go, on, tapped, typed};
 use reovim_client_api::{BAR, BLOCK, MATCH, SELECTION, origin};
 use reovim_plugin_vim::notation::keys;
 use reovim_plugin_vim::{
@@ -807,7 +807,7 @@ fn a_wait_runs_again_as_its_key_came() {
         vim.key(as_of(key, origin::FED));
     }
     let epoch = vim.epoch();
-    let asked = vim.key(as_of(Key::Enter, origin::RELEASED));
+    let asked = vim.key(let_go(Key::Enter, origin::FED));
     assert_eq!(asked, want(&vim, "b", 0));
     assert_eq!(
         vim.matched(epoch, &[(0, 1), (3, 1)], Filled::Whole),
@@ -828,6 +828,24 @@ fn a_wait_runs_again_as_its_key_came() {
         vim.key(tapped(Key::Char('.'))),
         Effect::Fed(vec![Key::Char('x')], true),
         "the repeat's own re-run left the last change alone"
+    );
+
+    // And the same `<CR>` let go by a failed prefix: the release says
+    // it is not looked up again and nothing about whose it is, so it
+    // is the `.`'s still.
+    let mut vim = on("ab\nxb\n");
+    typed(&mut vim, "x");
+    for key in keys("d/b").unwrap() {
+        vim.key(as_of(key, origin::REPEAT));
+    }
+    let epoch = vim.epoch();
+    let asked = vim.key(let_go(Key::Enter, origin::REPEAT));
+    assert_eq!(asked, want(&vim, "b", 0));
+    vim.matched(epoch, &[(0, 1), (3, 1)], Filled::Whole);
+    assert_eq!(
+        vim.key(tapped(Key::Char('.'))),
+        Effect::Fed(vec![Key::Char('x')], true),
+        "a release is no new last change either"
     );
 }
 

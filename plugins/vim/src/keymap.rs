@@ -40,9 +40,9 @@ pub struct Held {
     /// the `Press` its key was taken with and whose key it is.
     pub(crate) keys: Vec<Input>,
     /// The inputs the map answered for none of, which the host's
-    /// queue runs again. They keep the origin they were taken with:
-    /// the engine, not the host, is what remembers whose a released
-    /// key is, there being no origin for "released, and a macro's".
+    /// queue runs again. They keep the origin they were taken with,
+    /// and leave here marked `released`, so the queue alone says both
+    /// whose a key is and that a prefix let it go.
     pub(crate) released: Vec<Input>,
 }
 

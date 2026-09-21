@@ -578,7 +578,8 @@ pub struct Vim {
     arrive: Option<(Rd, Pos, Land)>,
 }
 
-/// The input of `key` in `origin`, taking `from`'s clock and source.
+/// The input of `key` in `origin`, taking `from`'s clock and source,
+/// on its way in and let go by nothing yet.
 ///
 /// Every key no person typed carries the press of the key that made
 /// it — the `@a`, the `.`, or the prefix that let it go — so the host
@@ -586,7 +587,7 @@ pub struct Vim {
 #[must_use]
 pub fn keyed(key: Key, origin: u64, from: &Press) -> Input {
     let press = Press { key: key.code(), when: from.when, source: from.source };
-    Input { press, origin }
+    Input { press, origin, released: false }
 }
 
 /// One key of `origin`, for the tests inside this crate: a press of
@@ -1377,12 +1378,13 @@ impl Vim {
     /// the View is shown again.
     ///
     /// This is the engine's one entry. A key a person typed comes in
-    /// as `TYPED`, a macro's as `FED`, a `.`'s as `REPEAT` and a key
-    /// a failed prefix let go as `RELEASED`, that one running again
-    /// in the origin it was taken with — a macro's key is still the
-    /// macro's, so its edits join that run's one revision and a bell
-    /// still drops it. A code no `Key` stands for is nothing here,
-    /// and the queue moves on.
+    /// as `TYPED`, a macro's as `FED` and a `.`'s as `REPEAT`;
+    /// `released` says a failed prefix let this key go, which is the
+    /// one thing that keeps it from being looked up in the keymap
+    /// again. Whose it is it keeps through that release — a macro's
+    /// key is still the macro's, so its edits join that run's one
+    /// revision and a bell still drops it. A code no `Key` stands for
+    /// is nothing here, and the queue moves on.
     ///
     /// ```
     /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
@@ -1395,37 +1397,40 @@ impl Vim {
     /// ```
     pub fn key(&mut self, input: Input) -> Effect {
         let Some(key) = key_of(&input.press) else { return Effect::Nothing };
-        let past = input.origin == origin::RELEASED;
-        // A `.`'s keys replay; a key it let go runs as its own key
-        // did, which is not replaying, as its maker was not.
+        let past = input.released;
+        // A `.`'s keys replay, a key a prefix let go among them: the
+        // release says this key is not looked up again and nothing
+        // about whose it is, so it records no new last change.
         self.repeat.replaying = input.origin == origin::REPEAT;
-        let typed = input.origin == origin::TYPED;
+        // A release is this key's second arrival: it was recorded,
+        // and it ended a join, the first time.
+        let typed = !past && input.origin == origin::TYPED;
         if typed {
             self.macros.joined = false;
         }
         if typed && self.macros.recording.is_some() {
             self.macros.record.push(key);
         }
-        let taken = if past { self.let_go(&input) } else { input };
-        self.macros.fed = matches!(taken.origin, origin::FED | origin::REPEAT);
-        self.taken = Some(taken);
+        self.macros.fed = matches!(input.origin, origin::FED | origin::REPEAT);
+        self.taken = Some(input);
         self.processed(key, past)
     }
 
-    /// The input the engine last took, its origin the maker's where a
-    /// prefix let the key go: what the host reads for the press to
-    /// give the keys that input asks it to feed.
+    /// The input the engine last took: what the host reads for the
+    /// press to give the keys that input asks it to feed.
     #[must_use]
     pub const fn taken(&self) -> Option<&Input> {
         self.taken.as_ref()
     }
 
-    /// The next key a failed prefix let go, for the host to put at
-    /// the front of its queue; `None` once there are none.
+    /// The keys a failed prefix let go, in the order they were taken,
+    /// for the host to put at the front of its queue; empty once
+    /// there are none.
     ///
-    /// One at a time, and the engine keeps it: `RELEASED` says a key
-    /// was let go but not whose it was, and a bell drops a macro's
-    /// released keys while it keeps a person's.
+    /// The whole batch at once, and the engine keeps no copy: each
+    /// input carries the origin it was taken with and `released`, so
+    /// the queue alone says whose a released key is and a bell can
+    /// drop a macro's while it keeps a person's.
     ///
     /// ```
     /// use reovim_client_api::{Key, NONE, keyboard::Press, origin};
@@ -1437,37 +1442,28 @@ impl Vim {
     /// let typed = |key| keyed(key, origin::TYPED, &none);
     /// assert_eq!(vim.key(typed(Key::Char('x'))), Effect::Nothing);
     /// vim.key(typed(Key::Char('p')));
-    /// while let Some(input) = vim.released() {
+    /// for input in vim.released() {
+    ///     assert_eq!(input.origin, origin::TYPED, "the person's still");
     ///     vim.key(input);
     /// }
     /// assert_eq!(vim.text(), "bac\n");
     /// ```
-    pub fn released(&mut self) -> Option<Input> {
-        let input = self.held.released.first()?;
-        Some(Input { press: input.press.clone(), origin: origin::RELEASED })
-    }
-
-    /// The input a `RELEASED` one stands for: the one the engine let
-    /// go, whose origin says whose key it was. One the host dropped
-    /// before running it is still here, and is handed out again.
-    fn let_go(&mut self, input: &Input) -> Input {
-        let held = self.held.released.first();
-        if held.is_some_and(|held| held.press == input.press) {
-            return self.held.released.remove(0);
+    pub fn released(&mut self) -> Vec<Input> {
+        let mut inputs = core::mem::take(&mut self.held.released);
+        for input in &mut inputs {
+            input.released = true;
         }
-        // A release the engine no longer holds — a stay left between
-        // the two, or a test handing one in — runs in the fed context
-        // it finds itself in.
-        let origin = if self.macros.fed { origin::FED } else { origin::TYPED };
-        Input { press: input.press.clone(), origin }
+        inputs
     }
 
-    /// A bell or the replay budget: what a macro fed goes, held and
-    /// released alike, and what a person typed stays. So a macro that
-    /// ends inside a prefix cannot be finished by the next typed key.
+    /// A bell or the replay budget: what a macro fed goes and what a
+    /// person typed stays. So a macro that ends inside a prefix
+    /// cannot be finished by the next typed key.
+    ///
+    /// Only what the engine still holds: what it has let go is the
+    /// host's queue's, which sweeps it by the same origin.
     pub(crate) fn cancel(&mut self) {
         self.held.keys.retain(|input| input.origin == origin::TYPED);
-        self.held.released.retain(|input| input.origin == origin::TYPED);
     }
 
     /// The keymap at `key`, before anything else this key would do:
