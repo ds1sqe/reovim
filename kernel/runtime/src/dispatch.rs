@@ -4,7 +4,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Caller, DriverId, Error, Handle, Hash, ModuleId, Op, Out, Rd, Reply,
+    Caller, DriverId, Error, Flags, Handle, Hash, ModuleId, Op, Out, Rd, Reply,
     Rights, Token, allows, check_call, part,
 };
 
@@ -205,7 +205,8 @@ fn outcome(answer: &Answer) -> String {
 
 fn lookup(k: &Kernel, caller: Caller, rd: Rd, name: &str) -> Answer {
     let s = k.state.borrow();
-    let owner = s.table.get(rd)?.owner;
+    let entry = s.table.get(rd)?;
+    let (owner, flags) = (entry.owner, entry.flags);
     if let Some(child) = s.table.child(rd, name) {
         return Ok(Reply::ok(Out::Rd(child)));
     }
@@ -216,7 +217,7 @@ fn lookup(k: &Kernel, caller: Caller, rd: Rd, name: &str) -> Answer {
     // A Module that registered no Driver at all answers `Invalid`,
     // which is `driver_index`'s own word for a `DriverId` it lacks.
     let (index, d) = k.served(module, driver)?;
-    let reply = named(owner, d.lookup(&k.calls(module), rd, name));
+    let reply = named(flags, d.lookup(&k.calls(module), rd, name));
     finish(k, caller, None, Some((module, index)), reply, Out::Rd)
 }
 
@@ -233,18 +234,25 @@ const fn serving(owner: Owner) -> Option<(ModuleId, DriverId)> {
     }
 }
 
-/// The answer to a lookup a home's Driver would not make. A Module
-/// whose first Driver has no `lookup` leaves the names under its home
-/// to what it registered, and a name that is not in the table is not
-/// there: `Invalid`, which a Kernel Container's missing name has
-/// always answered. A Driver's own rows are untouched and keep the
-/// word their Driver said.
-const fn named(owner: Owner, reply: Reply<Rd>) -> Reply<Rd> {
-    match (owner, reply) {
-        (Owner::Kernel(_), Reply::Ready(Err(Error::Unsupported))) => {
+/// The answer to a lookup a Container's Driver would not make. A row
+/// flagged `CONTAINER` holds only the names it registered, exactly
+/// what [`children`] answers from, so a name missing from the table is
+/// not there: `Invalid`, which a Kernel Container's missing name has
+/// always answered, and a home is inserted with `CONTAINER` among its
+/// `Flags` (`OPEN`, in `Kernel::enter`), so it reads no differently
+/// than before. The same rule now holds over a Driver-owned Container,
+/// as `clients/core`'s `named` already reads one. A row that is no
+/// Container holds no names at all: `Unsupported` stands for it, and a
+/// Driver with a `lookup` of its own still answers for itself with
+/// whatever else it says.
+const fn named(flags: Flags, reply: Reply<Rd>) -> Reply<Rd> {
+    match reply {
+        Reply::Ready(Err(Error::Unsupported))
+            if flags.contains(Flags::CONTAINER) =>
+        {
             Reply::Ready(Err(Error::Invalid))
         }
-        (_, other) => other,
+        other => other,
     }
 }
 

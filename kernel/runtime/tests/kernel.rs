@@ -354,6 +354,84 @@ fn children_of_a_home_list_what_stands() {
     assert_eq!(rig.ok(Op::Children { rd: home }), after);
 }
 
+/// A Module whose Driver registers a Container and a plain row under
+/// its home, then implements no `lookup` of its own: a name missing
+/// from either falls to the trait's default, `Unsupported`.
+struct Hollow;
+
+impl Module for Hollow {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let dir = ctx.register(DriverId(0), home, Some("dir"))?;
+        ctx.report(dir, Flags::READ | Flags::CONTAINER, &[])?;
+        let leaf = ctx.register(DriverId(0), home, Some("leaf"))?;
+        ctx.report(leaf, Flags::READ, &[])?;
+        Ok(())
+    }
+}
+
+impl Driver for Hollow {}
+
+/// A Hollow Module loaded beside the Test one, and its `dir` (a
+/// Container) and `leaf` (a plain row), both the Hollow Driver's own.
+fn hollow(rig: &Rig) -> (Rd, Rd) {
+    let module = Rc::new(Hollow);
+    let driver: Rc<dyn Driver> = module.clone();
+    rig.kernel.load("h", module, vec![driver]).unwrap();
+    let home = rig.lookup(rig.lookup(ROOT, "module"), "h");
+    (rig.lookup(home, "dir"), rig.lookup(home, "leaf"))
+}
+
+/// A Module whose Driver has its own `lookup`, which answers `Denied`
+/// for a name it will not make rather than the default `Unsupported`.
+struct Picky;
+
+impl Module for Picky {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let dir = ctx.register(DriverId(0), home, Some("dir"))?;
+        ctx.report(dir, Flags::READ | Flags::CONTAINER, &[])?;
+        Ok(())
+    }
+}
+
+impl Driver for Picky {
+    fn lookup(&self, _: &dyn Calls, _: Rd, _: &str) -> Reply<Rd> {
+        Reply::err(Error::Denied)
+    }
+}
+
+/// A Picky Module loaded beside the Test one, and its `dir`.
+fn picky(rig: &Rig) -> Rd {
+    let module = Rc::new(Picky);
+    let driver: Rc<dyn Driver> = module.clone();
+    rig.kernel.load("p", module, vec![driver]).unwrap();
+    let home = rig.lookup(rig.lookup(ROOT, "module"), "p");
+    rig.lookup(home, "dir")
+}
+
+#[test]
+fn a_drivers_container_without_lookup_answers_invalid_for_a_missing_name() {
+    let (rig, _) = fresh();
+    let (dir, _) = hollow(&rig);
+    let op = Op::Lookup { rd: dir, name: "missing".into() };
+    assert_eq!(rig.err(op), Error::Invalid);
+}
+
+#[test]
+fn a_drivers_plain_row_without_lookup_answers_unsupported() {
+    let (rig, _) = fresh();
+    let (_, leaf) = hollow(&rig);
+    let op = Op::Lookup { rd: leaf, name: "missing".into() };
+    assert_eq!(rig.err(op), Error::Unsupported);
+}
+
+#[test]
+fn a_drivers_own_lookup_still_answers_for_itself() {
+    let (rig, _) = fresh();
+    let dir = picky(&rig);
+    let op = Op::Lookup { rd: dir, name: "missing".into() };
+    assert_eq!(rig.err(op), Error::Denied);
+}
+
 #[test]
 fn register_follows_the_parent_owner() {
     let (rig, test) = fresh();
