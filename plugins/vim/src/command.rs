@@ -20,9 +20,19 @@ impl Vim {
         self.keep_want = true;
         self.prompt.at = prompt;
         self.prompt.line().put(0, "");
-        // `:` from a selection leaves it and names its lines.
-        if prompt == ':' && matches!(self.mode, Mode::Visual(_)) {
+        // `:` from a selection is nvim's OP_COLON operator, not a
+        // prompt over it: `do_pending_operator` puts the cursor at
+        // the selection's start and sets the want there, and only
+        // then does `op_colon` put `'<,'>` on the line. The marks
+        // `<` and `>` are still the selection's, so it is left first.
+        if prompt == ':'
+            && let Mode::Visual(kind) = self.mode
+        {
+            let start = self.selection_start(kind);
             self.leave_visual();
+            self.cursor = start;
+            self.clamp();
+            self.keep_want = false;
             self.prompt.line().put(0, "'<,'>");
         }
         self.prompt.before = self.mode;

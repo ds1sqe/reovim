@@ -227,6 +227,20 @@ impl Vim {
         }
     }
 
+    /// Where an operator over the selection puts the cursor: the
+    /// first position of the operated text, nvim's `oap->start`,
+    /// which `do_pending_operator` moves to, `w_set_curswant` with
+    /// it, before the operator itself runs. Column 0 for `V`, and
+    /// for Ctrl-V the block's left column on its first line, which
+    /// is not the anchor's own column when the cursor is left of it.
+    pub(crate) fn selection_start(&self, kind: Visual) -> usize {
+        if kind == Visual::Block {
+            let ((top, _), (left, _)) = self.corners();
+            return self.at_column(self.line_at(top).unwrap_or(0), left);
+        }
+        self.selection(kind).0
+    }
+
     /// The byte range of the block's columns on each of its lines,
     /// top to bottom; on a line short of the block's left column it
     /// is empty, at the line's end.
