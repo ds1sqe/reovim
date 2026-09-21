@@ -817,6 +817,9 @@ shown clibuf 'cat'
 shown clibuf 'ls'
 keys clibuf l s Enter
 shown clibuf '^alpha  note$'
+echo spaced > "$DIR/shell/my file"
+keys clibuf c a t Space '"' m y Space f i l e '"' Enter
+shown clibuf '^spaced$'
 # The one host that runs with color: what it paints on the way to its
 # own region it does not put in a file, a `>` writing for no screen.
 : > "$DIR/shell/f"
@@ -860,6 +863,11 @@ echo a > "$DIR/words/alpha"
 echo one > "$DIR/words/note"
 start words "$DIR/words" "$BIN note"
 editing words note
+echo spaced > "$DIR/words/my file"
+keys words : c a t Space '"' m y Space f i l e '"' Enter
+shown words 'spaced'
+[[ "$("$BIN" cli cat "\"/module/fs/root$DIR/words/my file\"")" == spaced ]] \
+    || fail "process cli did not read a quoted path"
 keys words : l s Enter
 shown words "note  1:1  r1   alpha"
 keys words : p w d Enter

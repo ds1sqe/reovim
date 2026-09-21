@@ -61,6 +61,7 @@ fn help_is_the_builtins_and_then_one_line_per_name_under_path() {
         ]
     );
     assert!(said.contains("\na target is a path from /"), "{said}");
+    assert!(said.contains("quotes hold blanks, | and >; no escape"));
     assert!(said.ends_with("as\nCtrl-C does\n"), "{said}");
 
     // One name is its own line, from the same two places.

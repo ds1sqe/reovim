@@ -67,6 +67,8 @@ const BUILTINS: [Builtin; 3] = [
 const AFTER: &str = "\
 a target is a path from /, a name under the cwd, . or .., or rd:<n>
 
+single and double quotes hold blanks, | and >; no escape
+
 the line: Tab completes, Up and Down walk the lines that begin as this
 one does, Ctrl-A the start, Ctrl-E the end, Ctrl-U cuts to the start,
 Ctrl-W the word before the cursor, Ctrl-L clears the screen; Ctrl-D
@@ -270,6 +272,58 @@ const CAUSES: &[(Step, Error, &str)] = &[
     (Step::Op, Error::Cancelled, "cancelled"),
 ];
 
+/// A token owns joined runs; quoting also keeps operators literal.
+struct Word {
+    text: String,
+    quoted: bool,
+}
+
+fn words(line: &str) -> Result<Vec<Word>, Miss> {
+    let mut tokens = Vec::new();
+    let mut chars = line.chars().peekable();
+    while let Some(&next) = chars.peek() {
+        if next.is_whitespace() {
+            chars.next();
+            continue;
+        }
+        tokens.push(word(&mut chars)?);
+    }
+    Ok(tokens)
+}
+
+fn word(
+    chars: &mut core::iter::Peekable<core::str::Chars<'_>>,
+) -> Result<Word, Miss> {
+    let mut token = Word { text: String::new(), quoted: false };
+    while let Some(&next) = chars.peek() {
+        if next.is_whitespace() {
+            break;
+        }
+        chars.next();
+        if matches!(next, '\'' | '"') {
+            token.quoted = true;
+            quoted(chars, next, &mut token.text)?;
+        } else {
+            token.text.push(next);
+        }
+    }
+    Ok(token)
+}
+
+fn quoted(
+    chars: &mut impl Iterator<Item = char>,
+    quote: char,
+    text: &mut String,
+) -> Result<(), Miss> {
+    for next in chars {
+        if next == quote {
+            return Ok(());
+        }
+        text.push(next);
+    }
+    Err(Miss::line("unclosed quote"))
+}
+
 /// One typed line: what it printed, and the run it left open.
 ///
 /// `|`, `>` and `>>` are the shell's own, so a line that redirects
@@ -278,14 +332,16 @@ const CAUSES: &[(Step, Error, &str)] = &[
 ///
 /// # Errors
 /// `Miss` for a name PATH does not hold, a token no field takes, a
-/// stage that names nothing, or whatever the tree says.
+/// stage that names nothing, an unclosed quote, or whatever the tree says.
 pub fn run(
     ctx: &dyn Calls,
     shell: &mut Shell,
     text: &str,
 ) -> Result<Ran, Miss> {
-    let typed: Vec<&str> = text.split_whitespace().collect();
-    let (stages, sink) = run::stages(&typed)?;
+    let words = words(text)?;
+    let typed: Vec<&str> = words.iter().map(|word| &*word.text).collect();
+    let bare: Vec<bool> = words.iter().map(|word| !word.quoted).collect();
+    let (stages, sink) = run::stages(&typed, &bare)?;
     // A builtin answers bytes and not a cell, so neither a pipe nor a
     // redirect has anything of its to take.
     let itself = |stage: &&run::Stage<'_>| builtin(stage.0).is_some();
@@ -558,5 +614,34 @@ mod tests {
         // A Miss the shell made itself carries a whole sentence, and
         // there is no name or target to put around it.
         assert_eq!(Miss::line("said as it is").to_string(), "said as it is");
+    }
+
+    #[test]
+    fn words_join_what_a_quote_touches() {
+        let read = |line| {
+            super::words(line)
+                .unwrap()
+                .into_iter()
+                .map(|word| (word.text, word.quoted))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            read("a\" \"b ''"),
+            alloc::vec![
+                ("a b".to_string(), true),
+                (alloc::string::String::new(), true)
+            ]
+        );
+        assert_eq!(read("'\"'\"'\""), alloc::vec![("\"'".to_string(), true)]);
+        assert_eq!(
+            read(r"a\ b"),
+            alloc::vec![("a\\".to_string(), false), ("b".to_string(), false)]
+        );
+        assert_eq!(read(" \t\n"), Vec::new());
+        assert_eq!(read("'a\\b'"), alloc::vec![("a\\b".to_string(), true)]);
+        let Err(miss) = super::words("a \"b") else {
+            panic!("an open quote was accepted");
+        };
+        assert_eq!(miss.to_string(), "unclosed quote");
     }
 }

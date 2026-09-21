@@ -675,3 +675,78 @@ fn a_run_that_counts_its_answers_ends_at_the_empty_read() {
     assert_eq!(open.more(ctx), Ok((b"second\n".to_vec(), true)));
     assert_eq!(ops::children(ctx, cat), Ok(Vec::new()));
 }
+
+#[test]
+fn a_quoted_run_is_one_token() {
+    let rig = Rig::new("quotes-joined");
+    rig.file("my file", b"spaced\n");
+    rig.file("f", b"a b\na|b\n>\n(a)\n");
+    let host = rig.host();
+    let ctx = &host.own();
+    assert_eq!(shown(ctx, "cat '/module/fs/root/my file'", None), "spaced\n");
+    assert_eq!(shown(ctx, "grep a\" \"b /module/fs/root/f", None), "a b\n");
+    assert_eq!(
+        shown(ctx, "grep '' /module/fs/root/f", None),
+        "a b\na|b\n>\n(a)\n"
+    );
+}
+
+#[test]
+fn a_quoted_operator_is_a_word() {
+    let rig = Rig::new("quotes-operators");
+    rig.file("|", b"pipe\n");
+    rig.file(">", b"greater\n");
+    rig.file(">>", b"append\n");
+    rig.file("out file", b"");
+    rig.file("f", b"a|b\n>\n");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    typed(ctx, &mut shell, "cd /module/fs/root");
+    for (line, expected) in [
+        ("grep \"a|b\" f", "a|b\n"),
+        ("grep '>' f", ">\n"),
+        ("cat '|'", "pipe\n"),
+        ("cat '>'", "greater\n"),
+        ("cat \">>\"", "append\n"),
+        ("cat ''|", "pipe\n"),
+        ("cat >''", "greater\n"),
+        ("cat >''>", "append\n"),
+        ("cat '|' | grep pipe", "pipe\n"),
+        ("cat '>' > 'out file'", ""),
+        ("cat '|' >> 'out file'", ""),
+    ] {
+        assert_eq!(typed(ctx, &mut shell, line), expected, "{line}");
+    }
+    assert_eq!(rig.disk("out file"), b"greater\npipe\n");
+}
+
+#[test]
+fn a_backslash_is_a_char_as_before() {
+    let rig = Rig::new("quotes-backslash");
+    rig.file("f", b"(a)\na\n");
+    let host = rig.host();
+    assert_eq!(
+        shown(&host.own(), r"grep \(a\) /module/fs/root/f", None),
+        "(a)\na\n"
+    );
+}
+
+#[test]
+fn an_open_quote_is_a_miss_and_nothing_ran() {
+    let rig = Rig::new("quotes-unclosed");
+    rig.file("out", b"kept\n");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    for line in [
+        "cat \"my file > /module/fs/root/out",
+        "cat /module/fs/root/out | cat 'unfinished",
+        "cd /module/fs/root '",
+    ] {
+        assert_eq!(typed(ctx, &mut shell, line), "unclosed quote");
+        assert_eq!(rig.disk("out"), b"kept\n");
+        assert_eq!(typed(ctx, &mut shell, "pwd"), "/\n");
+        assert!(cells(ctx, "cat").is_empty());
+    }
+}

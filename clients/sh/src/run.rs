@@ -135,8 +135,8 @@ impl Open {
     }
 }
 
-/// The line cut into stages at `|`, and where the last one's output
-/// goes. A `>` or `>>` belongs to the last stage; one anywhere else is
+/// The line cut at bare `|` tokens, and where the last one's output
+/// goes. A bare `>` or `>>` belongs to the last stage; elsewhere it is
 /// refused, a stage's output being the next stage's input.
 ///
 /// # Errors
@@ -144,14 +144,29 @@ impl Open {
 /// stage, and one that takes other than one target.
 pub fn stages<'a>(
     typed: &'a [&'a str],
+    bare: &[bool],
 ) -> Result<(Vec<Stage<'a>>, Option<Sink<'a>>), Miss> {
-    let cut: Vec<&[&str]> = typed.split(|token| *token == "|").collect();
+    let mut index = 0;
+    let cut: Vec<&[&str]> = typed
+        .split(|token| {
+            let pipe = bare[index] && *token == "|";
+            index += 1;
+            pipe
+        })
+        .collect();
     let end = cut.len() - 1;
     let (mut stages, mut sink) = (Vec::new(), None);
-    let pours = |t: &&str| matches!(*t, ">" | ">>");
+    let mut offset = 0;
     let off = "a redirect belongs to the last stage";
     for (at, stage) in cut.into_iter().enumerate() {
-        let poured = stage.iter().position(pours).unwrap_or(stage.len());
+        let poured = stage
+            .iter()
+            .enumerate()
+            .position(|(i, token)| {
+                bare[offset + i] && matches!(*token, ">" | ">>")
+            })
+            .unwrap_or(stage.len());
+        offset += stage.len() + 1;
         let (tokens, rest) = stage.split_at(poured);
         sink = match rest {
             [] => None,
