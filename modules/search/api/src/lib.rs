@@ -16,11 +16,31 @@ declare! {
     /// `source` from `from`, filled by `pattern`'s matches. `open`
     /// answers a `Rd`; `/self/search/<n>` and `/module/search/<n>` are
     /// its shape, `n` a count from 0 that never goes back.
+    ///
+    /// `seek` is the journey a line makes. A `/` or an `M-x search`
+    /// opens one view at its first key and seeks it at every key
+    /// after, reading the same `matches` and `progress` as it goes:
+    /// one view and one call a key, never a view a key. A `Seek`'s
+    /// `view` drops the list it holds and fills again from `from`
+    /// with `pattern`, over the source it was opened on and the
+    /// length `open` measured; both cells read the new fill from the
+    /// next read on. A pattern that does not parse is `Invalid` and
+    /// the view keeps the list it had, so a half-typed line still
+    /// shows the last whole one; a `view` that is no view of this
+    /// Module's is `Invalid`.
     api search ver 1 {
         0 open(args: Open) -> Rd: WRITE;
+        1 seek(args: Seek) -> (): WRITE;
     }
     record Open {
         source: Rd,
+        pattern: utf8(1024),
+        ignorecase: bool,
+        smartcase: bool,
+        from: u64,
+    }
+    record Seek {
+        view: Rd,
         pattern: utf8(1024),
         ignorecase: bool,
         smartcase: bool,

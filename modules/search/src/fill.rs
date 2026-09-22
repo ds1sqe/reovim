@@ -77,6 +77,10 @@ impl Fill {
         self.handle
     }
 
+    pub const fn source(&self) -> Rd {
+        self.source
+    }
+
     pub const fn whole(&self) -> bool {
         self.whole
     }

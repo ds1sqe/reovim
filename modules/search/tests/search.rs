@@ -3,6 +3,7 @@
 //! loaded bare, under no `Rig::host()`, so a case picks its own
 //! budget.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -10,7 +11,9 @@ use reovim_client::{
     Calls, Clip, Handle, Host, HostCalls, Kind, Rd, Rights, Table, dev,
 };
 use reovim_client_api::buffers;
-use reovim_kernel_interface::{Booted, Error};
+use reovim_kernel_interface::{
+    Booted, Driver, DriverId, Error, Flags, Module, Reply, part,
+};
 use reovim_module_search::{Search, search};
 use reovim_rig::Rig;
 use reovim_sdk::walk::ROOT;
@@ -87,6 +90,15 @@ impl Sut {
     fn open_call(&self, args: search::Open) -> Result<Rd, Error> {
         let h = self.calls().open(self.open, Rights::WRITE).unwrap();
         let result = self.on(|ctx| search::Call(ctx, h).open(args));
+        let _ = ops::close(&self.calls(), h);
+        result
+    }
+
+    /// `search.seek`, on a handle opened and closed the way `call`
+    /// is.
+    fn seek_call(&self, args: search::Seek) -> Result<(), Error> {
+        let h = self.calls().open(self.open, Rights::WRITE).unwrap();
+        let result = self.on(|ctx| search::Call(ctx, h).seek(args));
         let _ = ops::close(&self.calls(), h);
         result
     }
@@ -866,4 +878,211 @@ fn a_read_ahead_costs_no_step() {
         }
     }
     assert_eq!(reads, 168);
+}
+
+/// `search.Seek` for `view`, the two case flags off as [`args`] has
+/// them.
+fn sought(view: Rd, pattern: &str, from: u64) -> search::Seek {
+    search::Seek {
+        view,
+        pattern: pattern.to_string(),
+        ignorecase: false,
+        smartcase: false,
+        from,
+    }
+}
+
+/// `ab`, `ac`, `ab`: `a` stands at 0, 3 and 6, `ab` at 0 and 6, `c`
+/// at 4 alone.
+const THREE: &[u8] = b"ab\nac\nab\n";
+
+/// A read long enough for two entries and no more.
+fn two_entries() -> u32 {
+    u32::try_from(2 * reovim_search_api::ENTRY).unwrap()
+}
+
+#[test]
+fn a_seek_refills_the_view_from_its_from() {
+    let sut = Sut::small("seek-refill");
+    let source = sut.source("f", THREE);
+    let view = sut.opened(args(source, "a", 0));
+    let named = sut.ls("/self/search");
+
+    // Two of the three entries read, the third left behind.
+    let two = sut.read(view.matches, 0, two_entries()).unwrap();
+    let ats: Vec<u64> = entries(&two).iter().map(|m| m.at).collect();
+    assert_eq!(ats, [0, 3], "the first two of a's own three");
+
+    sut.seek_call(sought(view.rd, "ab", 0)).unwrap();
+
+    let after = sut.progress(view.progress);
+    assert_eq!(after.done, 0, "the new fill has gone nowhere yet");
+    assert_eq!(after.total, THREE.len() as u64, "the total open measured");
+    assert_eq!(sut.ls("/self/search"), named, "the same <n>, no new view");
+    assert_eq!(
+        cell::resolve(&sut.calls(), view.rd, "matches").unwrap(),
+        view.matches,
+        "the same two cells"
+    );
+
+    let found = drained(&sut, view.matches);
+    let got: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(got, [(0, 2), (6, 2)], "ab's own two, a's three gone");
+    let whole = sut.progress(view.progress);
+    assert_eq!(whole.done, whole.total, "whole again");
+}
+
+#[test]
+fn a_seek_on_a_whole_list_fills_again() {
+    let sut = Sut::small("seek-whole");
+    let source = sut.source("f", THREE);
+    let view = sut.opened(args(source, "a", 0));
+    let first = drained(&sut, view.matches);
+    let ats: Vec<u64> = first.iter().map(|m| m.at).collect();
+    assert_eq!(ats, [0, 3, 6], "a's own three");
+    let before = sut.progress(view.progress);
+    assert_eq!(before.done, before.total, "whole before the seek");
+
+    sut.seek_call(sought(view.rd, "c", 0)).unwrap();
+    assert_eq!(
+        sut.progress(view.progress).done,
+        0,
+        "a whole list fills again from its start"
+    );
+
+    let found = drained(&sut, view.matches);
+    let got: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(got, [(4, 1)], "c alone");
+}
+
+#[test]
+fn a_seek_with_a_pattern_that_does_not_parse_keeps_the_list() {
+    let sut = Sut::small("seek-unparsed");
+    let source = sut.source("f", THREE);
+    let view = sut.opened(args(source, "a", 0));
+    let held = sut.read(view.matches, 0, 1 << 20).unwrap();
+    let before = sut.progress(view.progress);
+
+    assert_eq!(
+        sut.seek_call(sought(view.rd, "\\vx", 0)),
+        Err(Error::Invalid),
+        "the pattern does not parse"
+    );
+
+    assert_eq!(
+        sut.read(view.matches, 0, 1 << 20).unwrap(),
+        held,
+        "the list the view held stands"
+    );
+    assert_eq!(sut.progress(view.progress), before, "and so does progress");
+}
+
+#[test]
+fn a_seek_on_an_rd_that_is_no_view_is_invalid() {
+    let sut = Sut::small("seek-no-view");
+    let source = sut.source("f", THREE);
+    let view = sut.opened(args(source, "a", 0));
+
+    for rd in [source, view.matches, view.progress, sut.open] {
+        assert_eq!(
+            sut.seek_call(sought(rd, "b", 0)),
+            Err(Error::Invalid),
+            "{rd:?} is no view of this Module's"
+        );
+    }
+}
+
+/// A source that seeks the view under the very slice reading it: a
+/// window's own read is the one place a call can land between the
+/// fill's take-out and its put-back.
+struct Trap {
+    text: Vec<u8>,
+    /// The seek the next read runs, once.
+    armed: RefCell<Option<search::Seek>>,
+}
+
+impl Module for Trap {
+    fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        let rd = ctx.register(DriverId(0), home, Some("text"))?;
+        ctx.report(rd, Flags::READ, &[])
+    }
+}
+
+impl Driver for Trap {
+    fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(rd.0)
+    }
+
+    fn read(
+        &self,
+        ctx: &dyn Calls,
+        _: u64,
+        at: u64,
+        len: usize,
+    ) -> Reply<Vec<u8>> {
+        let armed = self.armed.borrow_mut().take();
+        if let Err(error) = armed.map_or(Ok(()), |args| seeking(ctx, args)) {
+            return Reply::err(error);
+        }
+        Reply::ok(part(&self.text, at, len))
+    }
+}
+
+/// One `seek` on `/self/search/open`, as any caller of the api makes
+/// it: a resolve, a handle, the call, the handle closed.
+fn seeking(ctx: &dyn Calls, args: search::Seek) -> Result<(), Error> {
+    let open = cell::resolve(ctx, ROOT, "/self/search/open")?;
+    let h = ctx.open(open, Rights::WRITE)?;
+    let mut calls = ctx;
+    let sought = search::Call(&mut calls, h).seek(args);
+    let _ = ops::close(ctx, h);
+    sought
+}
+
+#[test]
+fn a_seek_mid_fill_drops_the_slice_in_flight() {
+    // Fifty `a` lines and one `b`, a small budget: the fill is a
+    // slice a read. The source seeks the view inside the window read
+    // that opens the next slice, so that slice is the old pattern's
+    // over a view that is already the new one's. Nothing it finds
+    // may reach the list, and the fill it carries may not go back.
+    let mut text = "a\n".repeat(50);
+    text.push_str("b\n");
+    let sut = Sut::with_budget("seek-in-flight", 16);
+    let trap = Rc::new(Trap {
+        text: text.clone().into_bytes(),
+        armed: RefCell::new(None),
+    });
+    sut.host.load("trap", trap.clone(), vec![trap.clone()]).unwrap();
+    let source = cell::resolve(&sut.calls(), ROOT, "/self/trap/text").unwrap();
+
+    let view = sut.opened(args(source, "a", 0));
+    let mut at = 0u64;
+    let mut held = Vec::new();
+    for _ in 0..1000 {
+        match sut.read(view.matches, at, 1 << 20) {
+            Ok(bytes) if bytes.is_empty() => panic!("whole before the seek"),
+            Ok(bytes) => {
+                at += bytes.len() as u64;
+                held.extend(bytes);
+                break;
+            }
+            Err(Error::Busy) => {}
+            Err(other) => panic!("{other:?}"),
+        }
+    }
+    assert!(!held.is_empty(), "the old pattern is filling");
+
+    *trap.armed.borrow_mut() = Some(sought(view.rd, "b", 0));
+    match sut.read(view.matches, at, 1 << 20) {
+        Ok(_) | Err(Error::Busy) => {}
+        Err(other) => panic!("{other:?}"),
+    }
+    assert!(trap.armed.borrow().is_none(), "the seek never ran");
+
+    let found = drained(&sut, view.matches);
+    let got: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(got, [(100, 1)], "b alone: no a of the slice in flight");
+    let whole = sut.progress(view.progress);
+    assert_eq!(whole.done, whole.total, "the new fill goes whole through");
 }
