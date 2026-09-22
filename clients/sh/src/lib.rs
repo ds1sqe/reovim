@@ -189,17 +189,21 @@ impl Shell {
     /// VALUE` on the line, never a positional token, and `[--NAME
     /// NAME]` in the form `help` prints.
     ///
-    /// A declaration says a field's name and its type and no more, so
-    /// two names of the same shape read alike: `substitute`'s
-    /// `address, spec` and `bind`'s `keys, line` are both two `utf8`
-    /// fields in a row, and a line one token short of them must leave
-    /// the first empty for the one (`:s/a/b/` names no range and its
-    /// spec is still its spec) and fill it for the other (`bind gw`
-    /// takes a binding away). Nothing in the shape tells them apart,
-    /// and the shell knows no name's meaning; the host whose language
-    /// the word belongs to does, and says so here once — Vim's
-    /// `address` is Vim's own grammar, read off the `:` line before
-    /// the name and put back on it as a flag.
+    /// A declaration says a field's name and its type, and a `rest`
+    /// says which field takes the rest of a line — but nothing in it
+    /// says that a word is a whole language's and never a value.
+    /// `substitute`'s `address, spec` and `bind`'s `keys, line` are
+    /// the same shape, and `:s/a/b/` names no range while `bind gw`
+    /// does name its keys. The shell knows no name's meaning; the
+    /// host whose language the word belongs to does, and says so
+    /// here once — Vim's `address` is Vim's own grammar, read off the
+    /// `:` line before the name and put back on it as a flag.
+    ///
+    /// Naming one is shell-wide and says two things: no positional
+    /// token ever fills a field of this name, and no `rest` field
+    /// ever reads `--NAME` as text, so a record with no field for it
+    /// answers an `undeclared` [`Miss`] the host may word its own
+    /// way.
     pub fn option(&mut self, name: &str) {
         if !self.optioned(name) {
             self.options.push(name.to_string());
@@ -255,6 +259,12 @@ pub struct Miss {
     /// it. Vim's `:` line says E492 of this one, the line having named
     /// nothing either table has.
     pub unknown: bool,
+    /// The target is a token under a dash the record declares no field
+    /// for. Not a value typed wrong but a fact of the declaration, and
+    /// the second Miss a host may tell from the rest: a host whose own
+    /// word the flag is words it its own way, as Vim's `:` line says
+    /// E481 of `--address` on a name whose grammar has no range.
+    pub undeclared: bool,
 }
 
 impl fmt::Display for Miss {
@@ -272,7 +282,8 @@ impl Miss {
     #[must_use]
     pub fn line(cause: &str) -> Self {
         let (name, target) = (String::new(), String::new());
-        Self { name, target, cause: cause.to_string(), unknown: false }
+        let cause = cause.to_string();
+        Self { name, target, cause, unknown: false, undeclared: false }
     }
 }
 
@@ -306,37 +317,91 @@ const CAUSES: &[(Step, Error, &str)] = &[
 ];
 
 /// A token owns joined runs; quoting also keeps operators literal.
-/// `start` and `end` are its own span of the line it came from, past
-/// every quote mark that opened or closed it: a name whose last
-/// positional is a `utf8` reads the rest of the line verbatim from
-/// there, blanks, `|` and `>` included, once its flags and earlier
-/// positionals are the words before it.
-struct Word {
+pub(crate) struct Word {
     text: String,
     quoted: bool,
-    start: usize,
-    end: usize,
+}
+
+/// A line read a word at a time, or looked at without being read at
+/// all. Quoting is the whole of the tokenizing here — `|` and `>` are
+/// [`run::stages`]' — so a reader that stops partway leaves the rest
+/// of the line exactly as it was typed, which is what a `rest` field
+/// takes.
+pub(crate) struct Cursor<'a> {
+    line: &'a str,
+    chars: core::iter::Peekable<core::str::CharIndices<'a>>,
+}
+
+impl<'a> Cursor<'a> {
+    pub(crate) fn new(line: &'a str) -> Self {
+        Self { line, chars: line.char_indices().peekable() }
+    }
+
+    /// Where the next word begins: the first byte not yet read that is
+    /// no blank, or the end of the line. Reading none of it.
+    pub(crate) fn mark(&mut self) -> usize {
+        let blank = |&(_, next): &(usize, char)| next.is_whitespace();
+        while self.chars.next_if(blank).is_some() {}
+        self.chars.peek().map_or(self.line.len(), |&(at, _)| at)
+    }
+
+    /// The run of non-blank bytes at [`Self::mark`], as they stand: no
+    /// quote is opened, so none can go unclosed, and a token under a
+    /// dash — which is spelled with neither blank nor quote in it — is
+    /// known for one before anything is tokenized.
+    pub(crate) fn bare(&mut self) -> &'a str {
+        let from = self.mark();
+        let end = self.line[from..]
+            .find(char::is_whitespace)
+            .map_or(self.line.len(), |off| from + off);
+        &self.line[from..end]
+    }
+
+    /// The bare run just read, taken.
+    pub(crate) fn past(&mut self, run: &str) {
+        let end = self.mark() + run.len();
+        while self.chars.peek().is_some_and(|&(at, _)| at < end) {
+            self.chars.next();
+        }
+    }
+
+    /// The next word, quoted runs joined; `None` where only blanks are
+    /// left.
+    ///
+    /// # Errors
+    /// `Miss` for a quote this word opened and the line never closed.
+    pub(crate) fn next(&mut self) -> Result<Option<Word>, Miss> {
+        if self.mark() == self.line.len() {
+            return Ok(None);
+        }
+        word(&mut self.chars).map(Some)
+    }
+}
+
+/// The first blank-separated word of `line` and everything past it,
+/// read before a quote or a `|` is looked at: a name is never quoted,
+/// and what a name's declaration says is what decides how the rest of
+/// the line is read at all.
+fn first_word(line: &str) -> Option<(&str, &str)> {
+    let from = line.find(|c: char| !c.is_whitespace())?;
+    let named = &line[from..];
+    let end = named.find(char::is_whitespace).unwrap_or(named.len());
+    Some((&named[..end], &named[end..]))
 }
 
 fn words(line: &str) -> Result<Vec<Word>, Miss> {
     let mut tokens = Vec::new();
-    let mut chars = line.char_indices().peekable();
-    while let Some(&(_, next)) = chars.peek() {
-        if next.is_whitespace() {
-            chars.next();
-            continue;
-        }
-        tokens.push(word(line, &mut chars)?);
+    let mut cursor = Cursor::new(line);
+    while let Some(word) = cursor.next()? {
+        tokens.push(word);
     }
     Ok(tokens)
 }
 
 fn word(
-    line: &str,
     chars: &mut core::iter::Peekable<core::str::CharIndices<'_>>,
 ) -> Result<Word, Miss> {
-    let start = chars.peek().map_or(line.len(), |&(i, _)| i);
-    let mut token = Word { text: String::new(), quoted: false, start, end: 0 };
+    let mut token = Word { text: String::new(), quoted: false };
     while let Some(&(_, next)) = chars.peek() {
         if next.is_whitespace() {
             break;
@@ -349,7 +414,6 @@ fn word(
             token.text.push(next);
         }
     }
-    token.end = chars.peek().map_or(line.len(), |&(i, _)| i);
     Ok(token)
 }
 
@@ -367,37 +431,24 @@ fn quoted(
     Err(Miss::line("unclosed quote"))
 }
 
-/// `words` without a trailing bare `>` or `>>` and the one word after
-/// it: a redirect, which is the shell's own and never counts toward
-/// whether a declaration's one and only positional needs
-/// [`run::Fill::Rest`], so `capture /path > out` still pours rather
-/// than reading `> out` into `path`.
-fn without_trailing_sink(words: &[Word]) -> &[Word] {
-    let Some((_, init)) = words.split_last() else { return words };
-    let Some((arrow, before)) = init.split_last() else { return words };
-    if !arrow.quoted && matches!(arrow.text.as_str(), ">" | ">>") {
-        before
-    } else {
-        words
-    }
-}
-
 /// One typed line: what it printed, and the run it left open.
 ///
-/// `|`, `>` and `>>` are the shell's own, so a line that redirects
-/// prints nothing and the bytes are in the target instead, and a line
-/// that pipes prints what its last stage found — for a name whose
-/// last positional is not a `utf8`, or is and the tokenized fill
-/// still answers it with nothing left over. Where it would not,
-/// `decode::verbatim` says so and `decode::record_verbatim` fills
-/// that positional from `text` itself instead: it is the one and only
-/// stage then, every `|` and `>` past its flags and its earlier
-/// positionals belonging to the line it reads and not to the shell —
-/// a trailing bare redirect set aside first only where that one
-/// positional is the declaration's only one (`decode::verbatim_alone`),
-/// `capture /path > out` still pouring rather than reading `> out`
-/// into `path`, where `bind`'s `line` behind its `keys` reads `>` as
-/// its own, `:bind <Leader>y point > /self/dev/clipboard` included.
+/// The declaration is read before the line is tokenized. The name is
+/// the first blank-separated word; if the record its run takes ends
+/// in a `rest` field, that field is the rest of the line and the line
+/// is never cut at all: the leading flags and the earlier positionals
+/// are read off the front as words, and everything from the next
+/// word's first byte to the end is one value — quotes, blanks, `|`
+/// and `>` all part of it, no stage, no redirect and no dequoting.
+/// That is how `:s/don't/X/` reaches Vim's own parser whole and how
+/// `bind <C-r> search --backward` binds a line with a flag in it.
+///
+/// A record with no `rest` is read as it always was: `|`, `>` and
+/// `>>` are the shell's own, so a line that redirects prints nothing
+/// and the bytes are in the target instead, and a line that pipes
+/// prints what its last stage found. `stat a | grep bytes` pipes and
+/// `capture /path > out` pours, their declarations saying no field
+/// takes the rest of a line.
 ///
 /// # Errors
 /// `Miss` for a name PATH does not hold, a token no field takes, a
@@ -407,22 +458,13 @@ pub fn run(
     shell: &mut Shell,
     text: &str,
 ) -> Result<Ran, Miss> {
-    let words = words(text)?;
-    if let [first, tail @ ..] = &words[..]
-        && let Some(fields) = run::fields(ctx, shell, &first.text)
+    if let Some((name, tail)) = first_word(text)
+        && let Some(fields) = run::fields(ctx, shell, name)
+        && decode::rest_at(&fields).is_some()
     {
-        let considered = if decode::verbatim_alone(shell, &fields) {
-            without_trailing_sink(tail)
-        } else {
-            tail
-        };
-        let texts: Vec<&str> =
-            considered.iter().map(|word| &*word.text).collect();
-        if let Some(at) = decode::verbatim(shell, &fields, &texts) {
-            let fill = run::Fill::Rest { at, line: text, words: &words };
-            return run::under_path(ctx, shell, &first.text, &fill, None);
-        }
+        return run::under_path(ctx, shell, name, &run::Fill::Tail(tail), None);
     }
+    let words = words(text)?;
     let typed: Vec<&str> = words.iter().map(|word| &*word.text).collect();
     let bare: Vec<bool> = words.iter().map(|word| !word.quoted).collect();
     let (stages, sink) = run::stages(&typed, &bare)?;
@@ -500,7 +542,13 @@ fn staged(shell: &Shell, input: Rd, screen: bool) -> Shell {
 /// after a `|` whose run declares no `input: Rd` to be filled through.
 fn no_stage(cause: &str, name: &str, args: &[&str]) -> Miss {
     let (name, target) = (name.to_string(), args.join(" "));
-    Miss { name, target, cause: cause.to_string(), unknown: false }
+    Miss {
+        name,
+        target,
+        cause: cause.to_string(),
+        unknown: false,
+        undeclared: false,
+    }
 }
 
 /// What the line takes after `name`, as a usage line writes it: a
@@ -534,7 +582,7 @@ fn misused(name: &str, args: &[&str]) -> Miss {
     let form = builtin(name).map(Builtin::form).unwrap_or_default();
     let cause = format!("usage: {form}");
     let (name, target) = (name.to_string(), args.join(" "));
-    Miss { name, target, cause, unknown: false }
+    Miss { name, target, cause, unknown: false, undeclared: false }
 }
 
 /// `help`, and `help NAME`: the lines the shell can run, read from the
@@ -578,7 +626,13 @@ fn cd(
         let Some((rd, path)) = shell.back.clone() else {
             let (name, target) = ("cd".to_string(), target.to_string());
             let cause = "nowhere to go back to".to_string();
-            return Err(Miss { name, target, cause, unknown: false });
+            return Err(Miss {
+                name,
+                target,
+                cause,
+                unknown: false,
+                undeclared: false,
+            });
         };
         shell.go(rd, path);
         return Ok(Vec::new());
@@ -623,7 +677,7 @@ fn resolved(
 fn miss(name: &str, target: &str, step: Step, error: Error, at: &str) -> Miss {
     let cause = row(step, error).replace("{}", at);
     let (name, target) = (name.to_string(), target.to_string());
-    Miss { name, target, cause, unknown: false }
+    Miss { name, target, cause, unknown: false, undeclared: false }
 }
 
 /// The row for this error at this step, else the one for its op.

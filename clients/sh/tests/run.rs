@@ -293,12 +293,12 @@ fn a_token_too_many_is_a_miss_with_the_form() {
     let mut shell = Shell::default();
     let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
 
-    // A name whose one positional is its last, and a `utf8`: two
-    // tokens are not "one too many" now, both blanks and all reaching
-    // it as one verbatim value, which this path is not.
+    // A `utf8` positional takes one token, so the second is one too
+    // many; a field that takes the rest of a line is a `rest` in the
+    // declaration, which `stat` has none of.
     assert_eq!(
         go(ctx, "stat /module /module"),
-        "stat /module /module: invalid"
+        "stat /module: usage: stat [target]"
     );
     // A letter no `bool` field is named by, and a flag with nothing
     // after it to take.
@@ -738,4 +738,54 @@ fn an_open_quote_is_a_miss_and_nothing_ran() {
         assert_eq!(typed(ctx, &mut shell, "pwd"), "/\n");
         assert_eq!(cells(ctx, "cat"), Vec::new());
     }
+}
+
+/// `stat`'s `target` is a `utf8` and not a `rest`, so `|` is the
+/// shell's over it as it is over any other line: the declaration is
+/// the whole of what says which, and a name in a crate Vim does not
+/// own goes on piping.
+#[test]
+fn a_utf8_name_still_pipes() {
+    let rig = Rig::new("sh-utf8-pipes");
+    rig.file("a", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap();
+    let mut shell = Shell::at(root, "/".to_string());
+    shell.screen(0, false);
+
+    // The long line `stat` prints names the rd; `grep` reads it from
+    // the cell the stage before answered with.
+    let whole = typed(ctx, &mut shell, "stat a");
+    assert!(whole.contains("\nrd "), "{whole}");
+    let piped = typed(ctx, &mut shell, "stat a | grep rd");
+    assert_eq!(
+        piped,
+        whole.lines().filter(|l| l.contains("rd")).fold(
+            String::new(),
+            |mut out, line| {
+                out.push_str(line);
+                out.push('\n');
+                out
+            }
+        )
+    );
+    assert!(piped.starts_with("rd "), "{piped}");
+
+    // And a redirect still pours, the target being the shell's own.
+    rig.file("out", b"");
+    let out = cell::resolve(ctx, root, "out").unwrap();
+    let ran = run(ctx, &mut shell, "stat a > out").unwrap();
+    assert_eq!(ran.out, Vec::new());
+    assert_eq!(ops::bytes(ctx, out), Ok(whole.into_bytes()));
+
+    // A blank inside a `utf8` positional is a token boundary now: the
+    // name with a blank in it is reached under two dashes, which is
+    // the door a declaration that is not a `rest` leaves open.
+    rig.file("a b", b"");
+    assert_eq!(
+        typed(ctx, &mut shell, "stat a b"),
+        "stat b: usage: stat [target]"
+    );
+    assert!(typed(ctx, &mut shell, "stat --target \"a b\"").contains("\nrd "));
 }

@@ -76,7 +76,11 @@ fn put(ty: &Ty, value: &Value, out: &mut Vec<u8>) -> Option<()> {
         (Ty::F64, Value::F64(n)) => out.extend_from_slice(&n.to_le_bytes()),
         (Ty::Rd, Value::Rd(rd)) => out.extend_from_slice(&rd.0.to_le_bytes()),
         (Ty::Bytes(_), Value::Bytes(bytes)) => put_bytes(out, bytes),
-        (Ty::Utf8(_), Value::Utf8(text)) => put_bytes(out, text.as_bytes()),
+        // A `Rest` is a `Utf8` on the wire and a `Utf8` here: the tag
+        // is what a shell reads, never the value.
+        (Ty::Utf8(_) | Ty::Rest(_), Value::Utf8(text)) => {
+            put_bytes(out, text.as_bytes());
+        }
         (Ty::Record(fields), Value::Record(named)) => {
             return put_record(fields, named, out);
         }
@@ -128,7 +132,9 @@ pub fn encode_arg(ty: &Ty, arg: Option<&str>) -> Result<Vec<u8>, Error> {
         (Ty::U32, Some(_)) => {
             number().and_then(|n| u32::try_from(n).ok()).map(Value::U32)
         }
-        (Ty::Utf8(_), Some(text)) => Some(Value::Utf8(text.into())),
+        (Ty::Utf8(_) | Ty::Rest(_), Some(text)) => {
+            Some(Value::Utf8(text.into()))
+        }
         (Ty::Bytes(_), Some(text)) => {
             Some(Value::Bytes(text.as_bytes().to_vec()))
         }
@@ -160,7 +166,7 @@ fn take(ty: &Ty, r: &mut Reader<'_>) -> Option<Value> {
         Ty::F64 => Value::F64(r.f64()?),
         Ty::Rd => Value::Rd(Rd(r.u64()?)),
         Ty::Bytes(_) => Value::Bytes(r.bytes()?),
-        Ty::Utf8(_) => Value::Utf8(r.str()?),
+        Ty::Utf8(_) | Ty::Rest(_) => Value::Utf8(r.str()?),
         Ty::Record(fields) => Value::Record(record(fields, r)?),
         Ty::Sequence(_, item) => {
             let n = r.u32()?;

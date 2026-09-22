@@ -334,3 +334,116 @@ fn a_records_field_list_changes_the_hash() {
     let parsed = Decl::parse(&decl.canonical()).unwrap();
     assert_eq!(parsed, decl, "and every byte of it parses back");
 }
+
+/// One record whose one field is `ty`, as one method's input: the
+/// smallest declaration a shape can be held in.
+fn holding(ty: Ty) -> Decl {
+    let method = Method {
+        number: 0,
+        name: "run".to_string(),
+        input: Ty::Record(vec![field("spec", ty)]),
+        output: Ty::Rd,
+        right: Rights::READ,
+    };
+    Decl {
+        api: "one".to_string(),
+        ver: 1,
+        methods: vec![method],
+        records: Vec::new(),
+    }
+}
+
+/// `rest(max)` is `utf8(max)`'s bytes under a tag of its own: one
+/// value of either is the same on the wire and bounded the same way,
+/// and a declaration holding one differs from the same declaration
+/// holding the other in that one byte — so the two are never one hash
+/// and a shell can never read them alike.
+#[test]
+fn a_rest_encodes_as_utf8_with_its_own_tag() {
+    use reovim_kernel_interface::value::fits;
+
+    // The value: a u32 length and that many bytes of UTF-8, `Utf8`'s
+    // rule to the byte, the bound and the UTF-8 check included.
+    let value = |text: &str| {
+        let len = u32::try_from(text.len()).unwrap();
+        let mut out = len.to_le_bytes().to_vec();
+        out.extend_from_slice(text.as_bytes());
+        out
+    };
+    for text in ["", "a | b > c", "héllo"] {
+        let bytes = value(text);
+        assert!(fits(&bytes, &Ty::Rest(32)), "{text}");
+        assert_eq!(fits(&bytes, &Ty::Rest(32)), fits(&bytes, &Ty::Utf8(32)));
+    }
+    let long = value("0123456789");
+    assert!(!fits(&long, &Ty::Rest(4)), "past its own bound");
+    let mut bad = 1u32.to_le_bytes().to_vec();
+    bad.push(0xff);
+    assert!(!fits(&bad, &Ty::Rest(32)), "no UTF-8");
+
+    // The canonical form: one byte apart, and that byte is the tag.
+    let rest = holding(Ty::Rest(32)).canonical();
+    let utf8 = holding(Ty::Utf8(32)).canonical();
+    assert_eq!(rest.len(), utf8.len());
+    let apart: Vec<usize> = rest
+        .iter()
+        .zip(&utf8)
+        .enumerate()
+        .filter(|(_, (a, b))| a != b)
+        .map(|(at, _)| at)
+        .collect();
+    assert_eq!(apart.len(), 1, "the tag and nothing else");
+    assert_eq!((rest[apart[0]], utf8[apart[0]]), (14, 8));
+    assert_ne!(holding(Ty::Rest(32)).hash(), holding(Ty::Utf8(32)).hash());
+
+    // And it parses back to itself.
+    assert_eq!(Decl::parse(&rest), Ok(holding(Ty::Rest(32))));
+}
+
+/// A `rest` is the rest of a line: a line has one, and it ends with
+/// it. `check` refuses a declaration that puts one anywhere else, so
+/// a Driver that spells it wrong never reports at all.
+#[test]
+fn a_rest_declaration_must_be_last_and_alone() {
+    let two = |first: Ty, second: Ty| {
+        let method = Method {
+            number: 0,
+            name: "run".to_string(),
+            input: Ty::Record(vec![field("a", first), field("b", second)]),
+            output: Ty::Rd,
+            right: Rights::READ,
+        };
+        Decl {
+            api: "two".to_string(),
+            ver: 1,
+            methods: vec![method],
+            records: Vec::new(),
+        }
+    };
+    // Last is where it stands.
+    let ok = two(Ty::Utf8(8), Ty::Rest(64));
+    assert_eq!(Decl::parse(&ok.canonical()), Ok(ok));
+    // Before another field, twice over, inside a sequence, and as a
+    // whole input of its own: none of them.
+    for decl in [
+        two(Ty::Rest(64), Ty::Utf8(8)),
+        two(Ty::Rest(8), Ty::Rest(8)),
+        holding(Ty::Sequence(4, Box::new(Ty::Rest(8)))),
+        holding(Ty::Choice(vec![field("one", Ty::Rest(8))])),
+    ] {
+        assert_eq!(Decl::parse(&decl.canonical()), Err(Error::Invalid));
+    }
+    let bare = Decl {
+        api: "bare".to_string(),
+        ver: 1,
+        methods: vec![Method {
+            number: 0,
+            name: "run".to_string(),
+            input: Ty::Rest(8),
+            output: Ty::Rd,
+            right: Rights::READ,
+        }],
+        records: Vec::new(),
+    };
+    assert_eq!(Decl::parse(&bare.canonical()), Err(Error::Invalid));
+}

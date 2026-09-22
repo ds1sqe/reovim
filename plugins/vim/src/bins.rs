@@ -36,17 +36,26 @@ reovim_sdk::declare! {
 }
 
 reovim_sdk::declare! {
-    /// A name that reads a bang and a path: `write`, `edit`,
-    /// `explore`. `address` is the range's own text: `write` writes
-    /// the lines it names apart, and `edit` and `explore` take none
-    /// (E481), declaring the field so a bound or typed `:` from
-    /// visual, which always puts `'<,'>` on its line, reaches them at
-    /// all rather than the shell's own refusal of a flag no field is
-    /// named for.
+    /// `write`: a bang, a range and a path. `address` is the range's
+    /// own text — `:{range}w PATH` writes the lines it names apart.
+    /// The path is the rest of the line, as nvim's is: `:w my file`
+    /// names one file.
     api file ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { bang: bool, address: utf8(256), path: utf8(512) }
+    record Args { bang: bool, address: utf8(256), path: rest(512) }
+}
+
+reovim_sdk::declare! {
+    /// `edit` and `explore`: a bang and a path, the rest of the line
+    /// as nvim reads it (`:e my file` opens one file). No `address`:
+    /// nvim answers E481 for a range on either, and a record that
+    /// declares no field for the `--address` the engine's `ex` puts
+    /// on the line is what the host words that way.
+    api opened ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { bang: bool, path: rest(512) }
 }
 
 reovim_sdk::declare! {
@@ -56,15 +65,16 @@ reovim_sdk::declare! {
     api subst ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { address: utf8(256), spec: utf8(256) }
+    record Args { address: utf8(256), spec: rest(256) }
 }
 
 reovim_sdk::declare! {
-    /// `set`, whose options are the rest of the line.
+    /// `set`, whose options are the rest of the line. No `address`:
+    /// `:'<,'>set ic` is E481 in nvim.
     api option ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { options: utf8(128) }
+    record Args { options: rest(128) }
 }
 
 reovim_sdk::declare! {
@@ -72,7 +82,7 @@ reovim_sdk::declare! {
     api each ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { bang: bool, address: utf8(256), spec: utf8(512) }
+    record Args { bang: bool, address: utf8(256), spec: rest(512) }
 }
 
 reovim_sdk::declare! {
@@ -84,19 +94,25 @@ reovim_sdk::declare! {
 }
 
 reovim_sdk::declare! {
-    /// Select or close a draft by its name under the Client's buffers.
+    /// Select or close a draft by its name under the Client's
+    /// buffers. The name is the rest of the line: nvim's `:b my file`
+    /// names the draft over `my file`.
     api numbered ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { bang: bool, name: utf8(64) }
+    record Args { bang: bool, name: rest(64) }
 }
 
 reovim_sdk::declare! {
-    /// `bind`: the keys and the `:` line they run.
+    /// `bind`: the keys and the `:` line they run. The line is the
+    /// rest of this one, so a bound line may hold a flag of its own
+    /// (`bind <C-r> search --backward`) and a `>` of its own
+    /// (`bind <Leader>y point > /self/dev/clipboard`); it is as long
+    /// as a `:` line, which the resolver's `Command` bounds at 4096.
     api bound ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { keys: utf8(64), line: utf8(512) }
+    record Args { keys: utf8(64), line: rest(4096) }
 }
 
 reovim_sdk::declare! {
@@ -129,7 +145,7 @@ reovim_sdk::declare! {
     api sought ver 1 {
         0 run(args: Args) -> Rd: READ;
     }
-    record Args { backward: bool, pattern: utf8(1024) }
+    record Args { backward: bool, pattern: rest(1024) }
 }
 
 /// The full names, each with the declaration of the shape it takes.
@@ -140,9 +156,9 @@ reovim_sdk::declare! {
 /// no order here resolves a prefix the way it once did.
 #[must_use]
 pub fn declared() -> [(&'static str, Decl); 26] {
-    let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
+    let (plain, bang, opened) = (plain::decl(), bang::decl(), opened::decl());
     [
-        ("write", file.clone()),
+        ("write", file::decl()),
         ("wq", plain.clone()),
         ("quit", bang.clone()),
         ("xit", plain.clone()),
@@ -150,8 +166,8 @@ pub fn declared() -> [(&'static str, Decl); 26] {
         ("substitute", subst::decl()),
         ("set", option::decl()),
         ("nohlsearch", plain.clone()),
-        ("edit", file.clone()),
-        ("explore", file),
+        ("edit", opened.clone()),
+        ("explore", opened),
         ("cli", bang.clone()),
         ("global", each::decl()),
         ("vglobal", each::decl()),

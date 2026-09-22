@@ -247,6 +247,12 @@ const E212: &str = "E212: Can't open file for writing";
 const E140: &str = "E140: Use ! to write partial buffer";
 /// What a name whose grammar holds no range says to one.
 const E481: &str = "E481: No range allowed";
+/// Vim's own word for the range, read off a `:` line by the engine's
+/// `ex`, put back on it as a flag, and named an option of the Shell
+/// here so no positional ever takes it ([`kept_of`]). A record with
+/// no field of this name takes no range at all, which is what the
+/// shell's `undeclared` Miss says and [`Editor::ran`] words E481.
+const ADDRESS: &str = "address";
 /// What a `:` line says of a first token neither Vim's own list nor
 /// PATH has.
 const E492: &str = "E492: Not an editor command:";
@@ -2177,8 +2183,11 @@ impl Editor {
     /// A `:` line the shell is to run, whole — Vim's own bin names
     /// stand first on the Shell's PATH (`kept_of`), so the one call
     /// reaches either kind alike, and a first token PATH has not is
-    /// E492, which is Vim's own; every other `Miss` is said as the
-    /// shell says it. What Vim would have said arrives as the run's
+    /// E492, which is Vim's own; a range on a name whose record
+    /// declares no `address` is E481, which is Vim's own too, the
+    /// shell having Missed on a flag the declaration lacks and said
+    /// so; every other `Miss` is said as the shell says it. What Vim
+    /// would have said arrives as the run's
     /// output cell, every one of its lines joined into the row, as
     /// `:buffers` needs for more than its own first; a line of the
     /// shell's own — a first token none of Vim's names is — shows
@@ -2200,6 +2209,7 @@ impl Editor {
         match outcome {
             Ok(ran) => self.says(&said_of(&printed(ctx, ran), vims_own)),
             Err(miss) if miss.unknown => self.fails(&format!("{E492} {line}")),
+            Err(miss) if no_range(&miss) => self.fails(E481),
             Err(miss) => self.fails(&format!("{miss}")),
         }
         if moved == was { Ok(()) } else { self.rebased(ctx, moved) }
@@ -2465,7 +2475,7 @@ fn kept_of(ctx: &dyn Calls, region: &Region) -> Result<Kept, Error> {
     // off a `:` line and puts back on it as `--address` is never a
     // token a positional takes, which no shape of a declaration says
     // and the shell is right not to guess.
-    shell.option("address");
+    shell.option(ADDRESS);
     let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
     Ok(Kept { dir, root, cwd, shell, clip })
 }
@@ -2587,6 +2597,14 @@ fn jumps_listed(ctx: &dyn Calls, vim: &Vim) -> String {
 /// As `Op::Info`; `Unsupported` for an rd with no name.
 pub fn named(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
     ops::info(ctx, rd)?.name.ok_or(Error::Unsupported)
+}
+
+/// Whether `miss` is a range handed to a name whose grammar has none:
+/// the shell says a token under a dash names no field of the record,
+/// and `--address` is the one such token Vim's own `ex` ever writes,
+/// the word being the host's and named here and at [`kept_of`] alone.
+fn no_range(miss: &sh::Miss) -> bool {
+    miss.undeclared && miss.target.strip_prefix("--") == Some(ADDRESS)
 }
 
 /// A `ran` run's own output cell, `out`, read for the row: every line

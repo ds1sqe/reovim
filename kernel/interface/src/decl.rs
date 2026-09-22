@@ -39,6 +39,13 @@ pub enum Ty {
     Bytes(u32),
     /// u32 length then at most that many bytes of UTF-8.
     Utf8(u32),
+    /// [`Self::Utf8`]'s bytes and bound, under a tag of its own: the
+    /// field a shell fills with the rest of the line it was given,
+    /// from where the field's own value begins to the end, verbatim —
+    /// quotes, blanks, `|` and `>` all part of the value. A record
+    /// holds at most one and it is the record's last field, which
+    /// [`Decl::check`] refuses a declaration for breaking.
+    Rest(u32),
     /// Fields in order.
     Record(Vec<Field>),
     /// u32 count then at most that many items.
@@ -112,13 +119,16 @@ impl Ty {
             Self::Array(..) => 11,
             Self::Choice(_) => 12,
             Self::Rd => 13,
+            Self::Rest(_) => 14,
         }
     }
 
     fn write(&self, out: &mut Vec<u8>) {
         out.push(self.tag());
         match self {
-            Self::Bytes(max) | Self::Utf8(max) => put_u32(out, *max),
+            Self::Bytes(max) | Self::Utf8(max) | Self::Rest(max) => {
+                put_u32(out, *max);
+            }
             Self::Record(fields) | Self::Choice(fields) => {
                 put_fields(out, fields);
             }
@@ -150,6 +160,7 @@ impl Ty {
             11 => Self::Array(r.u32()?, Box::new(Self::read(r, depth + 1)?)),
             12 => Self::Choice(read_fields(r, depth)?),
             13 => Self::Rd,
+            14 => Self::Rest(r.u32()?),
             _ => return None,
         };
         Some(ty)
@@ -192,11 +203,46 @@ impl Method {
         })
     }
 
+    /// Whether every `Rest` this method's types hold stands where one
+    /// may: the last field of a record, and nowhere else.
+    fn places_rest(&self) -> bool {
+        placed(&self.input) && placed(&self.output)
+    }
+
     fn is_bounded(&self) -> bool {
         let deep = self.input.depth().max(self.output.depth());
         let one_right =
             self.right == Rights::READ || self.right == Rights::WRITE;
         deep <= MAX_DEPTH && one_right
+    }
+}
+
+/// Whether `ty` puts every `Rest` it holds where one may stand: the
+/// last field of a record. A `Rest` is the rest of a line, so a line
+/// has one and ends with it — anywhere else (before another field, in
+/// a sequence, in a choice, as a whole input) there is no "rest" for
+/// it to be, and the declaration is refused.
+fn placed(ty: &Ty) -> bool {
+    if matches!(ty, Ty::Rest(_)) {
+        return false;
+    }
+    inner(ty)
+}
+
+/// `placed` for a type that may itself be a `Rest`: the last field of
+/// a record is the one place one stands.
+fn inner(ty: &Ty) -> bool {
+    match ty {
+        Ty::Record(fields) => fields.iter().enumerate().all(|(at, field)| {
+            if at + 1 == fields.len() {
+                inner(&field.ty)
+            } else {
+                placed(&field.ty)
+            }
+        }),
+        Ty::Choice(fields) => fields.iter().all(|field| placed(&field.ty)),
+        Ty::Sequence(_, item) | Ty::Array(_, item) => placed(item),
+        _ => true,
     }
 }
 
@@ -261,8 +307,9 @@ impl Decl {
     /// Bounds and uniqueness.
     ///
     /// # Errors
-    /// `Invalid` when a bound is exceeded, a method number repeats or a
-    /// method names no right or both.
+    /// `Invalid` when a bound is exceeded, a method number repeats, a
+    /// method names no right or both, or a `Rest` stands anywhere but
+    /// last in a record.
     pub fn check(&self) -> Result<(), Error> {
         if self.methods.len() > MAX_METHODS {
             return Err(Error::Invalid);
@@ -274,6 +321,9 @@ impl Decl {
             return Err(Error::Invalid);
         }
         if !self.methods.iter().all(Method::is_bounded) {
+            return Err(Error::Invalid);
+        }
+        if !self.methods.iter().all(Method::places_rest) {
             return Err(Error::Invalid);
         }
         if self.canonical().len() > MAX_BYTES {

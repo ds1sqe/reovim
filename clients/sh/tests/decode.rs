@@ -210,17 +210,28 @@ fn a_field_the_host_named_an_option_of_takes_no_positional() {
     assert_eq!(typed(ctx, &mut shell, "help stat"), "stat [--target TARGET]\n");
 
     // The same line over a shell whose host named no option of it:
-    // `target` is the positional it was declared as.
+    // `target` is the positional it was declared as, and one token is
+    // what a positional takes.
     let mut plain = Shell::at(root, "/".to_string());
     plain.screen(80, true);
-    assert_eq!(typed(ctx, &mut plain, "stat a b"), by_hand);
+    assert_eq!(
+        typed(ctx, &mut plain, "stat a b"),
+        "stat b: usage: stat [target]"
+    );
+    assert_eq!(typed(ctx, &mut plain, "stat \"a b\""), by_hand);
 }
 
-/// `stat`'s last positional, `target`, is a `utf8` and its only one:
-/// a blank inside the name it names does not cut it into two.
+/// `stat`'s last positional, `target`, is a `utf8` and not a `rest`:
+/// a blank in the name it names cuts the line in two as it always
+/// did, and the whole name is reached by quoting it or under two
+/// dashes. Which door a line takes is the declaration's to say and
+/// nothing else's — this test stood for the overflow rule 04.9 had,
+/// where a token too many turned a `utf8` into the rest of the line;
+/// `plugins/vim/src/bins.rs` declares `rest` where nvim's grammar
+/// wants one, and clients/sh's own `decode::tests` pin that reading.
 #[test]
-fn a_last_utf8_positional_takes_the_rest_of_the_line() {
-    let rig = Rig::new("sh-verbatim");
+fn a_utf8_positional_takes_one_token_and_no_more() {
+    let rig = Rig::new("sh-one-token");
     rig.file("a b", b"");
     let host = rig.host();
     let ctx = &host.own();
@@ -230,13 +241,16 @@ fn a_last_utf8_positional_takes_the_rest_of_the_line() {
 
     let args = stat::Args { cwd: root, color: true, target: "a b".to_string() };
     let by_hand = called(ctx, "stat", reovim_sdk::encode(&args));
-    assert_eq!(typed(ctx, &mut shell, "stat a b"), by_hand);
+    assert_eq!(typed(ctx, &mut shell, "stat 'a b'"), by_hand);
     assert!(by_hand.contains("a b"), "the whole name, not half of it");
-
-    // A name that does not exist is `stat`'s own refusal, the whole
-    // three-word target named in it and not split in three.
     assert_eq!(
-        typed(ctx, &mut shell, "stat no such name"),
+        typed(ctx, &mut shell, "stat a b"),
+        "stat b: usage: stat [target]"
+    );
+
+    // A name that does not exist is `stat`'s own refusal.
+    assert_eq!(
+        typed(ctx, &mut shell, "stat 'no such name'"),
         "stat no such name: gone"
     );
 }

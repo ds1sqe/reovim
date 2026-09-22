@@ -1068,3 +1068,31 @@ fn search_is_one_view_a_stay_with_the_slash_line() {
     assert_eq!(seen.len(), 1, "one view across the two lines");
     assert_eq!(counting.opens.get(), 1, "opened once");
 }
+
+/// `:search`'s pattern is the rest of the line by its declaration: a
+/// flag stands before it and is read once, and a word under a dash
+/// past that is the pattern's own — which is what the `/` line does
+/// with the same characters, the two being one door.
+#[test]
+fn a_search_pattern_is_the_rest_of_the_line() {
+    let ran = |name: &str, keys: &str| {
+        let (_rig, _host, vim, mut tui) =
+            over(name, b"zz\nfoo --backward bar\n-x here\n");
+        typed(&mut tui, keys);
+        let mut frames = 0;
+        while vim.counted().is_none() {
+            tui.tick().unwrap();
+            frames += 1;
+            assert!(frames < 500, "{keys}: {}", said(&mut tui));
+        }
+        (said(&mut tui), vim.position())
+    };
+    assert_eq!(
+        ran("search-rest-name", ":search foo --backward bar<CR>"),
+        ran("search-rest-slash", "/foo --backward bar<CR>"),
+    );
+    assert_eq!(
+        ran("search-dash-name", ":search -x<CR>"),
+        ran("search-dash-slash", "/-x<CR>"),
+    );
+}

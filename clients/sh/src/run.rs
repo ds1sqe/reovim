@@ -257,33 +257,24 @@ pub fn form(
 }
 
 /// Where a run's record is filled from: the tokens the line was cut
-/// into, or the line itself where a declaration's last positional
-/// takes the rest of it ([`decode::verbatim`]).
+/// into, or the line past the name itself, where the declaration ends
+/// in a `rest` field ([`decode::rest_at`]).
 pub enum Fill<'a> {
     /// The tokens past the name, each one a field's.
     Tokens(&'a [&'a str]),
-    /// The field at `at` takes what stands from its own first word to
-    /// the end of `line`, blanks, `|` and `>` kept; `words` is the
-    /// whole line's, the name first.
-    Rest {
-        /// The field the rest of the line is.
-        at: usize,
-        /// The line as it was typed.
-        line: &'a str,
-        /// Its words, the name first.
-        words: &'a [crate::Word],
-    },
+    /// Everything past the name, as it was typed. The leading flags
+    /// and the earlier positionals are read off the front as words;
+    /// the `rest` field is what is left, from its own first non-blank
+    /// byte to the end, blanks, quotes, `|` and `>` kept.
+    Tail(&'a str),
 }
 
 impl Fill<'_> {
     /// What stood past the name, as a Miss spells it back.
     fn typed(&self) -> String {
-        match self {
+        match *self {
             Self::Tokens(args) => args.join(" "),
-            Self::Rest { line, words, .. } => words
-                .first()
-                .map_or("", |first| line[first.end..].trim_start())
-                .to_string(),
+            Self::Tail(tail) => tail.trim_start().to_string(),
         }
     }
 
@@ -296,28 +287,9 @@ impl Fill<'_> {
     ) -> Result<Vec<u8>, Miss> {
         match *self {
             Self::Tokens(args) => decode::record(shell, name, input, args),
-            Self::Rest { at, line, words } => {
-                rest(shell, name, input, at, line, words)
-            }
+            Self::Tail(tail) => decode::record_tail(shell, name, input, tail),
         }
     }
-}
-
-/// [`Fill::Rest`]'s own record: `input` must be the record type every
-/// declared method takes, which is what [`decode::record_verbatim`]
-/// fills a field of.
-fn rest(
-    shell: &Shell,
-    name: &str,
-    input: &Ty,
-    at: usize,
-    line: &str,
-    words: &[crate::Word],
-) -> Result<Vec<u8>, Miss> {
-    let Ty::Record(fields) = input else {
-        return Err(miss(name, "", Step::Op, Error::Invalid, ""));
-    };
-    decode::record_verbatim(shell, name, fields, at, line, words)
 }
 
 /// The run of `name`: the record filled as `fill` says, the call, and
@@ -413,7 +385,7 @@ fn lookup(ctx: &dyn Calls, shell: &Shell, name: &str) -> Option<Rd> {
 fn not_under(shell: &Shell, name: &str) -> Miss {
     let cause = format!("not under {}; help lists them", shell.dirs.join(" "));
     let (name, target) = (name.to_string(), String::new());
-    Miss { name, target, cause, unknown: false }
+    Miss { name, target, cause, unknown: false, undeclared: false }
 }
 
 /// One reading of the cell from `at`: the bytes, and whether the read

@@ -583,3 +583,41 @@ fn a_bind_line_of_init_works() {
     typed(&mut tui, "x w");
     assert_eq!(rig.disk("note"), b"ne\ntwo\nthree\n");
 }
+
+/// A key with a binding is an alias for a line, and a line may hold a
+/// flag: `bind`'s `line` is the rest of the line by its declaration,
+/// so `--backward` inside it is the bound line's word and never
+/// `bind`'s own.
+#[test]
+fn a_bound_line_may_hold_a_flag() {
+    let (_rig, mut tui, host, _seen) = three("bind-flag");
+    typed(&mut tui, ":bind <lt>C-r> search --backward<CR>");
+    assert_eq!(said(&mut tui), "");
+    assert!(
+        cat(&host, "keymap").contains("bind <C-r> search --backward\n"),
+        "{}",
+        cat(&host, "keymap")
+    );
+}
+
+/// A bound name whose declaration has no `address` field, run from
+/// visual: `binding` puts `'<,'>` on every bound line a selection
+/// runs, so the name is handed a range its grammar has none of, and
+/// the answer is nvim's own E481 and not a usage line no person can
+/// read.
+#[test]
+fn a_bound_name_with_no_address_is_e481_from_visual() {
+    let (_rig, mut tui, _host, _seen) = three("bind-visual-no-address");
+    typed(&mut tui, ":bind <lt>C-s> search<CR>");
+    assert_eq!(said(&mut tui), "");
+
+    // From normal the line stands alone and opens the prompt.
+    typed(&mut tui, "<C-s>");
+    assert_eq!(said(&mut tui), "/");
+    typed(&mut tui, "<Esc>");
+
+    // From visual it carries `'<,'>`, which `search` declares nothing
+    // for.
+    typed(&mut tui, "v<C-s>");
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+}

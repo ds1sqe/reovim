@@ -18,7 +18,9 @@ fn take(bytes: &[u8], ty: &Ty) -> Option<usize> {
         Ty::U32 => fixed(bytes, 4),
         Ty::U64 | Ty::I64 | Ty::F64 | Ty::Rd => fixed(bytes, 8),
         Ty::Bytes(max) => take_blob(bytes, *max, false),
-        Ty::Utf8(max) => take_blob(bytes, *max, true),
+        // A `Rest` is a `Utf8` with a tag of its own: one value of
+        // either is the same bytes, bound and UTF-8 check included.
+        Ty::Utf8(max) | Ty::Rest(max) => take_blob(bytes, *max, true),
         Ty::Record(fields) => take_record(bytes, fields),
         Ty::Sequence(max, item) => take_items(bytes, *max, item, true),
         Ty::Array(n, item) => take_items(bytes, *n, item, false),

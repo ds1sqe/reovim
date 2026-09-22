@@ -170,3 +170,49 @@ fn dispatch_refuses_bad_input_and_unknown_numbers() {
     let decoded: history::Tree = reovim_sdk::decode(&tree).unwrap();
     assert_eq!(decoded.nodes.len(), 1);
 }
+
+declare! {
+    /// A name whose last field takes the rest of the line.
+    api spoken ver 1 {
+        0 run(args: Args) -> (): READ;
+    }
+    record Args { backward: bool, keys: utf8(8), line: rest(64) }
+}
+
+/// `rest(max)` in `declare!`: a `Ty::Rest` in the declaration, a
+/// `String` in Rust, and the same bytes a `utf8` of that bound has —
+/// which is what lets a value of one be read as a value of the other
+/// through `dynamic`, where every shell reads a record.
+#[test]
+fn rest_declares_and_round_trips() {
+    use reovim_kernel_interface::{Field, Ty};
+    use reovim_sdk::Typed;
+    use reovim_sdk::dynamic::{self, Value};
+
+    let ty = <spoken::Args as Typed>::ty();
+    let named = |name: &str, ty| Field { name: name.to_string(), ty };
+    assert_eq!(
+        ty,
+        Ty::Record(vec![
+            named("backward", Ty::Bool),
+            named("keys", Ty::Utf8(8)),
+            named("line", Ty::Rest(64)),
+        ])
+    );
+    assert!(spoken::decl().check().is_ok(), "last is where a rest stands");
+
+    // The Rust field is a `String`, and the record round-trips.
+    let args = spoken::Args {
+        backward: true,
+        keys: "<C-r>".to_string(),
+        line: "search --backward a | b > c".to_string(),
+    };
+    let bytes = reovim_sdk::encode(&args);
+    assert_eq!(reovim_sdk::decode::<spoken::Args>(&bytes), Ok(args.clone()));
+
+    // And a shell, which reads a record by its `Ty` alone, sees a
+    // `Utf8` value: one encoding, one reader.
+    let value = dynamic::decode(&ty, &bytes).unwrap();
+    assert_eq!(dynamic::encode(&ty, &value), Ok(bytes));
+    assert_eq!(value.field("line"), Some(&Value::Utf8(args.line)));
+}

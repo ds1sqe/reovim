@@ -307,3 +307,73 @@ fn the_host_holds_no_parser() {
         }
     }
 }
+
+/// E481 for a range on a name whose declaration has no `address`
+/// field at all, which is the general form of the one `:e` and
+/// `:explore` used to declare a field nobody read for: the shell
+/// Misses on a flag the record lacks, and the host, whose own word
+/// `--address` is, words that Miss as nvim words it — `set`, `ls`
+/// and reovim's own `search` alike.
+#[test]
+fn a_range_on_a_name_with_no_address_is_e481() {
+    let (_rig, mut tui, _host) = over("ex-no-address");
+
+    // Typed, and from a selection, which puts `'<,'>` on the line.
+    assert_eq!(typed(&mut tui, ":'<lt>,'>set ic<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+    assert_eq!(typed(&mut tui, "Vj:set ic<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+    assert_eq!(typed(&mut tui, ":1,2buffers<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+    assert_eq!(typed(&mut tui, ":1,2search a<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+
+    // A name PATH does not hold is E492 first, as nvim has it: the
+    // range is never read at all.
+    assert_eq!(typed(&mut tui, ":1,2nosuch<CR>"), Step::Changed);
+    assert!(said(&mut tui).starts_with("E492:"), "the name is read first");
+
+    // And a name that does declare one takes it.
+    assert_eq!(typed(&mut tui, ":1,2d<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(lines(&mut tui), ["three a"]);
+}
+
+/// A quote char in an argument is text, by Vim's rule and not the
+/// shell's: the declaration says the field takes the rest of the line,
+/// so nothing tokenizes it and nothing takes a `'` for an opening
+/// quote.
+///
+/// nvim reads `"` as the start of an Ex comment for the names whose
+/// argument is a file name (`:w a"b` writes `a`); that is a fact of
+/// Vim's own grammar, per name, and the engine's `ex` lexes none of
+/// it — so here the `"` is part of the name, which is the shell
+/// reading no quote and nothing more.
+#[test]
+fn a_quote_in_an_argument_is_text() {
+    let (rig, mut tui, _host) = over("ex-quotes");
+
+    assert_eq!(typed(&mut tui, "ggcconed<Esc>"), Step::Changed);
+    assert_eq!(typed(&mut tui, ":s/oned/don't/<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(lines(&mut tui)[0], "don't");
+    assert_eq!(typed(&mut tui, ":s/don't/X/<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(lines(&mut tui)[0], "X");
+
+    // A path with an apostrophe in it, and one with a quote char and
+    // a blank, each one name.
+    assert_eq!(typed(&mut tui, ":w it's.txt<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(rig.disk("d/it's.txt"), b"X\ntwo a\nthree a\n");
+    assert_eq!(typed(&mut tui, ":w \"a b\"<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(rig.disk("d/\"a b\""), b"X\ntwo a\nthree a\n");
+
+    // `|` in the rest of the line is the line's own and cuts no
+    // stage: the corpus case `global-bar-blank` is nvim's own answer
+    // for the same line.
+    assert_eq!(typed(&mut tui, "ggccx | y<Esc>"), Step::Changed);
+    assert_eq!(typed(&mut tui, ":g/x | y/d<CR>"), Step::Changed);
+    assert_eq!(lines(&mut tui), ["two a", "three a"]);
+}

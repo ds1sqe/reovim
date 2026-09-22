@@ -94,6 +94,7 @@ fn shown(ty: &Ty) -> String {
         Ty::Rd => "Rd".to_string(),
         Ty::Bytes(max) => format!("bytes({max})"),
         Ty::Utf8(max) => format!("utf8({max})"),
+        Ty::Rest(max) => format!("rest({max})"),
         Ty::Sequence(max, item) | Ty::Array(max, item) => {
             format!("[{}; {max}]", shown(item))
         }

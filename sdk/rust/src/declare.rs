@@ -62,9 +62,14 @@ impl Call for &dyn Calls {
 /// ```
 ///
 /// Types: `()`, `bool`, `u8`, `u32`, `u64`, `i64`, `f64`, `Rd`,
-/// `utf8(max)`, `[T; max]` (a Sequence) and a record's name. A method
-/// takes no argument or one. Doc comments before `api` document the
-/// module.
+/// `utf8(max)`, `rest(max)`, `[T; max]` (a Sequence) and a record's
+/// name. A method takes no argument or one. Doc comments before `api`
+/// document the module.
+///
+/// `rest(max)` is `utf8(max)`'s bytes and Rust type under a tag of
+/// its own, and says one thing more: a shell fills this field with
+/// the rest of the line it was given, verbatim. A record holds at
+/// most one and it is the record's last field.
 ///
 /// A record's name is read inside the module the macro makes, so a
 /// record declared by another api is named by a `use` before the
@@ -219,6 +224,7 @@ macro_rules! __ty {
     () => { Ty::Unit };
     (()) => { Ty::Unit };
     (utf8 ($max:expr)) => { Ty::Utf8($max) };
+    (rest ($max:expr)) => { Ty::Rest($max) };
     ([$item:tt $( ( $b:expr ) )? ; $max:expr]) => {
         Ty::Sequence($max, Box::new($crate::__ty!($item $( ( $b ) )?)))
     };
@@ -232,6 +238,7 @@ macro_rules! __rust {
     () => { () };
     (()) => { () };
     (utf8 ($max:expr)) => { $crate::__interface::String };
+    (rest ($max:expr)) => { $crate::__interface::String };
     ([$item:tt $( ( $b:expr ) )? ; $max:expr]) => {
         $crate::__interface::Vec<$crate::__rust!($item $( ( $b ) )?)>
     };
