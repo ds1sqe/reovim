@@ -242,6 +242,117 @@ fn a_range_with_no_file_is_e140_and_a_range_on_edit_is_e481() {
     assert_eq!(rig.disk("d/note"), b"xone a\n");
 }
 
+/// What a range whose second line stands above its first says, and
+/// what a write says of a source the tree will not let it reach.
+const E493: &str = "E493: Backwards range given";
+const E45: &str = "E45: 'readonly' option is set (add ! to override)";
+
+/// `path`'s permission bits: the one shape a read-only file has here,
+/// there being no mode in `Info` to set or read.
+fn mode(path: &std::path::Path, bits: u32) {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(bits))
+        .unwrap();
+}
+
+/// nvim asks `Backwards range given, OK to swap (y/n)?` and, where it
+/// cannot ask — `nvim --headless -c '5,2d'` — refuses with
+/// `E493: Backwards range given: 5,2d` and runs nothing. A question
+/// is a door this resolver has not, so it refuses; the command text
+/// nvim appends is the whole `:` line, which the one resolver never
+/// sees.
+#[test]
+fn a_backwards_range_is_refused_and_runs_nothing() {
+    let (rig, mut tui, _host) = twelve("ex-backwards-range");
+    let whole: Vec<String> = (1..=12).map(|n| format!("a {n}")).collect();
+
+    assert_eq!(typed(&mut tui, ":5,2d<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), E493);
+    assert_eq!(lines(&mut tui), whole);
+
+    // `;` moves the base the second item reads from and is a range
+    // like any other: nvim refuses `:5;2d` the same way.
+    assert_eq!(typed(&mut tui, ":5;2d<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), E493);
+    assert_eq!(lines(&mut tui), whole);
+
+    // Every bin reads the one resolver, so a `:s` and a `:w` over the
+    // same range are refused there and never run.
+    assert_eq!(typed(&mut tui, ":3,1s/a/A/<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), E493);
+    assert_eq!(typed(&mut tui, ":3,1w out<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), E493);
+    assert_eq!(lines(&mut tui), whole);
+    assert!(!rig.dir().join("d/out").exists());
+
+    // The ends in order are no backwards range, and one line is not
+    // above itself.
+    assert_eq!(typed(&mut tui, ":2,2d<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(lines(&mut tui).len(), 11);
+}
+
+/// A bare `:s` repeats the last substitute whole — nvim's `:&` — and
+/// the word it says of a pattern it does not find names that pattern,
+/// which the last searched one need not be. The corpus pins the text
+/// these leave; what they say is the host's to show.
+#[test]
+fn a_bare_substitute_repeats_the_last_one_and_names_its_own_pattern() {
+    let (_rig, mut tui, _host) = over("ex-bare-substitute");
+
+    assert_eq!(typed(&mut tui, ":1s/one/1<CR>"), Step::Changed);
+    assert_eq!(lines(&mut tui), ["1 a", "two a", "three a"]);
+
+    // An address pattern moves the last searched pattern and leaves
+    // the last substitute where it stands; the repeat reads that one,
+    // and the word names what it looked for.
+    assert_eq!(typed(&mut tui, ":/three/<CR>"), Step::Changed);
+    assert_eq!(typed(&mut tui, ":2s<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E486: Pattern not found: one");
+    assert_eq!(lines(&mut tui), ["1 a", "two a", "three a"]);
+
+    // And where it does find it, it puts the replacement back.
+    assert_eq!(typed(&mut tui, ":1s/a/A/<CR>"), Step::Changed);
+    assert_eq!(typed(&mut tui, ":2s<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(lines(&mut tui), ["1 A", "two A", "three a"]);
+}
+
+/// A source the tree will not let a write reach. No `Info` carries a
+/// mode and `modules/fs` reports every file writable, so a read-only
+/// source is met at the write and nowhere earlier: the denial there is
+/// worded E45, nvim's own refusal of a write over a readonly draft.
+/// nvim's `[RO]` in the row has nothing here to read and is left for
+/// Chrome's statusline; nvim's `:w!` carries its override out by
+/// making the file writable, which is a door the tree has not, so the
+/// denial stands under a bang too.
+#[test]
+fn a_write_the_tree_denies_is_e45() {
+    let (rig, mut tui, _host) = over("ex-readonly");
+    let dir = rig.dir().join("d");
+    let file = dir.join("note");
+    let whole: &[u8] = b"one a\ntwo a\nthree a\n";
+
+    // Both bits matter: a file no `write` may open, in a directory no
+    // temporary may be made in, so the rename `replace` would do has
+    // nowhere to stand either.
+    mode(&file, 0o444);
+    mode(&dir, 0o555);
+    let plain = typed(&mut tui, "x:w<CR>");
+    let said_plain = said(&mut tui);
+    let banged = typed(&mut tui, ":w!<CR>");
+    let said_banged = said(&mut tui);
+    mode(&dir, 0o755);
+    mode(&file, 0o644);
+
+    assert_eq!(plain, Step::Changed);
+    assert_eq!(said_plain, E45);
+    assert_eq!(banged, Step::Changed);
+    assert_eq!(said_banged, E45);
+    assert_eq!(rig.disk("d/note"), whole);
+    assert_eq!(lines(&mut tui), ["ne a", "two a", "three a"]);
+}
+
 /// A selection is an address like any other: the `'<,'>` the binding
 /// puts on the line names the lines the write takes.
 #[test]

@@ -364,13 +364,31 @@ impl Vim {
         let from = self.resolved_item(first, here, last)?;
         if let Some(rest) = rest.strip_prefix(';') {
             let to = self.resolved_item(rest, from, last)?;
-            return Ok((from.min(to), from.max(to)));
+            return self.ascending(from, to);
         }
         let Some(rest) = rest.strip_prefix(',') else {
             return Ok((from, from));
         };
         let to = self.resolved_item(rest, here, last)?;
-        Ok((from.min(to), from.max(to)))
+        self.ascending(from, to)
+    }
+
+    /// The two ends of a range as a range, or `E493` where the second
+    /// stands above the first. nvim asks `Backwards range given, OK to
+    /// swap (y/n)?` and, where it cannot ask — `-es`, a `-c` line —
+    /// refuses with E493 and runs nothing; a question is a door this
+    /// resolver has not, so it refuses. nvim names the command text
+    /// after the word, which the one resolver, given the address
+    /// alone, never sees.
+    ///
+    /// # Errors
+    /// `Nothing`, the word already said.
+    fn ascending(&mut self, from: usize, to: usize) -> Result<Lines, Effect> {
+        if to < from {
+            self.error("E493: Backwards range given");
+            return Err(Effect::Nothing);
+        }
+        Ok((from, to))
     }
 
     /// The text of the lines `lines` names, each ended by its own
@@ -638,6 +656,30 @@ impl Vim {
         Some(option)
     }
 
+    /// What a `:s` looks for and what it puts, and the record of it
+    /// kept for the next one. `bare` is a `:s` with nothing at all
+    /// after the name — nvim's `:&` — which repeats the last
+    /// substitute whole, its own pattern and its own replacement, and
+    /// searches nothing, so it leaves the last searched pattern where
+    /// it stands. Every other form takes the pattern it was given, or
+    /// the last searched one for an empty one (`:s//Y/`), and becomes
+    /// both the last searched pattern and the last substitute.
+    fn repeated(&mut self, parts: &[&str], bare: bool) -> (String, String) {
+        if bare {
+            return self.search.substitution.clone();
+        }
+        let given = parts.first().copied().unwrap_or("");
+        let source = if given.is_empty() {
+            self.search.pattern.clone()
+        } else {
+            String::from(given)
+        };
+        let replacement = String::from(parts.get(1).copied().unwrap_or(""));
+        self.search.pattern.clone_from(&source);
+        self.search.substitution = (source.clone(), replacement.clone());
+        (source, replacement)
+    }
+
     /// `:s/pat/rep/[g][i]` over `lines`, which
     /// `/self/vim/bin/substitute` runs: each line's replacements one
     /// edit, bottom-up so no offset moves under another, all one
@@ -648,31 +690,22 @@ impl Vim {
     /// reaches this parser whole and not as tokens.
     pub fn substitute(&mut self, lines: Lines, spec: &str) -> Effect {
         let parts: Vec<&str> = split_unescaped(spec, '/');
-        let (pattern, replacement) = (
-            parts.first().copied().unwrap_or(""),
-            parts.get(1).copied().unwrap_or(""),
-        );
         let flags = parts.get(2).copied().unwrap_or("");
         let (global, ignore) = (flags.contains('g'), flags.contains('i'));
-        let source = if pattern.is_empty() {
-            self.search.pattern.clone()
-        } else {
-            pattern.into()
-        };
-        self.search.pattern.clone_from(&source);
+        let (source, replacement) = self.repeated(&parts, spec.is_empty());
         let options = self.search.options;
         let ignorecase = ignore || (options.ignorecase && !flags.contains('I'));
         let Some(pattern) =
             Pattern::parse(&source, ignorecase, options.smartcase && !ignore)
         else {
-            return self.not_found();
+            return self.missing(&source);
         };
         let starts = (lines.0..=lines.1).rev().filter_map(|l| self.line_at(l));
         let changes: Result<Vec<_>, Spent> = starts
             .map(|start| (start, self.line_end(start)))
             .map(|(start, end)| {
                 let line = &self.text[start..end];
-                let done = substituted(line, &pattern, replacement, global);
+                let done = substituted(line, &pattern, &replacement, global);
                 done.map(|text| text.map(|text| (start, end, text)))
             })
             .collect();
@@ -704,7 +737,7 @@ impl Vim {
         if last.is_none() && self.global.busy {
             return Effect::Nothing;
         }
-        let Some(line) = last else { return self.not_found() };
+        let Some(line) = last else { return self.missing(&source) };
         // Where nvim's `do_sub` ends: `beginline(BL_WHITE | BL_FIX)`,
         // the want set there.
         self.cursor = self.first_non_blank(line);

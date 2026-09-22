@@ -242,6 +242,13 @@ const E37: &str = "E37: No write since last change (add ! to override)";
 const E13: &str = "E13: File exists (add ! to override)";
 /// What a write says when the host would not make the file.
 const E212: &str = "E212: Can't open file for writing";
+/// What a write says of a source the tree will not let it reach. No
+/// `Info` carries a mode and `modules/fs` reports every file
+/// writable, so a read-only source is met at the write and nowhere
+/// earlier; nvim's `[RO]`, which its row shows from the moment the
+/// file is opened, has nothing here to read and is left for Chrome's
+/// statusline.
+const E45: &str = "E45: 'readonly' option is set (add ! to override)";
 /// What a write of part of a draft says when the file it would write
 /// is the draft's own and no bang says to take it.
 const E140: &str = "E140: Use ! to write partial buffer";
@@ -1477,8 +1484,8 @@ impl Editor {
         let name = self.stay()?.name.clone();
         if source.is_some() {
             self.fixing(ctx)?;
-            publish::Call(&mut ctx, self.handle()?).save()?;
-            return Ok(true);
+            let wrote = publish::Call(&mut ctx, self.handle()?).save();
+            return self.allowed(wrote);
         }
         let Some(name) = name else {
             self.fails(E32);
@@ -1558,7 +1565,7 @@ impl Editor {
         text: String,
     ) -> Result<(), Error> {
         self.onto(ctx, path, bang, |target| {
-            ops::put(ctx, target, text.into_bytes()).map(|_| true)
+            self.allowed(ops::put(ctx, target, text.into_bytes()).map(drop))
         })
         .map(drop)
     }
@@ -1576,7 +1583,8 @@ impl Editor {
     ) -> Result<(), Error> {
         let source = self.vim.borrow().source();
         if let Some(source) = source {
-            return ops::put(ctx, source, text.into_bytes()).map(drop);
+            let wrote = ops::put(ctx, source, text.into_bytes()).map(drop);
+            return self.allowed(wrote).map(drop);
         }
         let Some(name) = self.stay()?.name.clone() else {
             self.fails(E32);
@@ -1606,9 +1614,32 @@ impl Editor {
         target: Rd,
     ) -> Result<bool, Error> {
         self.fixing(ctx)?;
-        publish::Call(&mut ctx, self.handle()?).save_as(target)?;
+        let wrote = publish::Call(&mut ctx, self.handle()?).save_as(target);
+        if !self.allowed(wrote)? {
+            return Ok(false);
+        }
         self.vim.borrow_mut().sourced(target);
         Ok(true)
+    }
+
+    /// A write the tree refused, worded. `Denied` is what a source no
+    /// `write` may open answers — the one thing the tree can say of a
+    /// read-only file — and nvim's word for a write it will not make
+    /// of a readonly draft is [`E45`]. nvim's own bang carries its
+    /// override out by making the file writable for the write; that is
+    /// a door the tree has not, so the denial stands under a bang too.
+    ///
+    /// # Errors
+    /// Every other failure of the write, unchanged.
+    fn allowed(&self, wrote: Result<(), Error>) -> Result<bool, Error> {
+        match wrote {
+            Ok(()) => Ok(true),
+            Err(Error::Denied) => {
+                self.fails(E45);
+                Ok(false)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// The newline `fixendofline` writes at the end of a last line

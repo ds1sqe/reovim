@@ -32,10 +32,17 @@ pub struct Options {
 }
 
 /// The last search: its pattern, its direction, and whether `:noh`
-/// has hidden its marks.
+/// has hidden its marks — and, beside them, the last `:s`.
 #[derive(Clone, Debug)]
 pub struct Search {
     pub pattern: String,
+    /// The last `:s`: the pattern it looked for and the replacement
+    /// it put, which a bare `:s` — nvim's `:&` — repeats whole. The
+    /// two move together and are kept beside [`Self::pattern`], not
+    /// read out of it: a `/` between two `:s` moves that one and
+    /// leaves this pair, and a bare `:s`, which searches nothing of
+    /// its own, leaves that one alone.
+    pub substitution: (String, String),
     pub forward: bool,
     pub stale: bool,
     pub options: Options,
@@ -51,6 +58,7 @@ impl Default for Search {
             forward: true,
             stale: false,
             options: Options::default(),
+            substitution: (String::new(), String::new()),
         }
     }
 }
@@ -251,6 +259,13 @@ impl Vim {
     /// E486 for the last pattern; nothing moved.
     pub(crate) fn not_found(&mut self) -> Effect {
         let pattern = self.search.pattern.clone();
+        self.missing(&pattern)
+    }
+
+    /// The same word naming a pattern of its own: what a bare `:s`
+    /// looked for is the last substitute's, which the last searched
+    /// pattern need not be.
+    pub(crate) fn missing(&mut self, pattern: &str) -> Effect {
         self.word(&alloc::format!("E486: Pattern not found: {pattern}"))
     }
 

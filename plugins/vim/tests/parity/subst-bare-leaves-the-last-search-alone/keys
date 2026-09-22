@@ -1,0 +1,1 @@
+:1s/a/Z/<CR>/bbb<CR>3G:s<CR>gg0nx:wq<CR>
