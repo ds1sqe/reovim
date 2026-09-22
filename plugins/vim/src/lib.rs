@@ -505,12 +505,13 @@ struct Wild {
     form: Option<String>,
 }
 
-/// The cursor and the `a`-`z` marks as they stood before one change,
-/// for undo to extend the current marks with, as nvim's `uh_namedm`
-/// does; redo is `marked` alone.
+/// The cursor, the column it wanted, and the `a`-`z` marks as they
+/// stood before one change, for undo to extend the current marks
+/// with, as nvim's `uh_namedm` does; redo is `marked` alone.
 #[derive(Debug)]
 struct Change {
     cursor: (usize, usize),
+    want: usize,
     marks: Vec<(char, Pos)>,
 }
 
@@ -524,6 +525,14 @@ struct Undone {
     /// An undo (`false`) or redo (`true`) is waiting for its reload.
     /// Never outlives one key, so a `Place` carries it for free.
     walking: Option<bool>,
+    /// The column the key now under way wanted when it began, which
+    /// what it runs may have moved on before the snapshot is taken:
+    /// an ex `:d` sets a want of its own where it leaves the cursor,
+    /// and a `:g` one per marked line, where nvim's own `curswant`
+    /// is recomputed by no ex line at all. Read by [`Vim::snapshot`]
+    /// alone, and no longer than the key, so a `Place` carries it as
+    /// it carries `walking`.
+    want: usize,
 }
 
 /// What one Buffer keeps of Vim between a `left` and the `opened` that
@@ -767,8 +776,24 @@ impl Vim {
 
     /// After an undo or redo, as nvim places it: on the first changed
     /// line (`top`), at the column the cursor had before that change
-    /// when this was its line, one line up for a change made by `o`,
-    /// else at the wanted column.
+    /// when this was its line, one line up for a change made by `o`
+    /// (nvim's own test, the cursor sitting one line below the one
+    /// the change was made from), else at a wanted column.
+    ///
+    /// `lines` is how many lines the text had before this undo or
+    /// redo, which says both of the above. nvim recomputes
+    /// `curswant` lazily, so a change of whole lines — an ex `:d`, a
+    /// `:g/…/d`, `dd` — leaves standing the column the cursor wanted
+    /// when the change was made, and the undo lands there whatever
+    /// line it lands on; a change within its own lines has had that
+    /// column recomputed since (`:s` sets its own where it leaves the
+    /// cursor), and the column now wanted is nvim's. A redo of lines
+    /// lands at the column the undo before it left, `curswant` having
+    /// been set by that undo's own landing.
+    ///
+    /// The `o` rule is for an undo that takes lines away, never one
+    /// that puts them back: `jl:3,5d` undone lands on line 3, though
+    /// its top line is one below the cursor's just as an `o`'s is.
     ///
     /// An undo also extends the current marks with the `a`-`z` ones
     /// that change's `Change` kept, wiping nothing set since (nvim's
@@ -776,7 +801,13 @@ impl Vim {
     /// already applied. `[`, `]` and `.` are set as nvim sets them
     /// for either: `[` and `]` to `top` and `bottom`, `.` to `top` on
     /// an undo and to `bottom` on a redo.
-    fn undone_cursor(&mut self, top: usize, bottom: usize, redo: bool) {
+    fn undone_cursor(
+        &mut self,
+        top: usize,
+        bottom: usize,
+        redo: bool,
+        lines: usize,
+    ) {
         let made = self.undone.before.len() - self.undone.count;
         let before = if redo {
             self.undone.count = self.undone.count.saturating_sub(1);
@@ -788,16 +819,27 @@ impl Vim {
         if !redo && let Some(change) = before {
             self.marks.local.extend(change.marks.iter().copied());
         }
+        let now = self.line_count();
         let line = match before {
-            Some(change) if change.cursor.0 + 1 == top && top > 0 => {
+            Some(change)
+                if now < lines && change.cursor.0 + 1 == top && top > 0 =>
+            {
                 change.cursor.0
             }
             _ => top,
         };
-        let start = self.line_at(line).unwrap_or_else(|| {
-            self.line_at(self.line_count() - 1).unwrap_or(0)
-        });
+        let start = self
+            .line_at(line)
+            .unwrap_or_else(|| self.line_at(now - 1).unwrap_or(0));
+        // The column a change of lines lands at: the one the change
+        // was made with, and for a redo the one the undo before it
+        // left, that undo's own landing having set it.
+        let want = match before {
+            Some(change) if !redo => change.want,
+            _ => self.want,
+        };
         self.cursor = match before {
+            Some(_) if now != lines => self.at_screen_column(start, want),
             Some(change) if change.cursor.0 == line => {
                 self.at_column(start, change.cursor.1)
             }
@@ -881,14 +923,17 @@ impl Vim {
     }
 
     /// The undo snapshot a revision's own first edit takes: the
-    /// cursor before it, with the `a`-`z` marks as they stood.
+    /// cursor before it and the column it wanted, with the `a`-`z`
+    /// marks as they stood.
     fn snapshot(&mut self, before: (usize, usize)) {
         let made = self.undone.before.len() - self.undone.count;
         self.undone.before.truncate(made);
         let marks = self.marks.local.range('a'..='z').map(|(&c, &p)| (c, p));
-        self.undone
-            .before
-            .push(Change { cursor: before, marks: marks.collect() });
+        self.undone.before.push(Change {
+            cursor: before,
+            want: self.undone.want,
+            marks: marks.collect(),
+        });
         self.undone.count = 0;
     }
 
@@ -1520,10 +1565,11 @@ impl Vim {
         // one's, and would count one line too many.
         let put = synthetic.text.strip_suffix('\n').unwrap_or(&synthetic.text);
         let bottom = text[..at + put.len()].matches('\n').count();
+        let lines = self.line_count();
         self.text = text.into_owned();
         self.marked(&synthetic);
         match walking {
-            Some(redo) => self.undone_cursor(top, bottom, redo),
+            Some(redo) => self.undone_cursor(top, bottom, redo, lines),
             None => self.cursor = self.cursor.min(self.bound()),
         }
         self.resettled();
@@ -2044,6 +2090,7 @@ impl Vim {
         let origin =
             self.preview.map_or_else(|| self.cursor, |preview| preview.cursor);
         let before = self.position_of(self.inside(origin));
+        self.undone.want = self.want;
         // Caught before the mode this key leaves: a block insert's
         // Esc is still Insert here, so `finish_block`'s own edits, on
         // the way out, still read as typed; a `c` that enters Insert
