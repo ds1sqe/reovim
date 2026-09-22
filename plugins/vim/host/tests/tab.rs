@@ -60,10 +60,13 @@ fn one_candidate_is_the_name_expanded_and_its_usage_line() {
 
     // `qu` is `quit` and nothing else under PATH, so it is one
     // candidate: the whole name and a space on the line, then the
-    // usage line its declaration gives. A name that takes nothing is
-    // that name alone.
-    assert_eq!(after(&mut tui, ":qu<Tab>"), ":quit   quit");
-    assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
+    // usage line its declaration gives, `-b` among them, the bang
+    // being a flag and not an environment a token never reaches.
+    assert_eq!(after(&mut tui, ":qu<Tab>"), ":quit   quit [-b]");
+    assert_eq!(
+        after(&mut tui, ":wr<Tab>"),
+        ":write   write [-b] [--address ADDRESS] [path]"
+    );
     assert_eq!(after(&mut tui, ":nohl<Tab>"), ":nohlsearch   nohlsearch");
 
     // A name PATH has not offers nothing, and the line stands as it
@@ -276,7 +279,10 @@ fn under_vi_one_candidate_is_listed_as_several_are() {
 
     // The default: the one name expanded and the usage line it
     // declares, which is the one row of `DIVERGENCES`.
-    assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
+    assert_eq!(
+        after(&mut tui, ":wr<Tab>"),
+        ":write   write [-b] [--address ADDRESS] [path]"
+    );
 
     // `vi` is an option like the search's, and Tab writes its name
     // out: `:set v` has no other option to be.
@@ -304,7 +310,10 @@ fn under_vi_one_candidate_is_listed_as_several_are() {
 
     // `:set novi` is the way back, through the same option.
     typed(&mut tui, ":set novi<CR>");
-    assert_eq!(after(&mut tui, ":wr<Tab>"), ":write   write [path]");
+    assert_eq!(
+        after(&mut tui, ":wr<Tab>"),
+        ":write   write [-b] [--address ADDRESS] [path]"
+    );
     assert_eq!(
         said_after(&mut tui, ":w<Tab>"),
         ":write   [write]  wq  wall  wqall  watch"

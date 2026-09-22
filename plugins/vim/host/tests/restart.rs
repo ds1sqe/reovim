@@ -87,7 +87,7 @@ fn one_editor_started_twice_serves_every_cell() {
         ]
     );
     assert_eq!(listed(&host, "/self/vim/registers").len(), 38);
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 25);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 105);
     assert_eq!(cat(&host, "mode"), "normal\n");
     assert_eq!(cat(&host, "pending"), "");
     assert_eq!(cat(&host, "registers/a"), "one\n", "yanked before the swap");

@@ -59,7 +59,7 @@ fn the_cursor_is_path_line() {
     // The cell is the same reading, for a script that never typed a
     // key: one method with arguments, one cell.
     assert_eq!(cat(&host, "point"), "/README.md:11\n");
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 25);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 105);
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn col_and_relative_are_flags() {
 fn help_point_says_its_flags() {
     let (_rig, mut tui, _host) = plain("point-help");
     typed(&mut tui, ":help point<CR>");
-    assert_eq!(said(&mut tui), "point [-c] [-r]");
+    assert_eq!(said(&mut tui), "point [--address ADDRESS] [-c] [-r]");
 }
 
 #[test]

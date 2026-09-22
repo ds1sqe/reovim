@@ -112,6 +112,9 @@ pub struct Shell {
     /// What the host gave, by name: a field declared with this name and
     /// this value's type is filled from here and no token matches it.
     env: Vec<(String, Value)>,
+    /// The field names the host fills by name alone, as
+    /// [`Shell::option`] says them: no positional token reaches one.
+    options: Vec<String>,
     /// Where a name resolves, in the order it does: this Client's own
     /// userland, then the server's, unless [`Shell::first`] put one
     /// ahead of them, as a host with names of its own does with its own
@@ -134,7 +137,9 @@ impl Shell {
     #[must_use]
     pub fn at(cwd: Rd, path: String) -> Self {
         let dirs = alloc::vec!["/self/bin".to_string(), "/bin".to_string()];
-        let mut shell = Self { cwd, path, back: None, env: Vec::new(), dirs };
+        let env = Vec::new();
+        let options = Vec::new();
+        let mut shell = Self { cwd, path, back: None, env, options, dirs };
         shell.screen(0, false);
         shell.input(ROOT);
         shell
@@ -169,14 +174,42 @@ impl Shell {
     /// type is filled with it and takes no token, and a field no value
     /// here names is a positional like any other.
     ///
-    /// A host with a language of its own puts what that language read
-    /// here — Vim's `:` line, whose range and bang are read before the
-    /// name and never spelled as tokens.
+    /// What the host of the shell knows and no line says — the screen
+    /// a run writes for, the cell a stage reads — and never a word of
+    /// the line's own language: an address a `:` line spells is on
+    /// that line, as [`Self::option`] has it.
     pub fn give(&mut self, name: &str, value: Value) {
         match self.env.iter_mut().find(|(held, _)| held == name) {
             Some(held) => held.1 = value,
             None => self.env.push((name.to_string(), value)),
         }
+    }
+
+    /// One field name this shell's host fills by name alone: `--NAME
+    /// VALUE` on the line, never a positional token, and `[--NAME
+    /// NAME]` in the form `help` prints.
+    ///
+    /// A declaration says a field's name and its type and no more, so
+    /// two names of the same shape read alike: `substitute`'s
+    /// `address, spec` and `bind`'s `keys, line` are both two `utf8`
+    /// fields in a row, and a line one token short of them must leave
+    /// the first empty for the one (`:s/a/b/` names no range and its
+    /// spec is still its spec) and fill it for the other (`bind gw`
+    /// takes a binding away). Nothing in the shape tells them apart,
+    /// and the shell knows no name's meaning; the host whose language
+    /// the word belongs to does, and says so here once — Vim's
+    /// `address` is Vim's own grammar, read off the `:` line before
+    /// the name and put back on it as a flag.
+    pub fn option(&mut self, name: &str) {
+        if !self.optioned(name) {
+            self.options.push(name.to_string());
+        }
+    }
+
+    /// Whether the host named `name` an option of, by [`Self::option`].
+    #[must_use]
+    pub fn optioned(&self, name: &str) -> bool {
+        self.options.iter().any(|held| held == name)
     }
 
     /// The rd a relative target is read from.
@@ -273,29 +306,38 @@ const CAUSES: &[(Step, Error, &str)] = &[
 ];
 
 /// A token owns joined runs; quoting also keeps operators literal.
+/// `start` and `end` are its own span of the line it came from, past
+/// every quote mark that opened or closed it: a name whose last
+/// positional is a `utf8` reads the rest of the line verbatim from
+/// there, blanks, `|` and `>` included, once its flags and earlier
+/// positionals are the words before it.
 struct Word {
     text: String,
     quoted: bool,
+    start: usize,
+    end: usize,
 }
 
 fn words(line: &str) -> Result<Vec<Word>, Miss> {
     let mut tokens = Vec::new();
-    let mut chars = line.chars().peekable();
-    while let Some(&next) = chars.peek() {
+    let mut chars = line.char_indices().peekable();
+    while let Some(&(_, next)) = chars.peek() {
         if next.is_whitespace() {
             chars.next();
             continue;
         }
-        tokens.push(word(&mut chars)?);
+        tokens.push(word(line, &mut chars)?);
     }
     Ok(tokens)
 }
 
 fn word(
-    chars: &mut core::iter::Peekable<core::str::Chars<'_>>,
+    line: &str,
+    chars: &mut core::iter::Peekable<core::str::CharIndices<'_>>,
 ) -> Result<Word, Miss> {
-    let mut token = Word { text: String::new(), quoted: false };
-    while let Some(&next) = chars.peek() {
+    let start = chars.peek().map_or(line.len(), |&(i, _)| i);
+    let mut token = Word { text: String::new(), quoted: false, start, end: 0 };
+    while let Some(&(_, next)) = chars.peek() {
         if next.is_whitespace() {
             break;
         }
@@ -307,15 +349,16 @@ fn word(
             token.text.push(next);
         }
     }
+    token.end = chars.peek().map_or(line.len(), |&(i, _)| i);
     Ok(token)
 }
 
 fn quoted(
-    chars: &mut impl Iterator<Item = char>,
+    chars: &mut impl Iterator<Item = (usize, char)>,
     quote: char,
     text: &mut String,
 ) -> Result<(), Miss> {
-    for next in chars {
+    for (_, next) in chars {
         if next == quote {
             return Ok(());
         }
@@ -324,11 +367,37 @@ fn quoted(
     Err(Miss::line("unclosed quote"))
 }
 
+/// `words` without a trailing bare `>` or `>>` and the one word after
+/// it: a redirect, which is the shell's own and never counts toward
+/// whether a declaration's one and only positional needs
+/// [`run::Fill::Rest`], so `capture /path > out` still pours rather
+/// than reading `> out` into `path`.
+fn without_trailing_sink(words: &[Word]) -> &[Word] {
+    let Some((_, init)) = words.split_last() else { return words };
+    let Some((arrow, before)) = init.split_last() else { return words };
+    if !arrow.quoted && matches!(arrow.text.as_str(), ">" | ">>") {
+        before
+    } else {
+        words
+    }
+}
+
 /// One typed line: what it printed, and the run it left open.
 ///
 /// `|`, `>` and `>>` are the shell's own, so a line that redirects
 /// prints nothing and the bytes are in the target instead, and a line
-/// that pipes prints what its last stage found.
+/// that pipes prints what its last stage found — for a name whose
+/// last positional is not a `utf8`, or is and the tokenized fill
+/// still answers it with nothing left over. Where it would not,
+/// `decode::verbatim` says so and `decode::record_verbatim` fills
+/// that positional from `text` itself instead: it is the one and only
+/// stage then, every `|` and `>` past its flags and its earlier
+/// positionals belonging to the line it reads and not to the shell —
+/// a trailing bare redirect set aside first only where that one
+/// positional is the declaration's only one (`decode::verbatim_alone`),
+/// `capture /path > out` still pouring rather than reading `> out`
+/// into `path`, where `bind`'s `line` behind its `keys` reads `>` as
+/// its own, `:bind <Leader>y point > /self/dev/clipboard` included.
 ///
 /// # Errors
 /// `Miss` for a name PATH does not hold, a token no field takes, a
@@ -339,6 +408,21 @@ pub fn run(
     text: &str,
 ) -> Result<Ran, Miss> {
     let words = words(text)?;
+    if let [first, tail @ ..] = &words[..]
+        && let Some(fields) = run::fields(ctx, shell, &first.text)
+    {
+        let considered = if decode::verbatim_alone(shell, &fields) {
+            without_trailing_sink(tail)
+        } else {
+            tail
+        };
+        let texts: Vec<&str> =
+            considered.iter().map(|word| &*word.text).collect();
+        if let Some(at) = decode::verbatim(shell, &fields, &texts) {
+            let fill = run::Fill::Rest { at, line: text, words: &words };
+            return run::under_path(ctx, shell, &first.text, &fill, None);
+        }
+    }
     let typed: Vec<&str> = words.iter().map(|word| &*word.text).collect();
     let bare: Vec<bool> = words.iter().map(|word| !word.quoted).collect();
     let (stages, sink) = run::stages(&typed, &bare)?;
@@ -386,12 +470,14 @@ fn piped(
         // No stage but the last takes a redirect, so the pair this
         // answers with holds nothing but the cell.
         let stage = staged(shell, input, false);
-        let cell = run::called(ctx, &stage, name, args, None);
+        let fill = run::Fill::Tokens(args);
+        let cell = run::called(ctx, &stage, name, &fill, None);
         run::dropped(ctx, input);
         input = cell?.0;
     }
     let stage = staged(shell, input, sink.is_none());
-    let ran = run::under_path(ctx, &stage, last.0, last.1, sink);
+    let fill = run::Fill::Tokens(last.1);
+    let ran = run::under_path(ctx, &stage, last.0, &fill, sink);
     run::dropped(ctx, input);
     ran
 }
@@ -415,23 +501,6 @@ fn staged(shell: &Shell, input: Rd, screen: bool) -> Shell {
 fn no_stage(cause: &str, name: &str, args: &[&str]) -> Miss {
     let (name, target) = (name.to_string(), args.join(" "));
     Miss { name, target, cause: cause.to_string(), unknown: false }
-}
-
-/// One name run with the tokens its host split for it.
-///
-/// This is what a host with a language of its own hands the shell:
-/// Vim's `:` line reads the name itself and gives the rest of the line
-/// as one token, by its own rule and not the shell's.
-///
-/// # Errors
-/// As [`run`], a redirect being the shell's own and none of this.
-pub fn ran(
-    ctx: &dyn Calls,
-    shell: &Shell,
-    name: &str,
-    args: &[&str],
-) -> Result<Ran, Miss> {
-    run::under_path(ctx, shell, name, args, None)
 }
 
 /// What the line takes after `name`, as a usage line writes it: a

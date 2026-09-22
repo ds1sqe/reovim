@@ -217,9 +217,11 @@ declare! {
     /// number an outcome that waits is answered by, 0 where nothing
     /// waits. [`Edit`] replaces the `len` bytes at `at`, `join` true
     /// where it belongs to the revision before it, and `edits` carries
-    /// them where a kind makes more than one. [`Line`] is a `:` line,
-    /// ranged or not, whether it was typed or a binding resolved to
-    /// it. [`Open`] is a file to show, `bang` past a modified draft;
+    /// them where a kind makes more than one. [`Command`] is a `:`
+    /// line for the shell, whether it was typed or a binding resolved
+    /// to it: the address and the bang Vim's own grammar read off its
+    /// front, if any, are flags on the line and not fields of their
+    /// own. [`Open`] is a file to show, `bang` past a modified draft;
     /// whether a `PATH:LOCATOR` is one name or two is the host's to
     /// split, so no locator rides here. [`Goto`] is a jump to `line`
     /// and
@@ -249,15 +251,16 @@ declare! {
     api resolver ver 1 {}
     record Input { press: Press, origin: u64, released: bool }
     record Edit { at: u64, len: u64, text: utf8(65536), join: bool }
-    record Line { ranged: bool, from: u64, to: u64, line: utf8(4096) }
+    record Command { line: utf8(4096) }
     record Open { path: utf8(4096), bang: bool }
     record Goto { over: Rd, line: u64, column: u64, land: u64 }
     record Search { pattern: utf8(1024), ignorecase: bool,
                     smartcase: bool, from: u64, epoch: u64 }
     record Fed { keys: [u64; 4096], repeat: bool }
     record Outcome { kind: u64, continuation: u64, edits: [Edit; 4096],
-                     line: Line, open: Open, goto: Goto, search: Search,
-                     fed: Fed, name: utf8(4096), flag: bool }
+                     command: Command, open: Open, goto: Goto,
+                     search: Search, fed: Fed, name: utf8(4096),
+                     flag: bool }
     record Place { cursor: u64, top: u64 }
     record Entry { at: u64, len: u64 }
     record Reply { continuation: u64, kind: u64, text: utf8(65536),
@@ -314,8 +317,8 @@ pub mod kind {
     pub const OPEN: u64 = 13;
     /// The draft takes the server's head in place of what it holds.
     pub const RELOAD: u64 = 14;
-    /// The `line`, a `:` line to run.
-    pub const LINE: u64 = 15;
+    /// The `command`, a `:` line for the shell.
+    pub const COMMAND: u64 = 15;
     /// `name` is a shell line for the Client to run.
     pub const CLI: u64 = 16;
     /// `name` is the word to complete, answered by a `LOADED` reply.

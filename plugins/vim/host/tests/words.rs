@@ -133,7 +133,7 @@ fn every_name_runs_by_its_full_spelling_and_by_its_abbreviation() {
         },
         Case {
             full: ":cquit<CR>",
-            short: ":c<CR>",
+            short: ":cq<CR>",
             done: "Quit(1) [quit] [\"one\", \"two\"] \
                    disk=\"one\\ntwo\\n\" marks=0 listed=0",
         },
@@ -151,7 +151,7 @@ fn every_name_runs_by_its_full_spelling_and_by_its_abbreviation() {
         },
         Case {
             full: ":set hls<CR>/one<CR>:nohlsearch<CR>",
-            short: ":set hls<CR>/one<CR>:n<CR>",
+            short: ":set hls<CR>/one<CR>:noh<CR>",
             done: "Changed [note  1:1  r1   ] [\"one\", \"two\"] \
                    disk=\"one\\ntwo\\n\" marks=0 listed=0",
         },
@@ -180,23 +180,13 @@ fn every_name_runs_by_its_full_spelling_and_by_its_abbreviation() {
     assert!(marked.contains("marks=1"), "{marked}");
 }
 
-/// The shortest beginning of `name` the listing resolves to it: its
-/// abbreviation, which the order computes and nothing lists by hand.
-fn short(names: &[String], name: &str) -> String {
-    let first = |n: &usize| {
-        let begins = |held: &&String| held.starts_with(&name[..*n]);
-        names.iter().find(begins).is_some_and(|held| held == name)
-    };
-    name[..(1..=name.len()).find(first).unwrap_or(name.len())].to_string()
-}
-
 #[test]
-fn the_listing_computes_the_short_form_of_every_name() {
+fn the_listing_is_every_full_name_and_every_abbreviation() {
     let rig = work("words-order");
     let seen = Seen::default();
     let (host, _tui) = hosted(&rig, &seen);
     let names = listed(&host, "/self/vim/bin");
-    let all = [
+    let full = [
         "write",
         "wq",
         "quit",
@@ -223,20 +213,61 @@ fn the_listing_computes_the_short_form_of_every_name() {
         "point",
         "goto",
     ];
-    assert_eq!(names, all, "the order a `:` line resolves a name in");
-
-    // `cquit` is `c` and not nvim's `cq`: no `change` stands before it
-    // here, and no name under PATH stands behind it. `cli` stands
-    // behind `cquit`, so it is `cl`.
-    let short: Vec<String> = names.iter().map(|n| short(&names, n)).collect();
-    assert_eq!(
-        short,
-        [
-            "w", "wq", "q", "x", "c", "s", "se", "n", "e", "ex", "cl", "g",
-            "v", "d", "b", "buffers", "bn", "bp", "bd", "qa", "wa", "wqa",
-            "bi", "p", "go"
-        ]
-    );
+    // The 25 full names, in `declared`'s own order, and 80
+    // abbreviations beside them: nvim's own minimum for a name it
+    // has (`nohlsearch` needs `noh`, not the `n` a fixed 25-name set
+    // would leave unique), and `explore`/`cli`'s own, reovim's own
+    // names, which nvim names no minimum for at all.
+    let mut at = 0;
+    for name in full {
+        at += names[at..].iter().position(|n| n == name).unwrap() + 1;
+    }
+    assert_eq!(names.len(), 105);
+    for (short, canonical) in [
+        ("w", "write"),
+        ("wq", "wq"),
+        ("q", "quit"),
+        ("x", "xit"),
+        ("cq", "cquit"),
+        ("s", "substitute"),
+        ("se", "set"),
+        ("noh", "nohlsearch"),
+        ("e", "edit"),
+        ("ex", "explore"),
+        ("cl", "cli"),
+        ("g", "global"),
+        ("v", "vglobal"),
+        ("d", "delete"),
+        ("b", "buffer"),
+        ("bn", "bnext"),
+        ("bp", "bprevious"),
+        ("bd", "bdelete"),
+        ("qa", "qall"),
+        ("wa", "wall"),
+        ("wqa", "wqall"),
+    ] {
+        assert!(names.iter().any(|n| n == short), "{short} is not listed");
+        assert_eq!(
+            reovim_plugin_vim::bins::canonical(short),
+            canonical,
+            "{short}"
+        );
+    }
+    // `nohlsearch` needs `noh`: a fixed 25-name set would leave `n`
+    // unique too, but nvim does not take it, and neither does this.
+    assert!(!names.iter().any(|n| n == "n"), "n is not nohlsearch's");
+    // `c` is nvim's `:change` and reovim has none: `cquit` begins at
+    // `cq`, as `:help :cq` spells it, and `c` names nothing at all.
+    assert!(!names.iter().any(|n| n == "c"), "c is nvim's :change");
+    // `buffers` takes no shorter form at all: `b`..`buffe` are
+    // `buffer`'s own, `buf` among them.
+    assert_eq!(reovim_plugin_vim::bins::canonical("buf"), "buffer");
+    // `bind`, `point` and `goto` are reovim's own, none of nvim's,
+    // and take no shorter form at all — a fixed 25-name set would
+    // leave `bi`, `p` and `go` unique, but nothing here answers them.
+    for short in ["bi", "p", "go"] {
+        assert!(!names.iter().any(|n| n == short), "{short} names nothing");
+    }
 
     // A prefix of a shell name still is not its full spelling.
     assert!(!names.iter().any(|name| name.starts_with("wat")));

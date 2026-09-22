@@ -11,6 +11,7 @@ use reovim_client_tui::Tui;
 use reovim_kernel_interface::{
     Calls, Driver, DriverId, Error, Flags, Module, Rd, Reply, Rights,
 };
+use reovim_plugin_vim::bins::declared;
 use reovim_plugin_vim::notation;
 use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, listed, opened, said, status, typed};
@@ -39,41 +40,21 @@ fn the_three_names_resolve_and_s_stays_substitute() {
     rig.file("note", b"a\n");
     let host = rig.host();
     let mut tui = editor(&host, &Editor::new());
+    // The listing is the 25 full names, in `declared`'s own order,
+    // and every abbreviation nvim takes for one of them beside them —
+    // the shell's exact lookup finding either, no order among them
+    // resolving a prefix any more.
     let names = listed(&host, "/self/vim/bin");
-    assert_eq!(
-        names,
-        [
-            "write",
-            "wq",
-            "quit",
-            "xit",
-            "cquit",
-            "substitute",
-            "set",
-            "nohlsearch",
-            "edit",
-            "explore",
-            "cli",
-            "global",
-            "vglobal",
-            "delete",
-            "buffer",
-            "buffers",
-            "bnext",
-            "bprevious",
-            "bdelete",
-            "qall",
-            "wall",
-            "wqall",
-            "bind",
-            "point",
-            "goto",
-        ]
-    );
+    let full: Vec<&str> = declared().iter().map(|(name, _)| *name).collect();
+    let mut at = 0;
+    for name in &full {
+        at += names[at..].iter().position(|n| n.as_str() == *name).unwrap() + 1;
+    }
+    assert_eq!(names.len(), 105, "25 full names and every abbreviation");
     typed(&mut tui, ":help global<CR>");
-    assert_eq!(said(&mut tui), "global [spec]");
+    assert_eq!(said(&mut tui), "global [-b] [--address ADDRESS] [spec]");
     typed(&mut tui, ":help delete<CR>");
-    assert_eq!(said(&mut tui), "delete [register]");
+    assert_eq!(said(&mut tui), "delete [--address ADDRESS] [register]");
     typed(&mut tui, ":s/a/b/<CR>");
     assert_eq!(lines(&mut tui), ["b"]);
 }

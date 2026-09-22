@@ -256,7 +256,71 @@ pub fn form(
     Ok(decode::form(shell, name, &fields))
 }
 
-/// The run of `name`: the record filled from the tokens, the call, and
+/// Where a run's record is filled from: the tokens the line was cut
+/// into, or the line itself where a declaration's last positional
+/// takes the rest of it ([`decode::verbatim`]).
+pub enum Fill<'a> {
+    /// The tokens past the name, each one a field's.
+    Tokens(&'a [&'a str]),
+    /// The field at `at` takes what stands from its own first word to
+    /// the end of `line`, blanks, `|` and `>` kept; `words` is the
+    /// whole line's, the name first.
+    Rest {
+        /// The field the rest of the line is.
+        at: usize,
+        /// The line as it was typed.
+        line: &'a str,
+        /// Its words, the name first.
+        words: &'a [crate::Word],
+    },
+}
+
+impl Fill<'_> {
+    /// What stood past the name, as a Miss spells it back.
+    fn typed(&self) -> String {
+        match self {
+            Self::Tokens(args) => args.join(" "),
+            Self::Rest { line, words, .. } => words
+                .first()
+                .map_or("", |first| line[first.end..].trim_start())
+                .to_string(),
+        }
+    }
+
+    /// The bytes of the record `input` asks for.
+    fn record(
+        &self,
+        shell: &Shell,
+        name: &str,
+        input: &Ty,
+    ) -> Result<Vec<u8>, Miss> {
+        match *self {
+            Self::Tokens(args) => decode::record(shell, name, input, args),
+            Self::Rest { at, line, words } => {
+                rest(shell, name, input, at, line, words)
+            }
+        }
+    }
+}
+
+/// [`Fill::Rest`]'s own record: `input` must be the record type every
+/// declared method takes, which is what [`decode::record_verbatim`]
+/// fills a field of.
+fn rest(
+    shell: &Shell,
+    name: &str,
+    input: &Ty,
+    at: usize,
+    line: &str,
+    words: &[crate::Word],
+) -> Result<Vec<u8>, Miss> {
+    let Ty::Record(fields) = input else {
+        return Err(miss(name, "", Step::Op, Error::Invalid, ""));
+    };
+    decode::record_verbatim(shell, name, fields, at, line, words)
+}
+
+/// The run of `name`: the record filled as `fill` says, the call, and
 /// the rd of the one output cell it answered with, beside where a
 /// redirect puts the bytes. The cell is not opened here, a stage that
 /// is not the last ending at this and the stage after it being the one
@@ -269,7 +333,7 @@ pub fn called(
     ctx: &dyn Calls,
     shell: &Shell,
     name: &str,
-    args: &[&str],
+    fill: &Fill<'_>,
     sink: Option<Sink<'_>>,
 ) -> Result<(Rd, Option<Pour>), Miss> {
     let Some(rd) = lookup(ctx, shell, name) else {
@@ -277,10 +341,10 @@ pub fn called(
         // from the rest: Vim's `:` line says E492 of it.
         return Err(Miss { unknown: true, ..not_under(shell, name) });
     };
-    let typed = args.join(" ");
+    let typed = fill.typed();
     let refused = |e: Error| miss(name, &typed, Step::Op, e, "");
     let (api, method) = ops::method(ctx, rd, "run").map_err(refused)?;
-    let record = decode::record(shell, name, &method.input, args)?;
+    let record = fill.record(shell, name, &method.input)?;
     // The target resolves first, so a bad one runs nothing.
     let into = match sink {
         Some(sink) => Some(poured(ctx, shell, name, &sink)?),
@@ -316,12 +380,12 @@ pub fn under_path(
     ctx: &dyn Calls,
     shell: &Shell,
     name: &str,
-    args: &[&str],
+    fill: &Fill<'_>,
     sink: Option<Sink<'_>>,
 ) -> Result<Ran, Miss> {
     let color = colored(shell);
-    let (cell, into) = called(ctx, shell, name, args, sink)?;
-    let typed = args.join(" ");
+    let (cell, into) = called(ctx, shell, name, fill, sink)?;
+    let typed = fill.typed();
     let refused = |e: Error| miss(name, &typed, Step::Op, e, "");
     let h = ctx.open(cell, Rights::READ).map_err(refused)?;
     let name = name.to_string();

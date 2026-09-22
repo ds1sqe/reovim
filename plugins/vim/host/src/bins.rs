@@ -8,20 +8,22 @@
 //! ([`reovim_plugin_vim::bins`]); the runs are the host's, because
 //! every one of them performs an outcome.
 
+use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_plugin_vim::bins::{
-    bang, bound, each, file, lines, located, numbered, option, plain, point,
-    subst,
+    bang, bound, canonical, each, file, lines, located, numbered, option,
+    plain, point, subst,
 };
 use reovim_plugin_vim::{Effect, Quit, Switch, Vim, asked};
 
 use crate::{Editor, named};
 
-/// One call on a name of Vim's: the rd it came in on is the name, and
-/// the name says which shape to decode the input as. The
-/// api the Kernel checked says the same thing, an rd here reporting one
+/// One call on a name of Vim's: the rd it came in on is a full name or
+/// one of its abbreviations, [`canonical`] reading either back to the
+/// one the api the Kernel checked reports, an rd here reporting one
 /// declaration and no other, so the rd alone is read.
 ///
 /// # Errors
@@ -34,7 +36,7 @@ pub fn dispatch(
     number: u16,
     input: &[u8],
 ) -> Result<Vec<u8>, Error> {
-    match named(ctx, rd)?.as_str() {
+    match canonical(&named(ctx, rd)?) {
         "wq" | "xit" | "cquit" | "nohlsearch" | "buffers" | "bnext"
         | "bprevious" | "wall" | "wqall" => {
             plain::dispatch(vim, ctx, rd, number, input)
@@ -64,7 +66,7 @@ impl plain::Api for Editor {
         rd: Rd,
         _: plain::Args,
     ) -> Result<Rd, Error> {
-        match named(ctx, rd)?.as_str() {
+        match canonical(&named(ctx, rd)?) {
             "wq" | "xit" => self.did(ctx, rd, |_| Effect::Quit(Quit::Write)),
             "cquit" => self.did(ctx, rd, |_| Effect::Quit(Quit::Abort)),
             "nohlsearch" => self.did(ctx, rd, Vim::nohlsearch),
@@ -90,7 +92,7 @@ impl bang::Api for Editor {
         args: bang::Args,
     ) -> Result<Rd, Error> {
         let bang = args.bang;
-        let effect = match named(ctx, rd)?.as_str() {
+        let effect = match canonical(&named(ctx, rd)?) {
             "quit" if bang => Effect::Quit(Quit::Force),
             "quit" => Effect::Quit(Quit::Ask),
             "cli" => Effect::Cli(bang),
@@ -111,9 +113,9 @@ impl file::Api for Editor {
         rd: Rd,
         args: file::Args,
     ) -> Result<Rd, Error> {
-        let file::Args { bang, path } = args;
+        let file::Args { bang, address: _, path } = args;
         let held = !path.is_empty();
-        let effect = match named(ctx, rd)?.as_str() {
+        let effect = match canonical(&named(ctx, rd)?) {
             "write" if held => Effect::SaveAs(path, bang),
             "write" => Effect::Save(bang),
             "edit" if held => Effect::Open(asked(path, bang)),
@@ -132,7 +134,7 @@ impl numbered::Api for Editor {
         rd: Rd,
         args: numbered::Args,
     ) -> Result<Rd, Error> {
-        let effect = match named(ctx, rd)?.as_str() {
+        let effect = match canonical(&named(ctx, rd)?) {
             "buffer" => Effect::Switch(Switch::Named(args.name)),
             "bdelete" => Effect::Close(args.name, args.bang),
             _ => return Err(Error::Unsupported),
@@ -159,14 +161,22 @@ impl point::Api for Editor {
     /// `:[range]point [-c] [-r]`: one line, the point, printed and
     /// nothing else. A range is a selection's, as `binding` and the
     /// `:` prompt both set it from the marks `<` and `>`.
+    ///
+    /// The address is resolved ahead of `did`, which `pointed`
+    /// itself must stand outside of for `ctx`'s own calls; an address
+    /// that fails is said through `said`, `point` printing
+    /// and never faulting.
     fn run(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
         args: point::Args,
     ) -> Result<Rd, Error> {
-        let point::Args { ranged, from, to, col, relative } = args;
-        let range = ranged.then(|| (line(from), line(to)));
+        let point::Args { address, col, relative } = args;
+        let range = match addressed(&self.vim, &address) {
+            Ok(range) => range,
+            Err(text) => return self.said(ctx, rd, text),
+        };
         let said = self.pointed(ctx, col, relative, range);
         self.did(ctx, rd, move |vim| {
             vim.say(said);
@@ -190,18 +200,23 @@ impl located::Api for Editor {
 }
 
 impl subst::Api for Editor {
-    /// `:[range]s/PAT/REP/[flags]`, over the lines the range named. The
-    /// spec is the rest of the line, spaces and all, so `:%s/^/> /`
-    /// reaches Vim's own parser whole.
+    /// `:[range]s/PAT/REP/[flags]`, over the lines the address named,
+    /// resolved once inside `did` so a failure's message
+    /// stands through `ran`'s own clear. The spec is the rest of the
+    /// line, spaces and all, so `:%s/^/> /` reaches Vim's own parser
+    /// whole.
     fn run(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
         args: subst::Args,
     ) -> Result<Rd, Error> {
-        let subst::Args { from, to, spec } = args;
-        let lines = (line(from), line(to));
+        let subst::Args { address, spec } = args;
         self.did(ctx, rd, move |vim| {
+            let lines = match vim.lines_of(&address) {
+                Ok(lines) => lines,
+                Err(effect) => return effect,
+            };
             vim.substitute(lines, spec.strip_prefix('/').unwrap_or(&spec))
         })
     }
@@ -221,32 +236,60 @@ impl option::Api for Editor {
 }
 
 impl each::Api for Editor {
+    /// `:[range]g[!]/PAT/CMD`: the address empty means the whole
+    /// buffer, `:global`'s own default and not the cursor line
+    /// [`Vim::lines_of`] would answer for one — resolved here and not
+    /// inside `globally`'s own run, which is not `did`
+    /// and clears no message of its own to lose one to.
     fn run(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
         args: each::Args,
     ) -> Result<Rd, Error> {
-        let invert = args.bang || named(ctx, rd)? == "vglobal";
-        let range = args.ranged.then_some((line(args.from), line(args.to)));
+        let invert = args.bang || canonical(&named(ctx, rd)?) == "vglobal";
+        let range = match addressed(&self.vim, &args.address) {
+            Ok(range) => range,
+            Err(text) => return self.said(ctx, rd, text),
+        };
         self.globally(ctx, rd, range, &args.spec, invert)
     }
 }
 
+/// `address`'s lines, `None` for an empty one — `:global`'s own
+/// default, the whole buffer, and never the cursor line
+/// [`Vim::lines_of`] would answer for it. `Err` is the message an
+/// address that failed to resolve already said, said through
+/// [`Editor::said`] and not [`Editor::did`], which would lose it to
+/// `ran`'s own clear.
+fn addressed(
+    vim: &RefCell<Vim>,
+    address: &str,
+) -> Result<Option<(usize, usize)>, String> {
+    if address.is_empty() {
+        return Ok(None);
+    }
+    let mut vim = vim.borrow_mut();
+    vim.lines_of(address)
+        .map_or_else(|_| Err(vim.saying()), |range| Ok(Some(range)))
+}
+
 impl lines::Api for Editor {
+    /// `:[range]d[elete] [register]`, the address resolved inside
+    /// `did` so a failure's message stands through `ran`'s own
+    /// clear.
     fn run(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
         args: lines::Args,
     ) -> Result<Rd, Error> {
-        self.did(ctx, rd, |vim| {
-            vim.delete((line(args.from), line(args.to)), &args.register)
+        self.did(ctx, rd, move |vim| {
+            let lines = match vim.lines_of(&args.address) {
+                Ok(lines) => lines,
+                Err(effect) => return effect,
+            };
+            vim.delete(lines, &args.register)
         })
     }
-}
-
-/// One end of a range as the engine counts lines.
-fn line(at: u64) -> usize {
-    usize::try_from(at).unwrap_or(usize::MAX)
 }

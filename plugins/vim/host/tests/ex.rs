@@ -8,8 +8,12 @@
 //! frame of Vim's, where nothing of Vim's is on the stack; the run
 //! from inside one is tests/cells.rs's, beside the read it re-enters.
 
+mod common;
+
+use std::fmt::Write as _;
 use std::rc::Rc;
 
+use common::cat;
 use reovim_client::Host;
 use reovim_client::dev::{Clip, Table, Want};
 use reovim_client_tui::{Step, Tui};
@@ -40,6 +44,22 @@ fn over(test: &str) -> (Rig, Tui, Rc<Host>) {
     (rig, tui, host)
 }
 
+/// An editor over 12 lines of `d/note`, `a 1` through `a 12`, so a
+/// range past a single digit has lines of its own to name.
+fn twelve(name: &str) -> (Rig, Tui, Rc<Host>) {
+    let rig = Rig::new(name);
+    std::fs::create_dir_all(rig.dir().join("d")).unwrap();
+    let mut lines = String::new();
+    for n in 1..=12 {
+        writeln!(lines, "a {n}").unwrap();
+    }
+    rig.file("d/note", lines.as_bytes());
+    let host = rig.host();
+    let tui = opened(&host, table(), Clip::none(), "d", Some("d/note"), None)
+        .unwrap();
+    (rig, tui, host)
+}
+
 #[test]
 fn the_rest_of_the_line_is_one_argument_and_may_hold_a_space() {
     let (rig, mut tui, _host) = over("ex-one-argument");
@@ -59,23 +79,24 @@ fn the_rest_of_the_line_is_one_argument_and_may_hold_a_space() {
 }
 
 #[test]
-fn the_range_and_the_bang_reach_a_run_as_the_environment() {
-    let (_rig, mut tui, _host) = over("ex-environment");
+fn the_address_and_the_bang_reach_a_run_as_flags() {
+    let (_rig, mut tui, _host) = over("ex-address-flags");
 
-    // The range is `from` and `to` of `substitute`'s record, lines
-    // from 0, and no token of the line names either.
+    // The address is `substitute`'s own `address` field, filled from
+    // the `--address` flag `ex` put on the line and resolved once.
     assert_eq!(typed(&mut tui, ":2,3s/a/x/<CR>"), Step::Changed);
     assert_eq!(lines(&mut tui), ["one a", "two x", "three x"]);
     assert_eq!(typed(&mut tui, "ggVj:s/o/0/<CR>"), Step::Changed);
     assert_eq!(lines(&mut tui), ["0ne a", "tw0 x", "three x"]);
 
-    // Neither reaches a usage line: the environment is the host's and
-    // no token ever fills it, so `write` takes a path and nothing else
-    // and `substitute` takes its spec.
+    // Both are flags now, read off the line and not an environment a
+    // token never fills: `write` takes `-b`, `--address ADDRESS`
+    // (read and not used yet) and a path, `substitute` `--address
+    // ADDRESS` and its spec.
     assert_eq!(typed(&mut tui, ":help write<CR>"), Step::Changed);
-    assert_eq!(said(&mut tui), "write [path]");
+    assert_eq!(said(&mut tui), "write [-b] [--address ADDRESS] [path]");
     assert_eq!(typed(&mut tui, ":help substitute<CR>"), Step::Changed);
-    assert_eq!(said(&mut tui), "substitute [spec]");
+    assert_eq!(said(&mut tui), "substitute [--address ADDRESS] [spec]");
 
     // The bang is `bang`, which neither of these lines holds a token
     // for: `:q` over a draft is refused and `:q!` is not.
@@ -110,6 +131,45 @@ fn what_vim_would_have_said_is_what_the_run_printed() {
 }
 
 #[test]
+fn a_colon_line_is_a_shell_line() {
+    // `:5,10s/a/b/`: the address put back as `--address 5,10`, read
+    // once through `Vim::lines_of` and not carried as a second range.
+    let (_rig, mut tui, _host) = twelve("ex-run-subst");
+    assert_eq!(typed(&mut tui, ":5,10s/a/b/<CR>"), Step::Changed);
+    let text = lines(&mut tui);
+    for (at, line) in text.iter().enumerate() {
+        let changed = (4..=9).contains(&at);
+        assert_eq!(line.starts_with('b'), changed, "line {at}: {line}");
+    }
+
+    // `:w! my file`: the bang and the whole rest, spaces included, as
+    // one shell line — `w --bang my file`.
+    let (rig, mut tui, _host) = over("ex-run-write");
+    typed(&mut tui, "ix<Esc>:w! my file<CR>");
+    assert_eq!(rig.disk("d/my file"), b"xone a\ntwo a\nthree a\n");
+
+    // `:'<,'>d` from visual: the binding's door puts `'<,'>` on the
+    // line as text, and `ex` reads it off the front the same as a
+    // typed one.
+    let (_rig, mut tui, _host) = over("ex-run-visual-delete");
+    assert_eq!(typed(&mut tui, "Vj:d<CR>"), Step::Changed);
+    assert_eq!(lines(&mut tui), ["three a"]);
+
+    // `:ls /module | grep coreutils`: a first token no name of Vim's
+    // begins is the shell's own line, whole — the `|` its own and not
+    // Vim's to read at all.
+    let (_rig, mut tui, _host) = over("ex-run-pipe");
+    assert_eq!(typed(&mut tui, ":ls /module<CR>"), Step::Changed);
+    let listed = said(&mut tui);
+    assert!(listed.contains("coreutils"), "{listed}");
+    assert_eq!(
+        typed(&mut tui, ":ls /module | grep coreutils<CR>"),
+        Step::Changed
+    );
+    assert_eq!(said(&mut tui), "coreutils", "the pipe filters it");
+}
+
+#[test]
 fn a_name_of_vims_own_runs_from_outside_every_frame_of_its_own() {
     let (rig, mut tui, host) = over("ex-outside");
     assert_eq!(typed(&mut tui, "ix<Esc>"), Step::Changed);
@@ -119,9 +179,46 @@ fn a_name_of_vims_own_runs_from_outside_every_frame_of_its_own() {
     // the region is editing.
     let ctx = host.own();
     let rd = cell::resolve(&ctx, ROOT, "/self/vim/bin/write").unwrap();
-    let args = file::Args { bang: false, path: String::new() };
+    let args =
+        file::Args { bang: false, address: String::new(), path: String::new() };
     let out = ops::call_by_name(&ctx, rd, "run", reovim_sdk::encode(&args));
     let cell: Rd = reovim_sdk::decode(&out.unwrap()).unwrap();
     assert_eq!(ops::bytes(&ctx, cell).unwrap(), b"", "it said nothing");
     assert_eq!(rig.disk("d/note"), b"xone a\ntwo a\nthree a\n");
+}
+
+#[test]
+fn an_abbreviation_is_a_name_on_path() {
+    let (_rig, mut tui, host) = over("ex-abbreviation");
+
+    // `se` is `set`'s own abbreviation, registered under
+    // `/self/vim/bin` as an exact name and not resolved at the call
+    // by any prefix: the shell's lookup finds it directly, and the
+    // option it sets is the same `:set ic` would.
+    assert_eq!(cat(&host, "options/ignorecase"), "0\n");
+    assert_eq!(typed(&mut tui, ":se ic<CR>"), Step::Changed);
+    assert_eq!(cat(&host, "options/ignorecase"), "1\n");
+}
+
+/// The host holds no name table and no parser of its own: a run of
+/// one of Vim's own names is the shell's, whole, so `typed`,
+/// `expanded`, `positionals`, `cut` and `ranged` are none of its
+/// functions any more. Its own source is what says so, read here and
+/// asked of no tool outside the test.
+#[test]
+fn the_host_holds_no_parser() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let gone = ["typed", "expanded", "positionals", "cut", "ranged"];
+    for file in std::fs::read_dir(&src).unwrap() {
+        let file = file.unwrap().path();
+        let text = std::fs::read_to_string(&file).unwrap();
+        for name in gone {
+            let declared = format!("fn {name}(");
+            assert!(
+                !text.contains(&declared),
+                "{} still declares {declared}",
+                file.display()
+            );
+        }
+    }
 }

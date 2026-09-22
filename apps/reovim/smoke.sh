@@ -840,7 +840,7 @@ keys marked u
 shown marked '^TODO two$'
 shown marked '^TODO four$'
 keys marked : h e l p Space g l o b a l Enter
-shown marked 'global \[spec\]'
+shown marked 'global \[-b\] \[--address ADDRESS\] \[spec\]'
 keys marked : q ! Enter
 ended marked
 [[ "$ENDED" == 0 ]] || fail "the marked pane did not quit"
@@ -1189,9 +1189,9 @@ done
 start tab "$DIR/words" "$BIN note"
 editing tab note
 keys tab : w r Tab
-shown tab ":write   write \[path\]"
+shown tab ":write   write \[-b\] \[--address ADDRESS\] \[path\]"
 keys tab Escape : q u Tab
-shown tab ":quit   quit"
+shown tab ":quit   quit \[-b\]"
 keys tab Escape i x Escape : w Tab
 shown tab ":write   \[write\]  wq  wall  wqall  watch"
 keys tab Tab

@@ -45,12 +45,11 @@ pub use visual::Visual;
 /// The declared records an [`Effect`] carries, which is what crosses
 /// the boundary: a resolver's outcome is these and nothing else.
 ///
-/// Two are renamed here because the engine's own names came first: a
-/// `:` line is an [`Ex`] beside the shell's own `Line`, and what a
-/// search asks for is a [`Want`] beside the last search itself. The
+/// One is renamed here because the engine's own name came first: what
+/// a search asks for is a [`Want`] beside the last search itself. The
 /// types are the api's.
 pub use reovim_client_api::resolver::{
-    Edit, Fed, Goto, Line as Ex, Open, Outcome, Reply, Search as Want, State,
+    Command, Edit, Fed, Goto, Open, Outcome, Reply, Search as Want, State,
 };
 
 use jumps::{Jump, Jumps};
@@ -197,9 +196,15 @@ pub enum Effect {
     /// which drops what has not gone down whatever it is; without it
     /// a stale draft says W12 instead and reads nothing.
     Reload(bool),
-    /// A `:` line with a name on it: the range Vim read off its front,
-    /// and the rest of it, which the Client runs.
-    Line(Ex),
+    /// A `:` line the shell is to run, whole: Vim's own grammar (the
+    /// address, the bang) already read off its front and put back on
+    /// as `--address`/`--bang` flags where there was one, so the
+    /// line the Client runs is `NAME [--bang] [--address ADDR] REST`
+    /// for a name of Vim's own or the line exactly as it was typed
+    /// for any other — the shell tells the two apart by lookup, not
+    /// this record. `:5,10s/a/b/` is `s --address 5,10 /a/b/`; `:ls
+    /// /module | cat` is itself.
+    Command(Command),
     /// `:cli[!]`: a shell in a region of its own, asked for by name
     /// over where the `:` line's own lines stand. `true` for `:cli!`,
     /// which goes although the draft is unsaved.
@@ -278,7 +283,7 @@ const fn blank(kind: u64) -> Outcome {
         kind,
         continuation: 0,
         edits: Vec::new(),
-        line: Ex { ranged: false, from: 0, to: 0, line: String::new() },
+        command: Command { line: String::new() },
         open: Open { path: String::new(), bang: false },
         goto: Goto { over: NONE, line: 0, column: 0, land: land::LINE },
         search: Want {
@@ -378,7 +383,9 @@ impl Effect {
             Self::Reload(bang) => {
                 Outcome { flag: *bang, ..blank(kind::RELOAD) }
             }
-            Self::Line(ex) => Outcome { line: ex.clone(), ..blank(kind::LINE) },
+            Self::Command(command) => {
+                Outcome { command: command.clone(), ..blank(kind::COMMAND) }
+            }
             Self::Cli(bang) => Outcome { flag: *bang, ..blank(kind::CLI) },
             Self::Complete(line) => {
                 Outcome { name: line.clone(), ..blank(kind::COMPLETE) }
@@ -427,7 +434,7 @@ pub fn effect(outcome: &Outcome) -> Option<Effect> {
         kind::EXPLORE => Effect::Explore(outcome.open.clone()),
         kind::OPEN => Effect::Open(outcome.open.clone()),
         kind::RELOAD => Effect::Reload(outcome.flag),
-        kind::LINE => Effect::Line(outcome.line.clone()),
+        kind::COMMAND => Effect::Command(outcome.command.clone()),
         kind::CLI => Effect::Cli(outcome.flag),
         kind::COMPLETE => Effect::Complete(name()),
         kind::CLIPBOARD => Effect::Clipboard(outcome.continuation),
@@ -1965,8 +1972,12 @@ impl Vim {
 
     /// A binding's line, through the `:` door and settled as a typed
     /// line is. In visual it leaves visual first, as a typed `:` does,
-    /// so the line finds no live selection, and then it runs over
-    /// `'<,'>` as nvim's `:` from a selection does, typed or mapped.
+    /// so the line finds no live selection, and then it runs with
+    /// `'<,'>` put on the line as text, as nvim's `:` from a
+    /// selection does, typed or mapped — `ex` reads it off the front
+    /// the same way either line came to hold it. A line of its own
+    /// address keeps it, as `:'<,'>%s` does in nvim, so this is put
+    /// on only where there is none.
     fn binding(&mut self, line: &str) -> Effect {
         let selected = matches!(self.mode, Mode::Visual(_));
         if selected {
@@ -1975,23 +1986,11 @@ impl Vim {
         // `run`'s own settle is no part of this: the lookup answers
         // only where nothing is pending, so `repeat.record` is empty
         // wherever a binding runs and there is nothing to settle.
-        let effect = self.ex(line);
-        let Effect::Line(mut ex) = effect else { return effect };
-        if selected && !ex.ranged {
-            (ex.ranged, ex.from, ex.to) = self.selected();
+        if selected && !command::addressed_by(line) {
+            let line = alloc::format!("'<,'>{line}");
+            return self.ex(&line);
         }
-        Effect::Line(ex)
-    }
-
-    /// The range `'<,'>` names now: the lines of the marks `<` and
-    /// `>`, which `leave_visual` set. A line of its own address keeps
-    /// it, as `:'<,'>%s` does in nvim, so this is asked for only where
-    /// there is none.
-    fn selected(&self) -> (bool, u64, u64) {
-        let ends = self.marks.local.get(&'<').zip(self.marks.local.get(&'>'));
-        ends.map_or((false, 0, 0), |(lo, hi)| {
-            (true, lo.line as u64, hi.line as u64)
-        })
+        self.ex(line)
     }
 
     /// Where the cursor or the selection is, as a compiler, a grep or

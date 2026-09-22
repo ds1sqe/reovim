@@ -2,7 +2,7 @@
 //! record filled from the tokens, and the output cell read to its end.
 
 use reovim_client_api::{BAR, display};
-use reovim_client_sh::{Shell, ran, run};
+use reovim_client_sh::{Shell, run};
 use reovim_kernel_interface::{
     Calls, Decl, DriverId, Error, Flags, Method, Rd, Rights, Ty,
 };
@@ -18,14 +18,6 @@ fn shown(ctx: &dyn Calls, line: &str, width: Option<u16>) -> String {
     let mut shell = Shell::default();
     shell.screen(u64::from(width.unwrap_or(0)), false);
     typed(ctx, &mut shell, line)
-}
-
-/// The output cell of one run of `/bin/uptime`, whose record has no
-/// field: answered and never opened, as a stage before a `|` leaves it.
-fn celled(ctx: &dyn Calls) -> Rd {
-    let rd = cell::resolve(ctx, ROOT, "/bin/uptime").unwrap();
-    let out = ops::call_by_name(ctx, rd, "run", Vec::new()).unwrap();
-    reovim_sdk::decode(&out).unwrap()
 }
 
 /// The cells the run of `name` under `/bin` has open.
@@ -297,10 +289,12 @@ fn a_token_too_many_is_a_miss_with_the_form() {
     let mut shell = Shell::default();
     let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
 
-    // A name with one positional and one token too many.
+    // A name whose one positional is its last, and a `utf8`: two
+    // tokens are not "one too many" now, both blanks and all reaching
+    // it as one verbatim value, which this path is not.
     assert_eq!(
         go(ctx, "stat /module /module"),
-        "stat /module: usage: stat [target]"
+        "stat /module /module: invalid"
     );
     // A letter no `bool` field is named by, and a flag with nothing
     // after it to take.
@@ -388,25 +382,16 @@ fn a_pipe_puts_one_runs_output_into_the_next_runs_input() {
     let rig = Rig::new("sh-pipe");
     let host = rig.host();
     let ctx = &host.own();
-    let mut shell = Shell::default();
-
-    // `input` is an environment field like `cwd`, so no `|` is needed
-    // for the mechanism: a run reads whatever cell stands there, and
-    // reading it ends it, this run being its one reader.
-    let cell = celled(ctx);
-    shell.input(cell);
-    let out = ran(ctx, &shell, "grep", &["^up"]).unwrap().out;
-    assert!(String::from_utf8(out).unwrap().starts_with("up "));
-    assert_eq!(cells(ctx, "uptime"), Vec::new());
-    assert_eq!(ops::info(ctx, cell), Err(Error::Invalid));
 
     // What a `|` does is fill it: the first stage answers a cell it
     // never opens, the second opens, reads and closes it, and the line
     // prints what the last stage found. Three stages the same way.
     let mut shell = Shell::default();
     let mut go = |ctx: &dyn Calls, line: &str| typed(ctx, &mut shell, line);
+    assert!(go(ctx, "uptime | grep up").starts_with("up "));
     assert_eq!(go(ctx, "ls /module | grep text"), "text\n");
     assert_eq!(go(ctx, "ls /module | grep text | grep ex"), "text\n");
+    assert_eq!(cells(ctx, "uptime"), Vec::new(), "the cell `uptime` answered");
     assert_eq!(cells(ctx, "ls"), Vec::new(), "the cell `ls` answered");
     assert_eq!(cells(ctx, "grep"), Vec::new());
 }

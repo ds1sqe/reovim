@@ -1,13 +1,14 @@
 //! The command line: `:` and what a person types after it, and the
 //! `/` and `?` prompts that share it.
 
+use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use reovim_client_sh::Act;
 use reovim_pattern::{Pattern, Spent, expand};
 
-use crate::{Effect, Ex, Key, Mode, Motion, Vim, Wild, minimal_edit};
+use crate::{Command, Effect, Key, Mode, Motion, Vim, Wild, minimal_edit};
 
 /// Lines from 0, both ends included.
 type Lines = (usize, usize);
@@ -237,69 +238,240 @@ impl Vim {
         self.ex(line)
     }
 
-    /// One `:` line: the range off the front, and the rest of it.
+    /// One `:` line: the address text off the front, the name and the
+    /// bang past it, and the rest — Vim's own Ex grammar, read and not
+    /// resolved. A name with none of it, `%`, `5,10`, `'a,'b`, `.`,
+    /// `$`, `'<,'>`, `/pat/` and their offsets included, is put back
+    /// as `--address`, quoted where it holds a blank; the bang as
+    /// `--bang`; what the rest of Vim's `bin` sees is the same door a
+    /// typed one runs through. A first token that reads as no name —
+    /// no run of letters at its front — is nothing of Vim's own
+    /// grammar and goes to the shell exactly as it stood, address and
+    /// all: `:ls /module | cat` becomes itself.
     ///
-    /// What the rest names is the Client's to say, every name a person
-    /// can type being a Driver it resolves: a name under Vim's own
-    /// `bin` is run there with the range and the bang it read, and a
-    /// first token no such name begins is the line for clients/sh,
-    /// whole and as it was typed. E492 comes back from there for a
-    /// first token PATH has not, as it always did.
+    /// An address with nothing past it, `:12`, `:'a`, stays the
+    /// engine's own cursor move; a bare `:` with nothing at all moves
+    /// nothing. E20 for a mark not set is the engine's to say either
+    /// way, at the one resolver [`Vim::lines_of`] both this and every
+    /// bin call.
     pub(crate) fn ex(&mut self, line: &str) -> Effect {
         let line = line.trim();
-        let Some((range, rest)) = self.range(line) else {
-            self.error("E20: Mark not set");
-            return Effect::Nothing;
-        };
+        let (address, rest) = address_span(line);
         let rest = rest.trim();
         if rest.is_empty() {
-            return self.addressed(range, rest.len() < line.len());
+            return self.addressed(address);
         }
-        Effect::Line(Ex {
-            ranged: rest.len() < line.len(),
-            from: range.0 as u64,
-            to: range.1 as u64,
-            line: String::from(rest),
-        })
+        let Typed { name, bang, arg } = typed(rest);
+        if name.is_empty() {
+            return Effect::Command(Command { line: String::from(rest) });
+        }
+        let mut built = String::from(name);
+        if bang {
+            built.push_str(" --bang");
+        }
+        if !address.is_empty() {
+            built.push_str(" --address ");
+            built.push_str(&quoted(address));
+        }
+        if !arg.is_empty() {
+            built.push(' ');
+            built.push_str(arg);
+        }
+        Effect::Command(Command { line: built })
     }
 
     /// A `:` line with no word on it: the cursor to the last line the
-    /// range names, at the wanted column, where `:12` and `:$` leave
-    /// it; nothing at all for a line that named no range either.
+    /// address names, at the wanted column, where `:12` and `:$` leave
+    /// it; nothing at all for a line that named no address either.
     /// nvim's `do_one_cmd` ends a bare address with `beginline(BL_SOL
     /// | BL_FIX)`, which under `nostartofline` (its default) is
     /// `coladvance(curswant)` and leaves `curswant` alone. A bare
     /// address is not a jump: it pushes nothing of its own, so `'` is
     /// not this door's to set.
-    fn addressed(&mut self, range: Lines, named: bool) -> Effect {
-        if !named {
+    fn addressed(&mut self, address: &str) -> Effect {
+        if address.is_empty() {
             return Effect::Moved;
         }
+        let range = match self.lines_of(address) {
+            Ok(range) => range,
+            Err(effect) => return effect,
+        };
         let at = self.line_at(range.1).unwrap_or(self.cursor);
         self.go_clamped(self.at_screen_column(at, self.want))
     }
 
-    /// `[range]` off the front: `%`, `'a,'b` (`'<,'>` among them, `<`
-    /// and `>` being marks like any other), `N`, `.`, `$`, `A,B`; the
-    /// current line alone when there is none. `None` for a mark
-    /// named that is not set.
-    fn range<'a>(&self, line: &'a str) -> Option<(Lines, &'a str)> {
-        let here = self.position().0;
-        let last = self.line_count() - 1;
-        if let Some(rest) = line.strip_prefix('%') {
-            return Some(((0, last), rest));
+    /// The one resolver a bin's own `address: utf8` text and the
+    /// engine's own bare address both read through: `%`, `'a,'b`
+    /// (`'<,'>` among them, `<` and `>` being marks like any other),
+    /// `N`, `.`, `$`, `/pat/`, `?pat?`, each item's own `+`/`-`
+    /// offsets, and up to one `,` or `;` joining a second item —
+    /// `;` moving the base the second item and its offsets read from
+    /// to the first item's own line, `,` leaving it the cursor's.
+    /// `E20: Mark not set` for a mark not set, said here and not
+    /// merely answered, since a bin's own call has nowhere else to
+    /// say it; `E486` the same way for a pattern not found.
+    ///
+    /// # Errors
+    /// The `Effect` the failure already said, `Nothing` in every case
+    /// today.
+    pub fn lines_of(&mut self, address: &str) -> Result<Lines, Effect> {
+        if address == "%" {
+            return Ok((0, self.line_count().saturating_sub(1)));
         }
-        let mark = |name: char| {
-            self.found_mark(name)
-                .filter(|(elsewhere, _)| elsewhere.is_none())
-                .map(|(_, p)| p.line)
+        let here = self.position().0;
+        let last = self.line_count().saturating_sub(1);
+        let split = item_span(address);
+        let (first, rest) = address.split_at(split);
+        let from = self.resolved_item(first, here, last)?;
+        if let Some(rest) = rest.strip_prefix(';') {
+            let to = self.resolved_item(rest, from, last)?;
+            return Ok((from.min(to), from.max(to)));
+        }
+        let Some(rest) = rest.strip_prefix(',') else {
+            return Ok((from, from));
         };
-        let (from, rest) = address(line, here, last, mark)?;
-        let Some(after_comma) = rest.strip_prefix(',') else {
-            return Some(((from, from), rest));
+        let to = self.resolved_item(rest, here, last)?;
+        Ok((from.min(to), from.max(to)))
+    }
+
+    /// One address item: its base, `here` the line relative addresses
+    /// and an empty base read from, then its own `+`/`-` offsets,
+    /// clamped to the text.
+    fn resolved_item(
+        &mut self,
+        text: &str,
+        here: usize,
+        last: usize,
+    ) -> Result<usize, Effect> {
+        let (base, rest) = self.resolved_base(text, here, last)?;
+        let offset = offset_of(rest);
+        Ok(base.saturating_add_signed(offset).min(last))
+    }
+
+    /// One address base and what follows it past the base alone: `.`,
+    /// `$`, `'x`, `/pat/`, `?pat?`, digits, or `here` for none of
+    /// them, which is every address item with an empty base — the
+    /// second of `5;+2` among them.
+    fn resolved_base<'a>(
+        &mut self,
+        text: &'a str,
+        here: usize,
+        last: usize,
+    ) -> Result<(usize, &'a str), Effect> {
+        if let Some(rest) = text.strip_prefix('.') {
+            return Ok((here, rest));
+        }
+        if let Some(rest) = text.strip_prefix('$') {
+            return Ok((last, rest));
+        }
+        if let Some(rest) = text.strip_prefix('\'') {
+            return self.resolved_mark(rest, last);
+        }
+        if text.starts_with(['/', '?']) {
+            return self.resolved_pattern(text, here, last);
+        }
+        let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+        let number: usize = text[..digits].parse().unwrap_or(here + 1);
+        Ok((number.saturating_sub(1).min(last), &text[digits..]))
+    }
+
+    /// `'x`: the mark's own line, `E20` for one not set or one in
+    /// another buffer, which a range cannot cross.
+    fn resolved_mark<'a>(
+        &mut self,
+        rest: &'a str,
+        last: usize,
+    ) -> Result<(usize, &'a str), Effect> {
+        let name = rest.chars().next().unwrap_or('\'');
+        let found = self
+            .found_mark(name)
+            .filter(|(elsewhere, _)| elsewhere.is_none())
+            .map(|(_, p)| p.line);
+        let Some(line) = found else {
+            self.error("E20: Mark not set");
+            return Err(Effect::Nothing);
         };
-        let (to, rest) = address(after_comma, here, last, mark)?;
-        Some(((from.min(to), from.max(to)), rest))
+        Ok((line.min(last), &rest[name.len_utf8()..]))
+    }
+
+    /// `/pat/` or `?pat?`: the next (`/`) or previous (`?`) line past
+    /// `here` the pattern matches, wrapping, and never `here` itself —
+    /// nvim's own "next line" and "previous line". An empty pattern is
+    /// the last one searched, which this also becomes for the next
+    /// empty one.
+    fn resolved_pattern<'a>(
+        &mut self,
+        text: &'a str,
+        here: usize,
+        last: usize,
+    ) -> Result<(usize, &'a str), Effect> {
+        let forward = text.starts_with('/');
+        let delimiter = if forward { '/' } else { '?' };
+        let span = pattern_span(text);
+        let body = &text[1..span];
+        let pattern = body.strip_suffix(delimiter).unwrap_or(body);
+        let source = if pattern.is_empty() {
+            self.search.pattern.clone()
+        } else {
+            String::from(pattern)
+        };
+        self.search.pattern.clone_from(&source);
+        let options = self.search.options;
+        let Some(compiled) =
+            Pattern::parse(&source, options.ignorecase, options.smartcase)
+        else {
+            return Err(self.not_found());
+        };
+        let line = self.scanned(&compiled, here, last, forward)?;
+        Ok((line, &text[span..]))
+    }
+
+    /// One line the pattern matches, walking from `here` forward or
+    /// back and wrapping at either end; `E486` where none does.
+    fn scanned(
+        &mut self,
+        pattern: &Pattern,
+        here: usize,
+        last: usize,
+        forward: bool,
+    ) -> Result<usize, Effect> {
+        // nvim's own rule: "next line" and "previous line" never
+        // include a match on `here` itself, wrapped around to or not.
+        let order: Vec<usize> = if forward {
+            (here + 1..=last).chain(0..here).collect()
+        } else {
+            (0..here).rev().chain((here + 1..=last).rev()).collect()
+        };
+        self.first_matching(pattern, &order)
+    }
+
+    /// The first of `order` `pattern` matches; `E486` for none of them.
+    fn first_matching(
+        &mut self,
+        pattern: &Pattern,
+        order: &[usize],
+    ) -> Result<usize, Effect> {
+        let Some((&line, rest)) = order.split_first() else {
+            return Err(self.not_found());
+        };
+        if self.matches_line(pattern, line)? {
+            return Ok(line);
+        }
+        self.first_matching(pattern, rest)
+    }
+
+    /// Whether `pattern` matches somewhere on `line`'s own text.
+    fn matches_line(
+        &mut self,
+        pattern: &Pattern,
+        line: usize,
+    ) -> Result<bool, Effect> {
+        let start = self.line_at(line).unwrap_or(0);
+        let end = self.line_end(start);
+        match pattern.find(&self.text[start..end], 0) {
+            Ok(found) => Ok(found.is_some()),
+            Err(Spent) => Err(self.too_costly()),
+        }
     }
 
     /// `:set` with its arguments, which `/self/vim/bin/set` runs: the
@@ -601,28 +773,129 @@ fn split_unescaped(args: &str, sep: char) -> Vec<&str> {
     parts
 }
 
-/// One address: `.`, `$`, `'x` off `mark`, digits, or nothing for the
-/// current line. `None` for a mark named that `mark` does not answer.
-fn address(
-    line: &str,
-    here: usize,
-    last: usize,
-    mark: impl Fn(char) -> Option<usize>,
-) -> Option<(usize, &str)> {
-    if let Some(rest) = line.strip_prefix('.') {
-        return Some((here, rest));
+/// The address text at the front of `line` as Vim's own grammar reads
+/// it — syntax alone, nothing resolved — and what follows it. `%`
+/// stands apart, a whole range and not an item with offsets of its
+/// own; else one item, then up to one `,`- or `;`-joined second one,
+/// each `item_span` on its own.
+fn address_span(line: &str) -> (&str, &str) {
+    if line.starts_with('%') {
+        return line.split_at(1);
     }
-    if let Some(rest) = line.strip_prefix('$') {
-        return Some((last, rest));
+    let mut at = item_span(line);
+    if let Some(rest) = line[at..].strip_prefix([',', ';']) {
+        at += 1;
+        at += item_span(rest);
     }
-    if let Some(rest) = line.strip_prefix('\'') {
-        let name = rest.chars().next()?;
-        let at = mark(name)?;
-        return Some((at.min(last), &rest[name.len_utf8()..]));
+    line.split_at(at)
+}
+
+/// Whether `line` opens with an address of its own, as [`address_span`]
+/// reads it — what a bound line already carrying `'<,'>` or any other
+/// address is told from one that does not.
+pub fn addressed_by(line: &str) -> bool {
+    !address_span(line).0.is_empty()
+}
+
+/// One address item's own span in bytes: a base — `.`, `$`, `'x`,
+/// `/pat/`, `?pat?`, digits, or nothing, which is every base an
+/// address item may have — then its own run of `+`/`-` offsets.
+/// Nothing of this reads a mark or runs a search: it is syntax, read
+/// once more at [`Vim::lines_of`] to resolve it.
+fn item_span(text: &str) -> usize {
+    let base = if text.starts_with(['.', '$']) {
+        1
+    } else if let Some(rest) = text.strip_prefix('\'') {
+        1 + rest.chars().next().map_or(0, char::len_utf8)
+    } else if text.starts_with(['/', '?']) {
+        pattern_span(text)
+    } else {
+        text.bytes().take_while(u8::is_ascii_digit).count()
+    };
+    base + offset_span(&text[base..])
+}
+
+/// `/pat/` or `?pat?`'s own span: the delimiter, the pattern up to
+/// the next unescaped delimiter, and that delimiter where there is
+/// one — nvim's own rule, the closing mark optional only where
+/// nothing follows the pattern in this address item.
+fn pattern_span(text: &str) -> usize {
+    let delimiter = text.as_bytes()[0] as char;
+    let mut escaped = false;
+    for (i, c) in text.char_indices().skip(1) {
+        if c == delimiter && !escaped {
+            return i + delimiter.len_utf8();
+        }
+        escaped = c == '\\' && !escaped;
     }
-    let digits = line.chars().take_while(char::is_ascii_digit).count();
-    let number: usize = line[..digits].parse().unwrap_or(here + 1);
-    Some((number.saturating_sub(1).min(last), &line[digits..]))
+    text.len()
+}
+
+/// A run of `+`/`-` offsets' own span in bytes, each an optional
+/// digit run, so `+`, `+2`, `++`, `+2-1` are each one span.
+fn offset_span(text: &str) -> usize {
+    let mut at = 0;
+    while let Some(rest) = text[at..].strip_prefix(['+', '-']) {
+        at += 1;
+        at += rest.bytes().take_while(u8::is_ascii_digit).count();
+    }
+    at
+}
+
+/// A run of `+`/`-` offsets read as the one number they sum to: no
+/// digits after a sign is `1` for it, as nvim reads `'x++` and `'x+2`
+/// the same.
+fn offset_of(text: &str) -> isize {
+    let mut at = 0;
+    let mut total: isize = 0;
+    while let Some(rest) = text[at..].strip_prefix(['+', '-']) {
+        let sign: isize = if text[at..].starts_with('+') { 1 } else { -1 };
+        at += 1;
+        let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+        let n: isize = rest[..digits].parse().unwrap_or(1);
+        total += sign * n;
+        at += digits;
+    }
+    total
+}
+
+/// `text` quoted by the shell's own rule where it holds a blank, so a
+/// `--address` flag whose text does is one token still; `text` itself
+/// where it holds none, an address rarely doing.
+fn quoted(text: &str) -> String {
+    // A mark's own `'` is as much the shell's to misread as a blank:
+    // `'<,'>` holds two, and either quote char, blank or not, must be
+    // quoted so `words` reads the address as one token and not the
+    // marks as an opened and closed run of its own.
+    if !text.contains(char::is_whitespace) && !text.contains(['\'', '"']) {
+        return String::from(text);
+    }
+    if !text.contains('\'') {
+        return format!("'{text}'");
+    }
+    if !text.contains('"') {
+        return format!("\"{text}\"");
+    }
+    // Both quote chars, and the shell's reading holds no backslash to
+    // escape either: one token is written as quoted runs side by side,
+    // which `words` joins back, every `'` its own `"'"` between them.
+    let mut out = String::new();
+    let run = |out: &mut String, part: &str| {
+        if !part.is_empty() {
+            out.push('\'');
+            out.push_str(part);
+            out.push('\'');
+        }
+    };
+    let mut runs = text.split('\'');
+    if let Some(first) = runs.next() {
+        run(&mut out, first);
+    }
+    for part in runs {
+        out.push_str("\"'\"");
+        run(&mut out, part);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -632,7 +905,9 @@ mod tests {
 
     use reovim_pattern::Pattern;
 
-    use super::{address, split_unescaped, substituted};
+    use super::{
+        address_span, offset_of, quoted, split_unescaped, substituted,
+    };
 
     fn subst(line: &str, pat: &str, rep: &str, all: bool) -> Option<String> {
         let pattern = Pattern::parse(pat, false, false).unwrap();
@@ -661,25 +936,41 @@ mod tests {
         assert_eq!(split_unescaped("a/", '/'), vec!["a", ""]);
     }
 
+    /// The shell reads a token by its quotes and no backslash of any:
+    /// an address that holds one quote char is wrapped in the other,
+    /// and one that holds both is written as runs side by side, which
+    /// `words` joins back into the one token it was.
     #[test]
-    fn an_address_is_a_line_from_one_clamped() {
-        let none = |_: char| None;
-        assert_eq!(address(".x", 4, 9, none), Some((4, "x")));
-        assert_eq!(address("$", 4, 9, none), Some((9, "")));
-        assert_eq!(address("3,", 4, 9, none), Some((2, ",")));
-        assert_eq!(address("0", 4, 9, none), Some((0, "")));
-        assert_eq!(address("50", 4, 9, none), Some((9, "")));
-        assert_eq!(
-            address("s/a/b/", 4, 9, none),
-            Some((4, "s/a/b/")),
-            "none: this line"
-        );
+    fn an_address_is_one_token_whatever_quotes_it_holds() {
+        assert_eq!(quoted("5,10"), "5,10", "nothing to quote");
+        assert_eq!(quoted("'<,'>"), "\"'<,'>\"");
+        assert_eq!(quoted("/a b/"), "'/a b/'");
+        assert_eq!(quoted("/\"x\"/"), "'/\"x\"/'");
+        assert_eq!(quoted("/it's \"x\"/"), "'/it'\"'\"'s \"x\"/'");
     }
 
     #[test]
-    fn a_quote_address_reads_the_mark_or_answers_none() {
-        let set = |c: char| (c == 'a').then_some(2);
-        assert_eq!(address("'ax", 4, 9, set), Some((2, "x")));
-        assert_eq!(address("'bx", 4, 9, set), None, "b is not set");
+    fn the_address_span_is_syntax_alone_nothing_resolved() {
+        assert_eq!(address_span(".x"), (".", "x"));
+        assert_eq!(address_span("$"), ("$", ""));
+        assert_eq!(address_span("3,"), ("3,", ""));
+        assert_eq!(address_span("50s/a/b/"), ("50", "s/a/b/"));
+        assert_eq!(address_span("s/a/b/"), ("", "s/a/b/"), "no digit: no item");
+        assert_eq!(address_span("%s"), ("%", "s"), "% is a whole range alone");
+        assert_eq!(address_span("'a,'bs/x/y/"), ("'a,'b", "s/x/y/"));
+        assert_eq!(address_span("'<,'>d"), ("'<,'>", "d"));
+        assert_eq!(address_span("5;+2d"), ("5;+2", "d"));
+        assert_eq!(address_span("/x/,$d"), ("/x/,$", "d"));
+        assert_eq!(address_span("/x\\/y/d"), ("/x\\/y/", "d"), "escaped /");
+        assert_eq!(address_span("12"), ("12", ""));
+    }
+
+    #[test]
+    fn offsets_sum_a_bare_sign_counting_one() {
+        assert_eq!(offset_of(""), 0);
+        assert_eq!(offset_of("+2"), 2);
+        assert_eq!(offset_of("-2"), -2);
+        assert_eq!(offset_of("++"), 2);
+        assert_eq!(offset_of("+2-1"), 1);
     }
 }

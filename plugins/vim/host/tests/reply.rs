@@ -13,7 +13,7 @@ use common::{on, one, typed};
 use reovim_client::Host;
 use reovim_client::dev::Clip;
 use reovim_client_api::resolver::{
-    Edit, Entry, Fed, Goto, Line, Open, Outcome, Place, Reply, Search,
+    Command, Edit, Entry, Fed, Goto, Open, Outcome, Place, Reply, Search,
 };
 use reovim_client_api::{NONE, filled, kind, land, reply};
 use reovim_client_tui::Tui;
@@ -159,7 +159,7 @@ fn a_search_reply_carries_the_wait_it_answers() {
 #[test]
 fn every_effect_round_trips_through_outcome() {
     let edit = Edit { at: 3, len: 1, text: "x".into(), join: true };
-    let line = Line { ranged: true, from: 1, to: 9, line: "write".into() };
+    let command = Command { line: "write --address 1,9".into() };
     let open = Open { path: "note".into(), bang: true };
     let goto = Goto { over: NONE, line: 4, column: 2, land: land::EXACT };
     let search = Search {
@@ -186,7 +186,7 @@ fn every_effect_round_trips_through_outcome() {
         (Effect::Explore(open.clone()), kind::EXPLORE),
         (Effect::Open(open), kind::OPEN),
         (Effect::Reload(true), kind::RELOAD),
-        (Effect::Line(line), kind::LINE),
+        (Effect::Command(command), kind::COMMAND),
         (Effect::Cli(true), kind::CLI),
         (Effect::Complete("w".into()), kind::COMPLETE),
         (Effect::Clipboard(7), kind::CLIPBOARD),

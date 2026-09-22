@@ -87,7 +87,9 @@ fn goto_lands_on_a_line_and_a_column() {
     typed(&mut tui, "j");
     assert_eq!(at(&mut tui), "/README.md:13:5");
 
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 25);
+    // 25 full names plus every abbreviation nvim takes for one, and
+    // `explore`/`cli`'s own, reovim's, nvim naming neither.
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 105);
 }
 
 #[test]

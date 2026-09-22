@@ -173,9 +173,9 @@ fn replay(case: &Path) -> Result<(), String> {
 
 #[test]
 fn every_case_ends_as_nvim_ended() {
-    // The corpus is the engine crate's own directory still: 713 cases
-    // recorded from nvim, which no split of the code touches, and
-    // which apps/reovim/parity.sh reads from the same place.
+    // The corpus is the engine crate's own directory still: every
+    // case recorded from nvim, which no split of the code touches,
+    // and which apps/reovim/parity.sh reads from the same place.
     let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/parity");
     let mut cases: Vec<_> = std::fs::read_dir(&corpus)
         .unwrap()

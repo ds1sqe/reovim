@@ -9,8 +9,8 @@ use core::fmt::Debug;
 
 use reovim_client_api::keyboard::Press;
 use reovim_client_api::resolver::{
-    Edit, Entry, Fed, Goto, Input, Line, Open, Outcome, Place, Reply, Search,
-    State,
+    Command, Edit, Entry, Fed, Goto, Input, Open, Outcome, Place, Reply,
+    Search, State,
 };
 use reovim_client_api::{NONE, filled, kind, land, origin, reply};
 use reovim_sdk::{Decode, Encode, decode, encode};
@@ -33,7 +33,7 @@ const KINDS: [u64; 22] = [
     kind::EXPLORE,
     kind::OPEN,
     kind::RELOAD,
-    kind::LINE,
+    kind::COMMAND,
     kind::CLI,
     kind::COMPLETE,
     kind::CLIPBOARD,
@@ -71,8 +71,8 @@ fn edit() -> Edit {
     Edit { at: 12, len: 3, text: "abc".to_owned(), join: true }
 }
 
-fn line() -> Line {
-    Line { ranged: true, from: 1, to: 9, line: "write".to_owned() }
+fn command() -> Command {
+    Command { line: "write --address 1,9".to_owned() }
 }
 
 fn open() -> Open {
@@ -104,7 +104,7 @@ const fn blank_outcome() -> Outcome {
         kind: kind::NOTHING,
         continuation: 0,
         edits: Vec::new(),
-        line: Line { ranged: false, from: 0, to: 0, line: String::new() },
+        command: Command { line: String::new() },
         open: Open { path: String::new(), bang: false },
         goto: Goto { over: NONE, line: 0, column: 0, land: land::LINE },
         search: Search {
@@ -154,7 +154,7 @@ fn every_record_round_trips() {
         released: false,
     });
     round_trip(&edit());
-    round_trip(&line());
+    round_trip(&command());
     round_trip(&open());
     round_trip(&goto());
     round_trip(&search());
@@ -302,7 +302,7 @@ fn an_outcome_of_a_kind_leaves_the_other_fields_at_default() {
     let blank = blank_outcome();
     let edits =
         Outcome { kind: kind::EDITS, edits: vec![edit()], ..blank_outcome() };
-    assert_eq!(edits.line, blank.line);
+    assert_eq!(edits.command, blank.command);
     assert_eq!(edits.open, blank.open);
     assert_eq!(edits.goto, blank.goto);
     assert_eq!(edits.search, blank.search);

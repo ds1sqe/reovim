@@ -5,7 +5,7 @@
 
 use reovim_client_sh::Shell;
 use reovim_kernel_interface::{Calls, Rd, Rights};
-use reovim_module_coreutils::bins::ls;
+use reovim_module_coreutils::bins::{ls, stat};
 use reovim_rig::Rig;
 use reovim_sdk::dynamic::Value;
 use reovim_sdk::walk::ROOT;
@@ -154,4 +154,114 @@ fn two_dashes_are_the_flags_whole_name() {
         typed(ctx, &mut shell, "ls --"),
         "ls --: usage: ls [-l] [-a] [-w] [targets..]"
     );
+}
+
+/// Two dashes name any declared field whole, not only one shaped like
+/// a flag: `stat`'s `target` is an ordinary positional, never a
+/// `bool` or a one-letter name, yet `--target` reaches it all the
+/// same, proving the rule keyed by no field's own name.
+#[test]
+fn two_dashes_name_a_positional_field_too() {
+    let rig = Rig::new("sh-two-dashes-positional");
+    rig.file("a b", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap();
+    let mut shell = Shell::at(root, "/".to_string());
+    shell.screen(80, true);
+
+    let args = stat::Args { cwd: root, color: true, target: "a b".to_string() };
+    let by_hand = called(ctx, "stat", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "stat --target \"a b\""), by_hand);
+
+    // A name past the declaration is still a Miss, same as any other.
+    assert_eq!(
+        typed(ctx, &mut shell, "stat --zzz x"),
+        "stat --zzz: usage: stat [target]"
+    );
+}
+
+/// A field the host of the shell named an option of is filled by its
+/// whole name under two dashes and by no token of the line's own. The
+/// rule is the host's word and this crate's shape, keyed to no name
+/// of anyone's: `stat`'s `target`, named nothing like Vim's own
+/// `address`, reads as one the moment a host says so.
+#[test]
+fn a_field_the_host_named_an_option_of_takes_no_positional() {
+    let rig = Rig::new("sh-option");
+    rig.file("a b", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap();
+    let mut shell = Shell::at(root, "/".to_string());
+    shell.screen(80, true);
+    shell.option("target");
+
+    let args = stat::Args { cwd: root, color: true, target: "a b".to_string() };
+    let by_hand = called(ctx, "stat", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "stat --target \"a b\""), by_hand);
+
+    // A positional token reaches it no more, and the form `help`
+    // prints spells it under two dashes, there being no other door.
+    assert_eq!(
+        typed(ctx, &mut shell, "stat a b"),
+        "stat a: usage: stat [--target TARGET]"
+    );
+    assert_eq!(typed(ctx, &mut shell, "help stat"), "stat [--target TARGET]\n");
+
+    // The same line over a shell whose host named no option of it:
+    // `target` is the positional it was declared as.
+    let mut plain = Shell::at(root, "/".to_string());
+    plain.screen(80, true);
+    assert_eq!(typed(ctx, &mut plain, "stat a b"), by_hand);
+}
+
+/// `stat`'s last positional, `target`, is a `utf8` and its only one:
+/// a blank inside the name it names does not cut it into two.
+#[test]
+fn a_last_utf8_positional_takes_the_rest_of_the_line() {
+    let rig = Rig::new("sh-verbatim");
+    rig.file("a b", b"");
+    let host = rig.host();
+    let ctx = &host.own();
+    let root = cell::resolve(ctx, ROOT, "/module/fs/root").unwrap();
+    let mut shell = Shell::at(root, "/".to_string());
+    shell.screen(80, true);
+
+    let args = stat::Args { cwd: root, color: true, target: "a b".to_string() };
+    let by_hand = called(ctx, "stat", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "stat a b"), by_hand);
+    assert!(by_hand.contains("a b"), "the whole name, not half of it");
+
+    // A name that does not exist is `stat`'s own refusal, the whole
+    // three-word target named in it and not split in three.
+    assert_eq!(
+        typed(ctx, &mut shell, "stat no such name"),
+        "stat no such name: gone"
+    );
+}
+
+/// `ls`'s last positional, `targets`, is a sequence and not a `utf8`:
+/// each blank-separated token is still its own target, and `|` still
+/// cuts a line at a bare one, unclaimed by any field.
+#[test]
+fn a_sequence_still_splits_and_pipes() {
+    let rig = Rig::new("sh-sequence");
+    let host = rig.host();
+    let ctx = &host.own();
+    let mut shell = Shell::default();
+    shell.screen(80, true);
+
+    let args = ls::Args {
+        long: false,
+        all: false,
+        w: false,
+        cwd: ROOT,
+        width: 80,
+        color: true,
+        targets: vec!["/bin".to_string(), "/module".to_string()],
+    };
+    let by_hand = called(ctx, "ls", reovim_sdk::encode(&args));
+    assert_eq!(typed(ctx, &mut shell, "ls /bin /module"), by_hand);
+    assert_eq!(typed(ctx, &mut shell, "ls /module | grep text"), "text\n");
 }

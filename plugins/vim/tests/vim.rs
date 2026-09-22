@@ -8,7 +8,7 @@ use common::{as_of, edit, fed, let_go, on, tapped, typed};
 use reovim_client_api::resolver::{Entry, Place, Reply};
 use reovim_client_api::{BAR, BLOCK, MATCH, SELECTION, filled, origin, reply};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Effect, Ex, Key, Mode, Quit, Vim, Visual, Want};
+use reovim_plugin_vim::{Command, Effect, Key, Mode, Quit, Vim, Visual, Want};
 
 /// The number the clipboard outcome of `keys` waits on.
 fn wanting(vim: &mut Vim, keys: &str) -> u64 {
@@ -59,15 +59,11 @@ fn matched(
     })
 }
 
-/// The `:` line `keys` left for the Client to run: the range it read
-/// off the front, and the rest of it as it was typed.
-fn ex(from: u64, to: u64, line: &str) -> Effect {
-    Effect::Line(Ex {
-        ranged: from != 0 || to != 0,
-        from,
-        to,
-        line: line.to_string(),
-    })
+/// The `:` line `keys` left for the Client to run: the shell's own
+/// line, address and bang put back on as flags where the typed line
+/// held one.
+fn ex(line: &str) -> Effect {
+    Effect::Command(Command { line: line.to_string() })
 }
 
 #[test]
@@ -418,21 +414,21 @@ fn the_command_line_hands_its_line_on_with_the_range_it_read() {
     assert_eq!(vim.mode(), Mode::Normal);
     assert_eq!(typed(&mut vim, ":<CR>"), Effect::Moved, "an empty line");
 
-    // The engine reads the range and nothing else: what the rest names
-    // is the Client's to resolve over the tree, and the argument is
-    // one argument, spaces and all, by Vim's own rule.
-    assert_eq!(typed(&mut vim, ":w<CR>"), ex(0, 0, "w"));
-    assert_eq!(typed(&mut vim, ":w!<CR>"), ex(0, 0, "w!"));
-    assert_eq!(typed(&mut vim, ":w  a b <CR>"), ex(0, 0, "w  a b"));
-    assert_eq!(typed(&mut vim, ":w! a b<CR>"), ex(0, 0, "w! a b"));
-    assert_eq!(typed(&mut vim, ": x <CR>"), ex(0, 0, "x"));
-    assert_eq!(typed(&mut vim, ":%s/a/b/g<CR>"), ex(0, 1, "s/a/b/g"));
-    assert_eq!(typed(&mut vim, ":2s/a/b/<CR>"), ex(1, 1, "s/a/b/"));
-    assert_eq!(typed(&mut vim, ":1,$d<CR>"), ex(0, 1, "d"));
+    // The engine lexes the line and does not resolve it: the address
+    // and the bang it read off the front are put back as flags, and
+    // the rest is one argument, spaces and all, by Vim's own rule.
+    assert_eq!(typed(&mut vim, ":w<CR>"), ex("w"));
+    assert_eq!(typed(&mut vim, ":w!<CR>"), ex("w --bang"));
+    assert_eq!(typed(&mut vim, ":w  a b <CR>"), ex("w a b"));
+    assert_eq!(typed(&mut vim, ":w! a b<CR>"), ex("w --bang a b"));
+    assert_eq!(typed(&mut vim, ": x <CR>"), ex("x"));
+    assert_eq!(typed(&mut vim, ":%s/a/b/g<CR>"), ex("s --address % /a/b/g"));
+    assert_eq!(typed(&mut vim, ":2s/a/b/<CR>"), ex("s --address 2 /a/b/"));
+    assert_eq!(typed(&mut vim, ":1,$d<CR>"), ex("d --address 1,$"));
     // A name Vim has none of goes the same way, whole and as it was
     // typed; E492 comes back from the tree, where there is one to
     // answer it (tests/explore.rs).
-    assert_eq!(typed(&mut vim, ":xyz<CR>"), ex(0, 0, "xyz"));
+    assert_eq!(typed(&mut vim, ":xyz<CR>"), ex("xyz"));
     assert_eq!(vim.status(), "", "nothing is said without a tree");
 
     // The two quits that are keys and not lines stay the engine's.

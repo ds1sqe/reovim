@@ -661,7 +661,8 @@ fn a_call_from_elsewhere_that_edits_ends_the_wait() {
     // search waits: it edits, so it ends the wait.
     let ctx = host.own();
     let rd = cell::resolve(&ctx, ROOT, "/self/vim/bin/substitute").unwrap();
-    let args = subst::Args { from: 0, to: 0, spec: String::from("/a/z/") };
+    let args =
+        subst::Args { address: String::from("1"), spec: String::from("/a/z/") };
     ops::call_by_name(&ctx, rd, "run", encode(&args)).unwrap();
     assert!(!vim.engine().waiting(), "the edit ended it");
     assert_eq!(cat(&host, "pending"), "", "no operator is left waiting");

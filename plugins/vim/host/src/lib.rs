@@ -66,17 +66,16 @@ use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Module,
     Rd, Reply, Rights,
 };
-use reovim_sdk::dynamic::Value;
 use reovim_sdk::path;
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops, progress};
 use reovim_search_api::{ENTRY, entries, search};
 use reovim_text_api::{history, publish, text};
 
-use reovim_plugin_vim::bins::{declared, positionals};
+use reovim_plugin_vim::bins::{abbreviated, canonical, declared};
 use reovim_plugin_vim::{
-    BUDGET, E32, Edit, Effect, Ex, Goto, Key, Mode, Quit, Switch, Typed, Vim,
-    Want, options, typed,
+    BUDGET, E32, Edit, Effect, Goto, Key, Mode, Quit, Switch, Vim, Want,
+    options,
 };
 
 /// How many entries one read of `matches` asks for. The 48 KiB they
@@ -959,7 +958,7 @@ impl Editor {
             }
             Effect::Open(open) => self.edited(ctx, &open.path, open.bang),
             Effect::Reload(bang) => self.reload(ctx, bang),
-            Effect::Line(ex) => self.ran(ctx, &ex),
+            Effect::Command(command) => self.ran(ctx, &command.line),
             Effect::Cli(bang) => self.cli(ctx, bang),
             Effect::Complete(line) => self.completing(ctx, &line),
             // The empty name, as `edited` uses: the Client's table
@@ -1200,6 +1199,18 @@ impl Editor {
         self.stay()?.outputs.open(ctx, DRIVER, rd, said.into_bytes())
     }
 
+    /// A message already said, as a run's own output cell: the door a
+    /// bin whose address failed before it could reach [`Self::did`]
+    /// uses instead, `ran`'s own clear having nothing here to lose.
+    pub(crate) fn said(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        text: String,
+    ) -> Result<Rd, Error> {
+        self.stay()?.outputs.open(ctx, DRIVER, rd, text.into_bytes())
+    }
+
     /// Where the cursor or the selection is, as `/self/vim/bin/point`
     /// and `/self/vim/point` both read it: the path the Plugin
     /// resolves and the locator the engine spells, or what a Buffer
@@ -1286,15 +1297,15 @@ impl Editor {
         Ok(!self.vim.borrow().ringing() && !self.stay()?.asked.get())
     }
 
-    /// The name a first token stands for: the first under Vim's own
-    /// `bin`, in the order the tree lists them, that it begins. `None`
-    /// for an empty token and for one no name begins, which is the
-    /// line the shell is handed.
+    /// The full name `token` stands for, an exact lookup under Vim's
+    /// own `bin` and [`canonical`] over it: `None` for an empty token
+    /// and for one that names nothing there, which is the line the
+    /// shell is handed for Tab to complete over PATH as any other.
     ///
-    /// This is Vim's ex rule, and the listing is the whole of it: no
-    /// table stands beside the declarations. A name under PATH has
-    /// none of it, the shell resolving by exact name.
-    fn expanded(
+    /// No prefix is read here or anywhere in the host: `token` is
+    /// already whole, one abbreviation among [`abbreviated`]'s own or
+    /// a full name, and the shell's own lookup under `bin` is exact.
+    fn canonical_bin(
         &self,
         ctx: &dyn Calls,
         token: &str,
@@ -1302,10 +1313,10 @@ impl Editor {
         if token.is_empty() {
             return Ok(None);
         }
-        let under = ops::children(ctx, self.stay()?.cells.bin)?;
-        let held = |rd: Rd| named(ctx, rd).ok();
-        let mut listed = under.into_iter().filter_map(held);
-        Ok(listed.find(|name| name.starts_with(token)))
+        if ops::lookup(ctx, self.stay()?.cells.bin, token).is_err() {
+            return Ok(None);
+        }
+        Ok(Some(String::from(canonical(token))))
     }
 
     /// `edit` into the revision the draft holds. The first of the two
@@ -2013,70 +2024,45 @@ impl Editor {
         Ok(true)
     }
 
-    /// One `:` line past its range: the name its first token stands
-    /// for, run under Vim's own `bin` with the rest of the line as one
-    /// argument and the range and the bang as the environment; a first
-    /// token no name of Vim's begins is the shell's own line, whole and
-    /// as it was typed.
+    /// A `:` line the shell is to run, whole — Vim's own bin names
+    /// stand first on the Shell's PATH (`kept_of`), so the one call
+    /// reaches either kind alike, and a first token PATH has not is
+    /// E492, which is Vim's own; every other `Miss` is said as the
+    /// shell says it. What Vim would have said arrives as the run's
+    /// output cell, every one of its lines joined into the row, as
+    /// `:buffers` needs for more than its own first; a line of the
+    /// shell's own — a first token none of Vim's names is — shows
+    /// only its first, a row having nowhere to put a listing whole.
     ///
     /// The Shell is a copy for the run, taken and not borrowed: the
-    /// Driver it reaches is this Plugin, whose state the key that typed
-    /// the line is running over, and which finds it as it left it.
-    fn ran(&self, ctx: &dyn Calls, ex: &Ex) -> Result<(), Error> {
-        let Typed { name, bang, arg } = typed(&ex.line);
-        let Some(name) = self.expanded(ctx, name)? else {
-            return self.shelled(ctx, &ex.line);
-        };
+    /// Driver it reaches is this Plugin, whose state the key that
+    /// typed the line is running over, and which finds it as it left
+    /// it — `:cli`'s own read of where it stands among them, still
+    /// mid-run, `self.shell` held by no borrow to conflict with.
+    fn ran(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
+        let vims_own = self.named_bin(ctx, line)?;
         let mut shell = self.shell.borrow().clone();
-        ranged(&mut shell, ex.from, ex.to, bang, ex.ranged);
-        // The rest of the line fills this name's own positionals: a
-        // token each at blanks and the last taking the rest, by Vim's
-        // own rule, so `:w my file` is one name still. A name that
-        // takes no text has no such rule, so what follows it is the
-        // shell's own line — its words, its `>` and its `|` — over
-        // Vim's names, which stand first on PATH.
-        let taken = positionals(&name);
-        let ran = if taken == 0 && !arg.is_empty() {
-            sh::run(ctx, &mut shell, &format!("{name} {arg}"))
-        } else {
-            sh::ran(ctx, &shell, &name, &cut(arg, taken))
-        };
-        let out = match ran {
-            Ok(ran) => printed(ctx, ran),
-            Err(miss) => {
-                self.fails(&format!("{miss}"));
-                return Ok(());
-            }
-        };
-        self.says(&out.lines().collect::<Vec<_>>().join("  "));
-        Ok(())
-    }
-
-    /// A line no name of Vim's begins, typed on the `:` line: run
-    /// through clients/sh over this tree, from where the Shell stands,
-    /// and its first line of output said in the status row, which is
-    /// all one row shows. A first token PATH has not is E492, which is
-    /// Vim's own; every other `Miss` is said as the shell says it.
-    ///
-    /// A run that came back open is a Driver that follows: what its
-    /// cell holds at this one read is what is said, and the cell is
-    /// closed after it, one row having nowhere to put more.
-    fn shelled(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
-        // The borrow is gone before the line runs: a Driver of this
-        // Client's own may come back in here.
-        let mut shell = core::mem::take(&mut *self.shell.borrow_mut());
         let was = shell.cwd();
         let outcome = sh::run(ctx, &mut shell, line);
         let moved = shell.cwd();
         *self.shell.borrow_mut() = shell;
         match outcome {
-            Ok(ran) => {
-                self.says(printed(ctx, ran).lines().next().unwrap_or_default());
-            }
+            Ok(ran) => self.says(&said_of(&printed(ctx, ran), vims_own)),
             Err(miss) if miss.unknown => self.fails(&format!("{E492} {line}")),
             Err(miss) => self.fails(&format!("{miss}")),
         }
         if moved == was { Ok(()) } else { self.rebased(ctx, moved) }
+    }
+
+    /// Whether `line`'s first token is one of Vim's own bin names, an
+    /// exact lookup under `/self/vim/bin` and none of the shell's own
+    /// tokenizing — enough to tell the two apart for [`Self::ran`]'s
+    /// own row, and nothing this reads elsewhere.
+    fn named_bin(&self, ctx: &dyn Calls, line: &str) -> Result<bool, Error> {
+        let Some(first) = line.split_whitespace().next() else {
+            return Ok(false);
+        };
+        Ok(ops::lookup(ctx, self.stay()?.cells.bin, first).is_ok())
     }
 
     /// Where `:cd` left the Shell, taken as the directory Vim works
@@ -2110,14 +2096,15 @@ impl Editor {
         let shell = self.shell.borrow().clone();
         let Some((first, rest)) = line.split_once(' ') else {
             let found = sh::complete(ctx, &shell, line);
-            let alone = match &found.candidates[..] {
+            let candidates = canonical_only(found.candidates);
+            let alone = match &candidates[..] {
                 [one] => sh::form(ctx, &shell, one),
                 _ => None,
             };
-            self.vim.borrow_mut().listed(found.from, found.candidates, alone);
+            self.vim.borrow_mut().listed(found.from, candidates, alone);
             return Ok(());
         };
-        let Some(name) = self.expanded(ctx, first)? else {
+        let Some(name) = self.canonical_bin(ctx, first)? else {
             let found = sh::complete(ctx, &shell, line);
             self.vim.borrow_mut().offer(found.from, found.candidates);
             return Ok(());
@@ -2321,8 +2308,9 @@ struct Kept {
 
 /// Where the editor stands, found from `region`: the directory the
 /// Client started in, the mirror's own root, where that directory is
-/// under it, a Shell over it with Vim's own `bin` first on its PATH,
-/// and the clipboard rd when the Client serves one.
+/// under it, a Shell over it with Vim's own `bin` first on its PATH
+/// and Vim's own `address` named an option of it, and the clipboard
+/// rd when the Client serves one.
 fn kept_of(ctx: &dyn Calls, region: &Region) -> Result<Kept, Error> {
     let dir = region.cwd(ctx)?;
     // The fs Module mirrors the directory the editor runs over, so
@@ -2333,7 +2321,11 @@ fn kept_of(ctx: &dyn Calls, region: &Region) -> Result<Kept, Error> {
     let cwd = cell::resolve(ctx, root, &dir).unwrap_or(root);
     let mut shell = Shell::at(cwd, ops::where_is(ctx, cwd)?);
     shell.first("/self/vim/bin");
-    ranged(&mut shell, 0, 0, false, false);
+    // Vim's own word, said by Vim's own host: the address `ex` reads
+    // off a `:` line and puts back on it as `--address` is never a
+    // token a positional takes, which no shape of a declaration says
+    // and the shell is right not to guess.
+    shell.option("address");
     let clip = cell::resolve(ctx, ROOT, "/self/dev/clipboard").ok();
     Ok(Kept { dir, root, cwd, shell, clip })
 }
@@ -2381,8 +2373,19 @@ fn registered(ctx: &dyn Calls, home: Rd, view: Rd) -> Result<Cells, Error> {
     let point = read(home, "point", one)?;
     let search = read(home, "search", one)?;
     let bin = read(home, "bin", held)?;
-    for (name, decl) in declared() {
-        node(bin, name, held, core::slice::from_ref(&decl))?;
+    let full = declared();
+    for (name, decl) in &full {
+        node(bin, name, held, core::slice::from_ref(decl))?;
+    }
+    // Every abbreviation nvim takes, the same declaration as the full
+    // name it stands for: the shell's PATH lookup is exact, so each
+    // is its own node and not a prefix resolved at the call.
+    for (short, canon) in abbreviated() {
+        let (_, decl) = full
+            .iter()
+            .find(|(name, _)| *name == canon)
+            .expect("an abbreviation stands for a name `declared` also has");
+        node(bin, short, held, core::slice::from_ref(decl))?;
     }
     Ok(Cells {
         view,
@@ -2438,43 +2441,35 @@ fn jumps_listed(ctx: &dyn Calls, vim: &Vim) -> String {
     out
 }
 
-/// The rest of a `:` line as the `count` arguments a name takes: a
-/// token each at blanks and the last taking the rest. An empty rest
-/// is no argument at all, and a name that takes none is handed what
-/// it was given, so the run says why the line cannot stand.
-fn cut(arg: &str, count: usize) -> Vec<&str> {
-    let mut args = Vec::new();
-    let mut rest = arg;
-    while !rest.is_empty() && args.len() + 1 < count {
-        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-        args.push(&rest[..end]);
-        rest = rest[end..].trim_start();
-    }
-    if !rest.is_empty() {
-        args.push(rest);
-    }
-    args
-}
-
-/// Vim's own language in the environment of the Shell a run reads: the
-/// range and the bang, which the `:` line reads off its front before
-/// the name and never spells as tokens.
-///
-/// They stand there from `start`, so no usage line of one of Vim's
-/// names holds them either, and every line writes its own over them.
-fn ranged(shell: &mut Shell, from: u64, to: u64, bang: bool, ranged: bool) {
-    shell.give("ranged", Value::Bool(ranged));
-    shell.give("from", Value::U64(from));
-    shell.give("to", Value::U64(to));
-    shell.give("bang", Value::Bool(bang));
-}
-
 /// The name an rd stands at, which is which name a call is on.
 ///
 /// # Errors
 /// As `Op::Info`; `Unsupported` for an rd with no name.
 pub fn named(ctx: &dyn Calls, rd: Rd) -> Result<String, Error> {
     ops::info(ctx, rd)?.name.ok_or(Error::Unsupported)
+}
+
+/// A `ran` run's own output cell, `out`, read for the row: every line
+/// joined, what Vim itself would have said needing more than its
+/// first, as `:buffers` does; the shell's own line, a first token none
+/// of Vim's own names, shows only its own first, a row having nowhere
+/// to put a listing whole.
+fn said_of(out: &str, whole: bool) -> String {
+    if whole {
+        out.lines().collect::<Vec<_>>().join("  ")
+    } else {
+        String::from(out.lines().next().unwrap_or_default())
+    }
+}
+
+/// `candidates` without one of Vim's own abbreviations: Tab offers
+/// what a person may type in full, `write` and `watch` alike, and not
+/// every shorter node the shell's exact lookup also finds — a
+/// candidate [`canonical`] answers back changed is one of those and
+/// is dropped; one from another directory of PATH, `canonical`
+/// finding no abbreviation of its own, answers itself and stands.
+fn canonical_only(candidates: Vec<String>) -> Vec<String> {
+    candidates.into_iter().filter(|name| canonical(name) == name).collect()
 }
 
 /// Whether a failed lookup says the name is simply not there: a draft
