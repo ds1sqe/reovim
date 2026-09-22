@@ -155,13 +155,13 @@ fn ex_dash_selects_small_register_but_numeric_counts_stay_refused() {
     )
     .unwrap();
     typed(&mut tui, ":d -<CR>");
-    assert_eq!(editor.engine().text(), "two\nthree\n");
+    assert_eq!(editor.text(), "two\nthree\n");
     assert_eq!(cat(&host, "registers/-"), "one\n");
     assert_eq!(cat(&host, "registers/1"), "one\n");
     for arg in ["1", "ab", "?", "aa"] {
         typed(&mut tui, &format!(":d {arg}<CR>"));
         assert!(said(&mut tui).starts_with("E488:"), "{arg}");
-        assert_eq!(editor.engine().text(), "two\nthree\n");
+        assert_eq!(editor.text(), "two\nthree\n");
         assert_eq!(cat(&host, "registers/-"), "one\n");
     }
 }
@@ -211,7 +211,7 @@ fn g_and_h_in_one_frame_read_the_resized_window() {
             .collect();
         ops::put(&ctx, keyboard, bytes).unwrap();
         tui.tick().unwrap();
-        assert_eq!(editor.engine().position().0, expected, "{rows} {keys}");
+        assert_eq!(editor.position().0, expected, "{rows} {keys}");
     }
 }
 
@@ -234,7 +234,7 @@ fn invalid_ex_delete_arguments_preserve_text_and_registers() {
     for arg in ["1", "ab", "?", "aa"] {
         typed(&mut tui, &format!(":d {arg}<CR>"));
         assert!(said(&mut tui).starts_with("E488:"), "{arg}");
-        assert_eq!(editor.engine().text(), "one\ntwo\n");
+        assert_eq!(editor.text(), "one\ntwo\n");
         assert_eq!(cat(&host, "registers/a"), "one\n");
     }
 }

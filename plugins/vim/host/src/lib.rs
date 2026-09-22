@@ -13,6 +13,39 @@
 //! let _ = engine.message;
 //! ```
 //!
+//! Nor are the host's own handles and paths the engine's to hold: the
+//! shell, the root, the working directory, the clipboard's rd, the
+//! draft's handle, the file a new Buffer was opened for and the
+//! greeting the next stay shows are this crate's own fields, and the
+//! engine has no field of any of those names for anyone to reach —
+//! one block each, since a block naming eight would fail on the
+//! first of them alone.
+//!
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().shell;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().root;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().cwd;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().clip;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().dir;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().name;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().h;
+//! ```
+//! ```compile_fail,E0609
+//! let _ = reovim_plugin_vim::Vim::default().greeting;
+//! ```
+//!
 //! The engine is pure: a key becomes an `Effect`, which has
 //! already happened to Vim's own copy of the text; here it becomes
 //! calls. An edit is a `replace` on the draft `/self/dev/buffers`
@@ -51,14 +84,14 @@ use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::{Cell, Ref, RefCell};
+use core::cell::{Cell, RefCell};
 use core::fmt::Write as _;
 
 use reovim_client_api::keyboard;
 use reovim_client_api::origin::TYPED;
 use reovim_client_api::resolver::Input;
 use reovim_client_api::{
-    NONE, buffers, draft, filled, open, origin, part, reply, resolver,
+    NONE, buffers, draft, open, origin, part, reply, resolver,
 };
 use reovim_client_region::{Region, Surface, count, drafted};
 use reovim_client_sh::{self as sh, Ran, Shell};
@@ -74,8 +107,8 @@ use reovim_text_api::{history, publish, text};
 
 use reovim_plugin_vim::bins::{abbreviated, canonical, declared};
 use reovim_plugin_vim::{
-    BUDGET, E32, Edit, Effect, Goto, Key, Mode, Quit, Switch, Vim, Want,
-    options,
+    BUDGET, E32, Edit, Effect, Filled, Goto, Key, Mode, Quit, Register, Switch,
+    Vim, Want, options,
 };
 
 /// How many entries one read of `matches` asks for. The 48 KiB they
@@ -93,29 +126,6 @@ const READS: usize = 4;
 const fn fed(key: u64, origin: u64, from: &keyboard::Press) -> Input {
     let press = keyboard::Press { key, when: from.when, source: from.source };
     Input { press, origin, released: false }
-}
-
-/// The entries `bytes` holds, as the records carry them: one `at`
-/// and one `len` each, which is what a `MATCHED` reply hands on.
-fn listed(bytes: &[u8]) -> Vec<resolver::Entry> {
-    entries(bytes)
-        .into_iter()
-        .map(|one| resolver::Entry { at: one.at, len: one.len })
-        .collect()
-}
-
-/// A reply with nothing in it: what every kind but the one being
-/// made leaves where it was. The records declare no default.
-const fn blank_reply() -> resolver::Reply {
-    resolver::Reply {
-        continuation: 0,
-        kind: reply::PASTED,
-        text: String::new(),
-        place: resolver::Place { cursor: 0, top: 0 },
-        entries: Vec::new(),
-        filled: filled::ABSENT,
-        error: 0,
-    }
 }
 
 /// A view held open and its `matches` found, as the opener holds
@@ -201,10 +211,10 @@ fn resought(stay: &Stay, want: &Want) {
 
 /// What a refusal of the Module's says: the two causes it does not
 /// tell apart are the engine's to word.
-const fn refused(error: Error) -> u64 {
+const fn refused(error: Error) -> Filled {
     match error {
-        Error::NoSpace => filled::SPENT,
-        _ => filled::REFUSED,
+        Error::NoSpace => Filled::Spent,
+        _ => Filled::Refused,
     }
 }
 
@@ -411,16 +421,79 @@ impl Editor {
     }
 
     /// What the engine holds now, for a test of this crate to judge
-    /// what the keys did: no borrow of it outlives an op, so this one
-    /// is free. It reaches the engine's public API and nothing else,
-    /// the engine being another crate.
+    /// what the keys did: ten readings and no engine, so nothing of
+    /// the resolver this host happens to hold is in the host's own
+    /// api. Each is the engine's own reading, taken and let go inside
+    /// the call, no borrow of it outliving an op.
     ///
     /// # Panics
-    /// While a frame of its own holds it, which no caller of this can
-    /// be inside.
+    /// While a frame of its own holds the engine, which no caller of
+    /// these can be inside.
     #[must_use]
-    pub fn engine(&self) -> Ref<'_, Vim> {
-        self.vim.borrow()
+    pub fn text(&self) -> String {
+        String::from(self.vim.borrow().text())
+    }
+
+    /// The cursor, as line and column.
+    #[must_use]
+    pub fn position(&self) -> (usize, usize) {
+        self.vim.borrow().position()
+    }
+
+    /// The one record a frame reads: the mode, the keys of a command
+    /// under way, and the wait it is under.
+    #[must_use]
+    pub fn state(&self) -> resolver::State {
+        self.vim.borrow().state()
+    }
+
+    /// The row's own word.
+    #[must_use]
+    pub fn status(&self) -> String {
+        self.vim.borrow().status()
+    }
+
+    /// What the engine says until the next key.
+    #[must_use]
+    pub fn message(&self) -> String {
+        String::from(self.vim.borrow().said())
+    }
+
+    /// Whether a motion is waiting on the search's list.
+    #[must_use]
+    pub fn waiting(&self) -> bool {
+        self.vim.borrow().waiting()
+    }
+
+    /// Which match the cursor is on, of how many, where the list is
+    /// whole; `None` while it is not.
+    #[must_use]
+    pub fn counted(&self) -> Option<(usize, usize)> {
+        self.vim.borrow().counted()
+    }
+
+    /// The epoch of the list the engine holds.
+    #[must_use]
+    pub fn epoch(&self) -> u64 {
+        self.vim.borrow().epoch()
+    }
+
+    /// The input the engine took last, kept whole.
+    #[must_use]
+    pub fn taken(&self) -> Option<Input> {
+        self.vim.borrow().taken().cloned()
+    }
+
+    /// Whether a macro is feeding keys back in.
+    #[must_use]
+    pub fn fed(&self) -> bool {
+        self.vim.borrow().fed()
+    }
+
+    /// What the register a yank or a delete last filled holds.
+    #[must_use]
+    pub fn register(&self) -> Option<Register> {
+        self.vim.borrow().register().cloned()
     }
 
     /// The current stay, a clone of the `Rc` so no borrow of it
@@ -892,10 +965,10 @@ impl Editor {
     fn balked(&self, ctx: &dyn Calls, what: &str) -> Result<(), Error> {
         self.reload(ctx, true)?;
         let answer = resolver::Reply {
+            continuation: 0,
             kind: reply::REFUSED,
             text: String::from(what),
             error: Error::NoSpace as u64,
-            ..blank_reply()
         };
         let effect = self.vim.borrow_mut().reply(&answer);
         self.act(ctx, effect)?;
@@ -1001,16 +1074,16 @@ impl Editor {
         }
         stay.reads.set(made + 1);
         let Some(open) = stay.search else {
-            return Ok(self.answered(want.epoch, Vec::new(), filled::ABSENT));
+            return Ok(self.answered(want.epoch, &[], Filled::Absent));
         };
         let Err(error) = self.viewing(ctx, &stay, open, want) else {
             return self.reading(ctx, &stay, want.epoch);
         };
         let filled = refused(error);
-        let effect = self.answered(want.epoch, Vec::new(), filled);
+        let effect = self.answered(want.epoch, &[], filled);
         // `open`'s own two causes are the engine's to word; anything
         // else goes up, the wait already ended.
-        let its_own = filled == filled::SPENT || error == Error::Invalid;
+        let its_own = filled == Filled::Spent || error == Error::Invalid;
         if its_own { Ok(effect) } else { Err(error) }
     }
 
@@ -1078,28 +1151,28 @@ impl Editor {
         };
         let len = u32::try_from(READ * ENTRY).unwrap_or(u32::MAX);
         let (found, filled) = match ops::read(ctx, h, at, len) {
-            Ok(bytes) if bytes.is_empty() => (Vec::new(), filled::WHOLE),
+            Ok(bytes) if bytes.is_empty() => (Vec::new(), Filled::Whole),
             Ok(bytes) => {
                 onward(stay, bytes.len());
-                (listed(&bytes), filled::MORE)
+                (entries(&bytes), Filled::More)
             }
-            Err(Error::Busy) => (Vec::new(), filled::MORE),
+            Err(Error::Busy) => (Vec::new(), Filled::More),
             Err(error @ (Error::NoSpace | Error::Invalid)) => {
                 let kept = ops::read(ctx, h, at, len).unwrap_or_default();
                 onward(stay, kept.len());
-                (listed(&kept), refused(error))
+                (entries(&kept), refused(error))
             }
             Err(error) => {
-                self.answered(epoch, Vec::new(), filled::REFUSED);
+                self.answered(epoch, &[], Filled::Refused);
                 return Err(error);
             }
         };
         // The row's three numbers, while there is more to come. Both
         // reads are of a local rd and crank nothing.
-        if filled == filled::MORE {
+        if filled == Filled::More {
             self.told(ctx, progress)?;
         }
-        Ok(self.answered(epoch, found, filled))
+        Ok(self.answered(epoch, &found, filled))
     }
 
     /// How far the fill has gone, for the row: the two numbers the
@@ -1115,22 +1188,18 @@ impl Editor {
         Ok(())
     }
 
-    /// What the engine made of one read: a `MATCHED` reply of the
-    /// continuation this list was asked for with.
+    /// What the engine made of one read: the matches themselves,
+    /// through the search's own door, for the list the epoch names.
+    /// Nothing of a match is declared — the resolver's contract holds
+    /// no offset and no length — so the Module's own record is what
+    /// crosses.
     fn answered(
         &self,
-        continuation: u64,
-        entries: Vec<resolver::Entry>,
-        filled: u64,
+        epoch: u64,
+        found: &[search::Match],
+        filled: Filled,
     ) -> Effect {
-        let answer = resolver::Reply {
-            continuation,
-            kind: reply::MATCHED,
-            entries,
-            filled,
-            ..blank_reply()
-        };
-        self.vim.borrow_mut().reply(&answer)
+        self.vim.borrow_mut().matched(epoch, found, filled)
     }
 
     /// What a frame wants once its keys have run: the view of an
@@ -1553,7 +1622,6 @@ impl Editor {
             kind: if failed.is_none() { reply::PASTED } else { reply::REFUSED },
             text,
             error: failed.map_or(0, |error| error as u64),
-            ..blank_reply()
         };
         let effect = self.vim.borrow_mut().reply(&answer);
         self.act(ctx, effect)
@@ -2765,7 +2833,7 @@ mod macro_queue_tests {
         drop(queue);
         let ctx = host.own();
         while editor.step(&ctx).unwrap() {}
-        assert_eq!(editor.engine().text(), "bac\n", "both keys ran");
+        assert_eq!(editor.text(), "bac\n", "both keys ran");
         assert_eq!(
             editor.spent.get(),
             BUDGET - 2,
@@ -2925,10 +2993,10 @@ mod macro_queue_tests {
         let keys = ['x', 'x', 'l'].map(|c| tapped(Key::Char(c), TYPED));
         editor.queue.borrow_mut().extend(keys);
         editor.framed(&host.own()).unwrap();
-        assert_eq!(editor.engine().text(), "abc\n", "nothing went down");
+        assert_eq!(editor.text(), "abc\n", "nothing went down");
         assert!(editor.queue.borrow().is_empty(), "a key behind it stood");
         assert_eq!(
-            editor.engine().said(),
+            editor.message(),
             "E: edit refused: no space",
             "a key behind the refusal ran and said its own word"
         );
@@ -2941,7 +3009,7 @@ mod macro_queue_tests {
             *editor.init.borrow_mut() = Some(String::from(command));
             editor.queue.borrow_mut().push_back(tapped(Key::Char('x'), TYPED));
             editor.framed(&host.own()).unwrap();
-            assert_eq!(editor.engine().text(), "abc\n", "{command}");
+            assert_eq!(editor.text(), "abc\n", "{command}");
             assert!(editor.stay().unwrap().asked.get());
             assert_eq!(
                 editor.queue.borrow().front(),
@@ -2987,7 +3055,7 @@ mod macro_queue_tests {
             assert_eq!(editor.step(&refused), Ok(true));
         }
         assert_eq!(editor.step(&refused), Err(Error::Denied));
-        assert!(!editor.engine().fed());
+        assert!(!editor.fed());
         assert!(editor.queue.borrow().is_empty(), "failed run was retained");
         assert_eq!(editor.step(&ctx), Ok(false));
     }
@@ -3011,7 +3079,7 @@ mod macro_queue_tests {
         // next key is itself and takes its char.
         editor.queue.borrow_mut().push_back(tapped(Key::Char('x'), TYPED));
         assert_eq!(editor.step(&ctx), Ok(true));
-        assert_eq!(editor.engine().text(), "bc\n");
+        assert_eq!(editor.text(), "bc\n");
     }
 
     fn failed_lookup(error: Error) {

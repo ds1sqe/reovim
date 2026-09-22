@@ -65,7 +65,7 @@ fn wrote(host: &Rc<Host>, code: u64) {
 
 /// The input the engine last took.
 fn took(editor: &Rc<Editor>) -> Option<reovim_client_api::resolver::Input> {
-    editor.engine().taken().cloned()
+    editor.taken()
 }
 
 #[test]

@@ -5,10 +5,15 @@ mod common;
 use std::fmt::Write as _;
 
 use common::{as_of, edit, fed, let_go, on, tapped, typed};
-use reovim_client_api::resolver::{Entry, Place, Reply};
-use reovim_client_api::{BAR, BLOCK, MATCH, SELECTION, filled, origin, reply};
+use reovim_client_api::resolver::Reply;
+use reovim_client_api::{
+    BAR, BLOCK, MATCH, NONE, SELECTION, mode, origin, reply,
+};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Command, Effect, Key, Mode, Quit, Vim, Visual, Want};
+use reovim_plugin_vim::{
+    Command, Effect, Filled, Key, Mode, Quit, Vim, Visual, Want,
+};
+use reovim_search_api::search::Match;
 
 /// The number the clipboard outcome of `keys` waits on.
 fn wanting(vim: &mut Vim, keys: &str) -> u64 {
@@ -24,9 +29,6 @@ fn pasted(continuation: u64, text: &str) -> Reply {
         continuation,
         kind: reply::PASTED,
         text: String::from(text),
-        place: Place { cursor: 0, top: 0 },
-        entries: Vec::new(),
-        filled: filled::ABSENT,
         error: 0,
     }
 }
@@ -36,27 +38,20 @@ fn nothing(continuation: u64) -> Reply {
     Reply { kind: reply::REFUSED, ..pasted(continuation, "") }
 }
 
-/// One read of a search's `matches`, as the Plugin hands it back: the
-/// entries it found, how far the fill got, and the continuation the
-/// list was asked for with.
+/// One read of a search's `matches`, through the search's own door:
+/// the matches as the Module spells them, how far the fill got, and
+/// the epoch of the list they belong to.
 fn matched(
     vim: &mut Vim,
-    continuation: u64,
+    epoch: u64,
     found: &[(usize, usize)],
-    filled: u64,
+    filled: Filled,
 ) -> Effect {
-    vim.reply(&Reply {
-        continuation,
-        kind: reply::MATCHED,
-        text: String::new(),
-        place: Place { cursor: 0, top: 0 },
-        entries: found
-            .iter()
-            .map(|&(at, len)| Entry { at: at as u64, len: len as u64 })
-            .collect(),
-        filled,
-        error: 0,
-    })
+    let found: Vec<Match> = found
+        .iter()
+        .map(|&(at, len)| Match { over: NONE, at: at as u64, len: len as u64 })
+        .collect();
+    vim.matched(epoch, &found, filled)
 }
 
 /// The `:` line `keys` left for the Client to run: the shell's own
@@ -678,12 +673,12 @@ fn a_search_asks_and_lands_when_answered() {
     assert_eq!(vim.position(), (0, 0), "nothing moved while it waits");
     // An answer for a list that has gone is nobody's.
     assert_eq!(
-        matched(&mut vim, epoch + 9, &[(0, 2)], filled::WHOLE),
+        matched(&mut vim, epoch + 9, &[(0, 2)], Filled::Whole),
         Effect::Nothing
     );
     assert_eq!(vim.position(), (0, 0), "and still nothing moved");
     assert_eq!(
-        matched(&mut vim, epoch, &[(3, 2)], filled::WHOLE),
+        matched(&mut vim, epoch, &[(3, 2)], Filled::Whole),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 0));
@@ -696,7 +691,7 @@ fn an_operator_waits_with_its_search() {
     assert_eq!(typed(&mut vim, "d/b<CR>"), want(&vim, "b", 0));
     assert_eq!(vim.showcmd(), "d", "the operator stands through the wait");
     assert_eq!(
-        matched(&mut vim, epoch, &[(1, 1)], filled::WHOLE),
+        matched(&mut vim, epoch, &[(1, 1)], Filled::Whole),
         edit(0, 1, "", false)
     );
     assert_eq!(vim.text(), "b\n");
@@ -718,7 +713,7 @@ fn a_list_not_whole_answers_from_its_run_and_asks_for_the_rest() {
     // read, though the fill has more to give: the fill goes in order,
     // so it found everything between the two.
     assert_eq!(
-        matched(&mut vim, epoch, &[(4, 1), (7, 1)], filled::MORE),
+        matched(&mut vim, epoch, &[(4, 1), (7, 1)], Filled::More),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 1));
@@ -726,7 +721,7 @@ fn a_list_not_whole_answers_from_its_run_and_asks_for_the_rest() {
     assert_eq!(vim.position(), (2, 1));
     // The wrap's own run, which nobody waited for.
     assert_eq!(
-        matched(&mut vim, epoch, &[(1, 1)], filled::MORE),
+        matched(&mut vim, epoch, &[(1, 1)], Filled::More),
         Effect::Nothing
     );
     // An entry past the cursor's own run is not final until the list
@@ -734,7 +729,7 @@ fn a_list_not_whole_answers_from_its_run_and_asks_for_the_rest() {
     // list it began, not for one from the cursor.
     typed(&mut vim, "ggl");
     assert_eq!(typed(&mut vim, "n"), want(&vim, "b", 3));
-    assert_eq!(matched(&mut vim, epoch, &[], filled::WHOLE), Effect::Moved);
+    assert_eq!(matched(&mut vim, epoch, &[], Filled::Whole), Effect::Moved);
     assert_eq!(vim.position(), (1, 1));
 }
 
@@ -746,7 +741,7 @@ fn a_match_on_a_lines_end_is_passed_by_a_cursor_beside_it() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/$<CR>"), want(&vim, "$", 4));
     assert_eq!(
-        matched(&mut vim, epoch, &[(2, 0), (5, 0)], filled::WHOLE),
+        matched(&mut vim, epoch, &[(2, 0), (5, 0)], Filled::Whole),
         Effect::Moved
     );
     assert_eq!(
@@ -761,7 +756,7 @@ fn a_word_takes_the_operator_and_the_record() {
     let mut vim = on("ab cd ef\n");
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "d/\\(<CR>"), want(&vim, "\\(", 0));
-    matched(&mut vim, epoch, &[], filled::REFUSED);
+    matched(&mut vim, epoch, &[], Filled::Refused);
     assert_eq!(vim.status(), "E486: Pattern not found: \\(");
     assert!(vim.rung(), "the word rings, so a run ends at it");
     assert_eq!(vim.showcmd(), "", "the operator went with the motion");
@@ -772,7 +767,7 @@ fn a_word_takes_the_operator_and_the_record() {
     let mut vim = on("ab cd ef\n");
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "d/zzz<CR>"), want(&vim, "zzz", 0));
-    matched(&mut vim, epoch, &[], filled::WHOLE);
+    matched(&mut vim, epoch, &[], Filled::Whole);
     assert_eq!(vim.status(), "E486: Pattern not found: zzz");
     assert_eq!(typed(&mut vim, "w"), Effect::Moved);
     assert_eq!(vim.text(), "ab cd ef\n");
@@ -780,7 +775,7 @@ fn a_word_takes_the_operator_and_the_record() {
     let mut vim = on("abcd\n");
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/\\(<CR>"), want(&vim, "\\(", 0));
-    matched(&mut vim, epoch, &[], filled::REFUSED);
+    matched(&mut vim, epoch, &[], Filled::Refused);
     typed(&mut vim, "x.");
     assert_eq!(vim.text(), "cd\n", "the record the word cleared is the `x`'s");
 }
@@ -793,11 +788,11 @@ fn entries_before_a_spent_offset_are_landed_on() {
     assert_eq!(typed(&mut vim, "/\\(a*\\)*b<CR>"), want(&vim, "\\(a*\\)*b", 0));
     // What the slice found before it spent its budget comes first.
     assert_eq!(
-        matched(&mut vim, epoch, &[(2, 1)], filled::MORE),
+        matched(&mut vim, epoch, &[(2, 1)], Filled::More),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 0));
-    assert_eq!(matched(&mut vim, epoch, &[], filled::SPENT), Effect::Nothing);
+    assert_eq!(matched(&mut vim, epoch, &[], Filled::Spent), Effect::Nothing);
     assert_eq!(
         vim.status(),
         "/\\(a*\\)*b  [?/1+]",
@@ -814,14 +809,14 @@ fn a_spent_list_nobody_waits_for_goes_stale() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 0));
     assert_eq!(
-        matched(&mut vim, epoch, &[(1, 1), (5, 1)], filled::WHOLE),
+        matched(&mut vim, epoch, &[(1, 1), (5, 1)], Filled::Whole),
         Effect::Moved
     );
     assert!(vim.wants().is_none(), "a whole list wants nothing more");
     typed(&mut vim, "x");
     let asked = vim.wants().expect("the edit dropped the list");
     assert_eq!(
-        matched(&mut vim, asked.epoch, &[], filled::SPENT),
+        matched(&mut vim, asked.epoch, &[], Filled::Spent),
         Effect::Nothing
     );
     assert!(vim.wants().is_none(), "stale: no frame pays the offset again");
@@ -836,7 +831,7 @@ fn a_landing_where_the_cursor_stands_pushes_no_jump() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/$<CR>"), want(&vim, "$", 4));
     assert_eq!(
-        matched(&mut vim, epoch, &[(5, 0)], filled::WHOLE),
+        matched(&mut vim, epoch, &[(5, 0)], Filled::Whole),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 1), "the landing is where it stood");
@@ -859,7 +854,7 @@ fn a_wait_runs_again_as_its_key_came() {
     let asked = vim.key(let_go(Key::Enter, origin::FED));
     assert_eq!(asked, want(&vim, "b", 0));
     assert_eq!(
-        matched(&mut vim, epoch, &[(0, 1), (3, 1)], filled::WHOLE),
+        matched(&mut vim, epoch, &[(0, 1), (3, 1)], Filled::Whole),
         edit(0, 3, "", true)
     );
 
@@ -872,7 +867,7 @@ fn a_wait_runs_again_as_its_key_came() {
     }
     let epoch = vim.epoch();
     assert_eq!(vim.key(as_of(Key::Enter, origin::REPEAT)), want(&vim, "b", 0));
-    matched(&mut vim, epoch, &[(0, 1), (3, 1)], filled::WHOLE);
+    matched(&mut vim, epoch, &[(0, 1), (3, 1)], Filled::Whole);
     assert_eq!(
         vim.key(tapped(Key::Char('.'))),
         fed(&[Key::Char('x')], true),
@@ -890,7 +885,7 @@ fn a_wait_runs_again_as_its_key_came() {
     let epoch = vim.epoch();
     let asked = vim.key(let_go(Key::Enter, origin::REPEAT));
     assert_eq!(asked, want(&vim, "b", 0));
-    matched(&mut vim, epoch, &[(0, 1), (3, 1)], filled::WHOLE);
+    matched(&mut vim, epoch, &[(0, 1), (3, 1)], Filled::Whole);
     assert_eq!(
         vim.key(tapped(Key::Char('.'))),
         fed(&[Key::Char('x')], true),
@@ -945,7 +940,7 @@ fn the_row_words_percent_found_and_eta() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 3));
     assert_eq!(
-        matched(&mut vim, epoch, &[(3, 1), (1, 1)], filled::MORE),
+        matched(&mut vim, epoch, &[(3, 1), (1, 1)], Filled::More),
         want(&vim, "b", 3)
     );
     assert!(vim.waiting());
@@ -972,7 +967,7 @@ fn the_row_words_percent_found_and_eta() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/b<CR>"), want(&vim, "b", 0));
     assert_eq!(
-        matched(&mut vim, epoch, &[(1, 1)], filled::MORE),
+        matched(&mut vim, epoch, &[(1, 1)], Filled::More),
         Effect::Moved
     );
     assert_eq!(vim.position(), (0, 1));
@@ -987,7 +982,7 @@ fn the_row_words_percent_found_and_eta() {
     vim.filling(1_000, 4_000, None);
     assert_eq!(vim.status(), "?b  [?/1+]  25.000%");
     let vim_epoch = vim.epoch();
-    matched(&mut vim, vim_epoch, &[], filled::WHOLE);
+    matched(&mut vim, vim_epoch, &[], Filled::Whole);
     assert_eq!(vim.status(), "?b  [1/1]", "a whole list says which match");
 
     // A landing an operator made shows none: the text is filled again
@@ -995,13 +990,13 @@ fn the_row_words_percent_found_and_eta() {
     let mut vim = on("ab\nb\n");
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "y/b<CR>"), want(&vim, "b", 0));
-    matched(&mut vim, epoch, &[(1, 1)], filled::MORE);
+    matched(&mut vim, epoch, &[(1, 1)], Filled::More);
     assert_eq!(vim.status(), "", "a yank's landing shows no row");
     let mut vim = on("ab\nb\n");
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "d/b<CR>"), want(&vim, "b", 0));
     assert_eq!(
-        matched(&mut vim, epoch, &[(1, 1)], filled::MORE),
+        matched(&mut vim, epoch, &[(1, 1)], Filled::More),
         edit(0, 1, "", false)
     );
     assert_eq!(vim.status(), "", "nor does a delete's");
@@ -1021,7 +1016,7 @@ fn the_count_is_the_entries_at_or_before_the_cursor() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
     assert_eq!(
-        matched(&mut vim, epoch, &ENTRIES, filled::WHOLE),
+        matched(&mut vim, epoch, &ENTRIES, Filled::Whole),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 2));
@@ -1037,7 +1032,7 @@ fn the_count_is_the_entries_at_or_before_the_cursor() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
     let two = [(4, 3), (10, 3)];
-    assert_eq!(matched(&mut vim, epoch, &two, filled::WHOLE), Effect::Moved);
+    assert_eq!(matched(&mut vim, epoch, &two, Filled::Whole), Effect::Moved);
     typed(&mut vim, "gg");
     assert_eq!(vim.counted(), Some((0, 2)), "before the first, none");
     typed(&mut vim, "G");
@@ -1050,13 +1045,13 @@ fn the_row_is_a_number_once_the_list_is_whole() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
     assert_eq!(
-        matched(&mut vim, epoch, &ENTRIES[..2], filled::MORE),
+        matched(&mut vim, epoch, &ENTRIES[..2], Filled::More),
         Effect::Moved
     );
     vim.filling(1_000, 4_000, None);
     assert_eq!(vim.status(), "/foo  [?/2+]  25.000%", "no rank while it fills");
     assert_eq!(
-        matched(&mut vim, epoch, &ENTRIES[2..], filled::WHOLE),
+        matched(&mut vim, epoch, &ENTRIES[2..], Filled::Whole),
         Effect::Nothing
     );
     assert_eq!(vim.status(), "/foo  [2/4]", "a number, and nothing after it");
@@ -1067,7 +1062,7 @@ fn the_row_is_a_number_once_the_list_is_whole() {
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/a<CR>"), want(&vim, "a", 0));
     let many: Vec<(usize, usize)> = (0..1200).map(|n| (n * 2, 1)).collect();
-    assert_eq!(matched(&mut vim, epoch, &many, filled::WHOLE), Effect::Moved);
+    assert_eq!(matched(&mut vim, epoch, &many, Filled::Whole), Effect::Moved);
     assert_eq!(vim.status(), "/a  [2/1200]", "there is no cap");
 }
 
@@ -1076,7 +1071,7 @@ fn the_row_goes_at_the_next_key_and_an_operator_shows_none() {
     let mut vim = on(FOUR);
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
-    matched(&mut vim, epoch, &ENTRIES, filled::WHOLE);
+    matched(&mut vim, epoch, &ENTRIES, Filled::Whole);
     assert_eq!(vim.status(), "/foo  [2/4]");
     assert_eq!(typed(&mut vim, "l"), Effect::Moved);
     assert_eq!(vim.status(), "", "the row goes at the next key");
@@ -1085,7 +1080,7 @@ fn the_row_goes_at_the_next_key_and_an_operator_shows_none() {
     let mut vim = on(FOUR);
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "d/foo<CR>"), want(&vim, "foo", 0));
-    matched(&mut vim, epoch, &ENTRIES, filled::WHOLE);
+    matched(&mut vim, epoch, &ENTRIES, Filled::Whole);
     assert_eq!(vim.text(), "foo foo\nc\nfoo\n", "the delete ran");
     assert_eq!(vim.status(), "", "and its landing shows no count");
     assert!(vim.wants().is_none());
@@ -1093,7 +1088,7 @@ fn the_row_goes_at_the_next_key_and_an_operator_shows_none() {
     let mut vim = on(FOUR);
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/zzz<CR>"), want(&vim, "zzz", 0));
-    matched(&mut vim, epoch, &[], filled::WHOLE);
+    matched(&mut vim, epoch, &[], Filled::Whole);
     assert_eq!(vim.status(), "E486: Pattern not found: zzz");
     assert_eq!(vim.counted(), Some((0, 0)), "none found is none of none");
 }
@@ -1103,9 +1098,9 @@ fn the_count_is_unknown_until_whole_and_under_another_key() {
     let mut vim = on(FOUR);
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
-    matched(&mut vim, epoch, &ENTRIES[..2], filled::MORE);
+    matched(&mut vim, epoch, &ENTRIES[..2], Filled::More);
     assert_eq!(vim.counted(), None, "a list still filling has no rank");
-    matched(&mut vim, epoch, &ENTRIES[2..], filled::WHOLE);
+    matched(&mut vim, epoch, &ENTRIES[2..], Filled::Whole);
     assert_eq!(vim.counted(), Some((2, 4)));
     typed(&mut vim, "x");
     assert_eq!(vim.counted(), None, "the edit dropped the list");
@@ -1113,7 +1108,7 @@ fn the_count_is_unknown_until_whole_and_under_another_key() {
     let mut vim = on(FOUR);
     let epoch = vim.epoch();
     assert_eq!(typed(&mut vim, "/foo<CR>"), want(&vim, "foo", 0));
-    matched(&mut vim, epoch, &ENTRIES, filled::WHOLE);
+    matched(&mut vim, epoch, &ENTRIES, Filled::Whole);
     assert_eq!(vim.counted(), Some((2, 4)));
     assert_eq!(vim.set("ic"), Effect::Moved);
     assert_eq!(vim.counted(), None, "the list is of another key now");
@@ -1131,7 +1126,7 @@ const OS: [(usize, usize); 4] = [(5, 1), (6, 1), (17, 1), (18, 1)];
 /// under the line's own key is not asked for again.
 fn answering(vim: &mut Vim, entries: &[(usize, usize)]) -> Option<Want> {
     let asked = vim.wants()?;
-    matched(vim, asked.epoch, entries, filled::WHOLE);
+    matched(vim, asked.epoch, entries, Filled::Whole);
     Some(asked)
 }
 
@@ -1149,7 +1144,7 @@ fn a_typed_pattern_is_wanted_and_the_cursor_follows() {
     );
     let vim_epoch = vim.epoch();
     assert_eq!(
-        matched(&mut vim, vim_epoch, &[(4, 1), (16, 1)], filled::WHOLE),
+        matched(&mut vim, vim_epoch, &[(4, 1), (16, 1)], Filled::Whole),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 0), "the cursor on the first entry");
@@ -1167,7 +1162,7 @@ fn a_typed_pattern_is_wanted_and_the_cursor_follows() {
     let asked = vim.wants();
     assert_eq!(asked.map(Effect::Search), Some(want(&vim, "fo", 0)));
     let vim_epoch = vim.epoch();
-    matched(&mut vim, vim_epoch, &[(4, 2), (16, 2)], filled::WHOLE);
+    matched(&mut vim, vim_epoch, &[(4, 2), (16, 2)], Filled::Whole);
     assert_eq!(vim.position(), (1, 0));
 
     typed(&mut vim, "<BS><BS>");
@@ -1232,7 +1227,7 @@ fn no_entry_and_a_refused_pattern_say_nothing() {
 
     typed(&mut vim, "<Esc>/\\(");
     let asked = vim.wants().expect("a pattern that does not parse is asked");
-    matched(&mut vim, asked.epoch, &[], filled::REFUSED);
+    matched(&mut vim, asked.epoch, &[], Filled::Refused);
     assert_eq!(vim.position(), (0, 0));
     assert_eq!(vim.status(), "/\\(");
     assert!(!vim.rung(), "a refused open is silence");
@@ -1272,7 +1267,7 @@ fn enter_lands_from_the_origin() {
     assert_eq!(vim.position(), (0, 0));
     assert_eq!(typed(&mut vim, "n"), want(&vim, "foo", 0), "the old pattern");
     let vim_epoch = vim.epoch();
-    matched(&mut vim, vim_epoch, &[(4, 3), (16, 3)], filled::WHOLE);
+    matched(&mut vim, vim_epoch, &[(4, 3), (16, 3)], Filled::Whole);
     assert_eq!(vim.position(), (1, 0));
 }
 
@@ -1304,7 +1299,7 @@ fn enter_before_the_answer_waits() {
     typed(&mut vim, "/foo");
     let asked = vim.wants().expect("the typed line is wanted");
     assert_eq!(
-        matched(&mut vim, asked.epoch, &[], filled::MORE),
+        matched(&mut vim, asked.epoch, &[], Filled::More),
         Effect::Moved
     );
     assert_eq!(vim.position(), (0, 0), "nothing found yet");
@@ -1312,7 +1307,7 @@ fn enter_before_the_answer_waits() {
     assert!(vim.waiting(), "the Enter waits on the list the preview began");
     let vim_epoch = vim.epoch();
     assert_eq!(
-        matched(&mut vim, vim_epoch, &[(4, 3), (16, 3)], filled::WHOLE),
+        matched(&mut vim, vim_epoch, &[(4, 3), (16, 3)], Filled::Whole),
         Effect::Moved
     );
     assert_eq!(vim.position(), (1, 0));
@@ -1339,9 +1334,7 @@ fn state_is_one_record_per_frame() {
     let mut vim = on(&"abc\n".repeat(200));
     let idle = vim.state();
     assert_eq!(idle.mode, Mode::Normal.code(), "the mode it opens in");
-    assert_eq!(idle.status, "", "nothing said");
     assert_eq!(idle.showcmd, "", "and nothing typed");
-    assert!(!idle.pending, "so no command is under way");
     assert_eq!(idle.waiting, 0, "and nothing is waited for");
 
     // An operator and a count taken, then the search they wait on.
@@ -1350,9 +1343,7 @@ fn state_is_one_record_per_frame() {
     assert_eq!(typed(&mut vim, "/x<CR>"), want(&vim, "x", 0));
     let held = vim.state();
     assert_eq!(held.mode, vim.mode().code());
-    assert_eq!(held.status, vim.status(), "the row the search words");
     assert_eq!(held.showcmd, "2d", "the operator and its count");
-    assert!(held.pending, "which is a command under way");
     assert_eq!(held.waiting, epoch, "the continuation it waits on");
     assert_eq!(Mode::of(held.mode), Mode::Normal);
 
@@ -1361,12 +1352,11 @@ fn state_is_one_record_per_frame() {
     let after = vim.state();
     assert_eq!(after.waiting, 0, "nothing is waited for");
     assert_eq!(after.showcmd, "", "and the operator went with it");
-    assert!(!after.pending);
 
     typed(&mut vim, "i");
     let insert = vim.state();
     assert_eq!(insert.mode, Mode::Insert.code());
     assert_eq!(Mode::of(insert.mode), Mode::Insert);
     assert_eq!(insert.showcmd, vim.showcmd());
-    assert_eq!(insert.status, vim.status());
+    assert_eq!(insert.mode, mode::INSERT, "the number the api declares");
 }

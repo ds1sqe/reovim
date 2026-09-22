@@ -9,8 +9,8 @@ use reovim_kernel_interface::Rd;
 
 use crate::jumps::Jump;
 use crate::{
-    Effect, Key, Kind, Mode, Pos, Put, Register, Vim, Visual, edited, going,
-    land, moved,
+    Effect, Key, Kind, Land, Mode, Pos, Put, Register, Vim, Visual, edited,
+    going, moved,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -539,7 +539,7 @@ impl Vim {
             self.error("E20: Mark not set");
             return Effect::Nothing;
         };
-        let land = if exact { land::EXACT } else { land::LINE };
+        let land = if exact { Land::Exact } else { Land::Line };
         let Some(rd) = elsewhere else { return self.jump_to(pos, land) };
         if self.pending.running {
             return Effect::Nothing;
@@ -548,12 +548,12 @@ impl Vim {
     }
 
     /// `pos`, landed as `land` says (see [`crate::Effect::Goto`]).
-    pub(crate) fn jump_to(&mut self, pos: Pos, land: u64) -> Effect {
-        if land != land::WALKED {
+    pub(crate) fn jump_to(&mut self, pos: Pos, land: Land) -> Effect {
+        if land != Land::Walked {
             self.set_previous();
         }
         let at = self.byte_at(pos);
-        let to = if land == land::LINE { self.first_non_blank(at) } else { at };
+        let to = if land == Land::Line { self.first_non_blank(at) } else { at };
         self.go_clamped(to)
     }
 
@@ -575,7 +575,7 @@ impl Vim {
         let effect =
             jump.source.filter(|_| jump.source != self.source).map_or_else(
                 || self.landed(jump.pos),
-                |source| Effect::Goto(going(source, jump.pos, land::WALKED)),
+                |source| Effect::Goto(going(source, jump.pos, Land::Walked)),
             );
         self.settle(&effect);
         effect
@@ -588,7 +588,7 @@ impl Vim {
             self.error("E19: Mark has invalid line number");
             return Effect::Nothing;
         }
-        self.jump_to(pos, land::WALKED)
+        self.jump_to(pos, Land::Walked)
     }
 
     /// The span `motion` covers from the cursor, `n` times, for an

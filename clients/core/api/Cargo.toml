@@ -12,8 +12,5 @@ publish = false
 reovim-kernel-interface = { path = "../../../kernel/interface" }
 reovim-sdk = { path = "../../../sdk/rust" }
 
-[dev-dependencies]
-reovim-sdk = { path = "../../../sdk/rust" }
-
 [lints]
 workspace = true

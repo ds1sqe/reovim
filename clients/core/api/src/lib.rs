@@ -202,72 +202,45 @@ declare! {
     /// other side is not Rust, and the shape both sides agree on
     /// where it is.
     ///
-    /// [`Input`] is one key on its way in, a [`Press`] kept whole with
-    /// an `origin` ([`origin`](crate::origin)) saying whose it is —
-    /// the user's, a macro's or a `.`'s — and `released` saying
-    /// whether a held prefix that matched nothing let it go, which is
-    /// a second fact and not another origin: a macro's released key
-    /// is still the macro's. A synthetic key carries the `Press` of
-    /// the key that made it, so no clock and no source is invented
-    /// and a recorded stream replays.
-    ///
-    /// [`Outcome`] is what one `Input` decided: a `kind`
-    /// ([`kind`](crate::kind)) and the payload that kind names, the
-    /// other fields left where they were, and `continuation` the
-    /// number an outcome that waits is answered by, 0 where nothing
-    /// waits. [`Edit`] replaces the `len` bytes at `at`, `join` true
-    /// where it belongs to the revision before it, and `edits` carries
-    /// them where a kind makes more than one. [`Command`] is a `:`
-    /// line for the shell, whether it was typed or a binding resolved
-    /// to it: the address and the bang Vim's own grammar read off its
-    /// front, if any, are flags on the line and not fields of their
-    /// own. [`Open`] is a file to show, `bang` past a modified draft;
-    /// whether a `PATH:LOCATOR` is one name or two is the host's to
-    /// split, so no locator rides here. [`Goto`] is a jump to `line`
-    /// and
-    /// `column` of `over`, `land` ([`land`](crate::land)) saying how
-    /// exactly it lands. [`Search`] is a pattern to run from `from`,
-    /// `epoch` telling this run's answers from a later run's. [`Fed`]
+    /// Five records are what resolving is, and none of them is the
+    /// text. [`Input`] is one key on its way in, a [`Press`] kept
+    /// whole with an `origin` ([`origin`](crate::origin)) saying
+    /// whose it is — the user's, a macro's or a `.`'s — and
+    /// `released` saying whether a held prefix that matched nothing
+    /// let it go, which is a second fact and not another origin: a
+    /// macro's released key is still the macro's. A synthetic key
+    /// carries the `Press` of the key that made it, so no clock and
+    /// no source is invented and a recorded stream replays. [`Fed`]
     /// is the keys a macro or a `.` replays, which the host pushes
     /// back as `Input`s rather than the resolver feeding itself.
-    /// `name` and `flag` are a kind's one word and its one bit, which
-    /// `QUIT` reads as its how and `SWITCH` as its to.
+    /// [`Command`] is a line for the shell, whether it was typed or a
+    /// binding resolved to it: a name on PATH and its arguments, the
+    /// grammar a resolver reads off its own front — Vim's address and
+    /// bang — already flags on the line. [`Reply`] answers a wait:
+    /// `kind` ([`reply`](crate::reply)) says which answer it is,
+    /// `text` what the clipboard held or which operation was refused,
+    /// and `error` the `Error` as the Kernel numbers it, read for a
+    /// `REFUSED` alone; a continuation no longer waited for is stale
+    /// and means nothing. [`State`] is what a frame reads once: the
+    /// `mode` ([`mode`](crate::mode)), the `showcmd` a pending count
+    /// and operator spell (`3d`), and `waiting` the continuation
+    /// still unanswered, 0 for none. The host reads no other field of
+    /// a resolver.
     ///
-    /// [`Reply`] answers a continuation: `kind`
-    /// ([`reply`](crate::reply)) says which answer it is, `text` what
-    /// the clipboard held, [`Place`] where a loaded Buffer stands
-    /// (`cursor`, and `top`, the first byte shown), [`Entry`] one
-    /// match a search found with `filled`
-    /// ([`filled`](crate::filled)) saying how far it got, and `error`
-    /// the `Error` as the Kernel numbers it, read for a `REFUSED`
-    /// alone. A continuation no longer waited for is stale and means
-    /// nothing.
-    ///
-    /// [`State`] is what a frame reads once: the `mode`, the `status`
-    /// line, the `showcmd` a pending count and operator spell (`3d`),
-    /// `pending` whether one is, and `waiting` the continuation still
-    /// unanswered, 0 for none. The host reads no other field of a
-    /// resolver.
+    /// What a resolver decides beyond a line for the shell is its
+    /// own host's, in that host's own types: an edit belongs to the
+    /// api of the region it is made in, a jump to the Plugin that
+    /// serves what is jumped to, a search to the search Module's own
+    /// records. Nothing of them is declared here, and nothing is
+    /// declared here for a consumer that does not exist: when one
+    /// does, it brings its own declaration with it.
     api resolver ver 1 {}
     record Input { press: Press, origin: u64, released: bool }
-    record Edit { at: u64, len: u64, text: utf8(65536), join: bool }
-    record Command { line: utf8(4096) }
-    record Open { path: utf8(4096), bang: bool }
-    record Goto { over: Rd, line: u64, column: u64, land: u64 }
-    record Search { pattern: utf8(1024), ignorecase: bool,
-                    smartcase: bool, from: u64, epoch: u64 }
     record Fed { keys: [u64; 4096], repeat: bool }
-    record Outcome { kind: u64, continuation: u64, edits: [Edit; 4096],
-                     command: Command, open: Open, goto: Goto,
-                     search: Search, fed: Fed, name: utf8(4096),
-                     flag: bool }
-    record Place { cursor: u64, top: u64 }
-    record Entry { at: u64, len: u64 }
+    record Command { line: utf8(4096) }
     record Reply { continuation: u64, kind: u64, text: utf8(65536),
-                   place: Place, entries: [Entry; 4096], filled: u64,
                    error: u64 }
-    record State { mode: u64, status: utf8(4096), showcmd: utf8(64),
-                   pending: bool, waiting: u64 }
+    record State { mode: u64, showcmd: utf8(64), waiting: u64 }
 }
 
 /// Whose a [`resolver::Input`] is, its `origin`. Whether a failed
@@ -283,96 +256,38 @@ pub mod origin {
     pub const REPEAT: u64 = 2;
 }
 
-/// What a [`resolver::Outcome`] is, its `kind`; a field no kind here
-/// names is left where it was.
-pub mod kind {
-    /// The key was taken and nothing follows from it.
-    pub const NOTHING: u64 = 0;
-    /// The cursor moved within what is shown; the `State` says where.
-    pub const MOVED: u64 = 1;
-    /// The `edits`, in the order they are to be made.
-    pub const EDITS: u64 = 2;
-    /// The draft's last revision is undone.
-    pub const UNDO: u64 = 3;
-    /// The undone revision is made again.
-    pub const REDO: u64 = 4;
-    /// The draft is written where it came from.
-    pub const SAVE: u64 = 5;
-    /// The draft is written to `name`, which becomes its source.
-    pub const SAVE_AS: u64 = 6;
-    /// The editor ends; `flag` is how, past a modified draft or not.
-    pub const QUIT: u64 = 7;
-    /// The region shows the draft `name`.
-    pub const SWITCH: u64 = 8;
-    /// The draft `name` is taken out of the tree, `flag` past a
-    /// modified one.
-    pub const CLOSE: u64 = 9;
-    /// The drafts this Client holds are shown.
-    pub const LIST: u64 = 10;
-    /// Every modified draft is written.
-    pub const SAVE_ALL: u64 = 11;
-    /// The tree under `name` is shown.
-    pub const EXPLORE: u64 = 12;
-    /// The `open`.
-    pub const OPEN: u64 = 13;
-    /// The draft takes the server's head in place of what it holds.
-    pub const RELOAD: u64 = 14;
-    /// The `command`, a `:` line for the shell.
-    pub const COMMAND: u64 = 15;
-    /// `name` is a shell line for the Client to run.
-    pub const CLI: u64 = 16;
-    /// `name` is the word to complete, answered by a `LOADED` reply.
-    pub const COMPLETE: u64 = 17;
-    /// The clipboard is asked for, answered by a `PASTED` reply at
-    /// `continuation`.
-    pub const CLIPBOARD: u64 = 18;
-    /// The `goto`, answered by a `LOADED` reply where it lands in
-    /// another Buffer.
-    pub const GOTO: u64 = 19;
-    /// The `search`, answered by `MATCHED` replies at its `epoch`.
-    pub const SEARCH: u64 = 20;
-    /// The `fed` keys, which the host pushes back as `Input`s.
-    pub const FED: u64 = 21;
-}
-
-/// How exactly a [`resolver::Goto`] lands, its `land`.
-pub mod land {
-    /// On the line, at whatever column the line's own first byte is.
-    pub const LINE: u64 = 0;
-    /// On the line and the column both, as a mark remembered them.
-    pub const EXACT: u64 = 1;
-    /// On the line, at the column a walk from its start reaches,
-    /// which is where a jump list's own step left off.
-    pub const WALKED: u64 = 2;
-}
-
 /// Which answer a [`resolver::Reply`] is, its `kind`.
 pub mod reply {
-    /// The clipboard's own text, for a `CLIPBOARD` outcome.
+    /// The clipboard's own text, for a put that waits on it.
     pub const PASTED: u64 = 0;
-    /// A Buffer is loaded and stands at `place`, for a `GOTO`, an
-    /// `OPEN` or a `COMPLETE`.
-    pub const LOADED: u64 = 1;
-    /// What a search found so far, for a `SEARCH`.
-    pub const MATCHED: u64 = 2;
-    /// The operation did not happen; `error` says what stopped it.
-    pub const REFUSED: u64 = 3;
+    /// The operation did not happen; `text` names it as the row
+    /// would and `error` says what stopped it.
+    pub const REFUSED: u64 = 1;
 }
 
-/// How far a [`resolver::Reply`] filled what was asked, its `filled`.
-pub mod filled {
-    /// Nothing was being filled, which is every reply but a search's.
-    pub const ABSENT: u64 = 0;
-    /// The `entries` are what a slice of the text held; more of it
-    /// remains to run.
-    pub const MORE: u64 = 1;
-    /// The `entries` are every match there is.
-    pub const WHOLE: u64 = 2;
-    /// The run stopped on its own budget with the text unspent, so
-    /// the `entries` are all that will come of it.
-    pub const SPENT: u64 = 3;
-    /// The run did not happen; `error` says what stopped it.
-    pub const REFUSED: u64 = 4;
+/// Which mode a [`resolver::State`] is in, its `mode`.
+///
+/// A mode is the Client's side of the line and never crosses to the
+/// Kernel or to a Module: what a resolver calls its modes it numbers
+/// here, so the Client that draws the frame and the `mode` cell under
+/// its home read the field without knowing the resolver's own enum.
+/// The names are Vim's, which is the resolver reovim ships; a
+/// resolver with fewer uses fewer, and one with more adds them here
+/// beside its own consumer.
+pub mod mode {
+    /// Keys are commands: the mode an editor opens in.
+    pub const NORMAL: u64 = 0;
+    /// Keys are text.
+    pub const INSERT: u64 = 1;
+    /// A line is being composed for the shell — `:` — which is the
+    /// bridge out of the editor and a mode like any other.
+    pub const COMMAND: u64 = 2;
+    /// A run of characters is selected.
+    pub const VISUAL: u64 = 3;
+    /// Whole lines are selected.
+    pub const VISUAL_LINE: u64 = 4;
+    /// A block of columns is selected.
+    pub const VISUAL_BLOCK: u64 = 5;
 }
 
 /// The nine a span may mean, the sdk's own theme: [`SELECTION`] and

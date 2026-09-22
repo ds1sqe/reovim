@@ -1,9 +1,8 @@
-//! The outcomes the engine declares and the replies that answer them.
+//! The waits the engine makes and the answers that end them.
 //!
-//! One numbering for every outcome that waits, a search's among them;
-//! one door for every reply; every `Effect` the same thing as the
-//! `Outcome` record it makes; and no handle and no path of the host's
-//! left on the engine.
+//! One numbering for every outcome that waits, a search's among them,
+//! and one door for each kind of answer: the declared `Reply` for the
+//! clipboard and for a refusal, [`Vim::matched`] for a search.
 
 mod common;
 
@@ -12,28 +11,19 @@ use std::rc::Rc;
 use common::{on, one, typed};
 use reovim_client::Host;
 use reovim_client::dev::Clip;
-use reovim_client_api::resolver::{
-    Command, Edit, Entry, Fed, Goto, Open, Outcome, Place, Reply, Search,
-};
-use reovim_client_api::{NONE, filled, kind, land, reply};
+use reovim_client_api::resolver::Reply;
+use reovim_client_api::{NONE, reply};
 use reovim_client_tui::Tui;
 use reovim_kernel_interface::Error;
-use reovim_plugin_vim::{Effect, Quit, Switch, Vim, effect};
+use reovim_plugin_vim::{Edit, Effect, Filled, Vim};
 use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, opened, said};
+use reovim_search_api::search::Match;
 
-/// A reply at rest: the `kind` it is, nothing filled, nothing
-/// refused. Each test fills the one field its own answer carries.
+/// A reply at rest: the `kind` it is, refusing nothing. Each test
+/// fills the one field its own answer carries.
 const fn answer(continuation: u64, kind: u64) -> Reply {
-    Reply {
-        continuation,
-        kind,
-        text: String::new(),
-        place: Place { cursor: 0, top: 0 },
-        entries: Vec::new(),
-        filled: filled::ABSENT,
-        error: 0,
-    }
+    Reply { continuation, kind, text: String::new(), error: 0 }
 }
 
 /// The clipboard's own answer: what it held, for the put that waits.
@@ -41,11 +31,9 @@ fn pasted(continuation: u64, text: &str) -> Reply {
     Reply { text: String::from(text), ..answer(continuation, reply::PASTED) }
 }
 
-/// One read of a search's `matches`: the entries it found and how far
-/// the fill got.
-fn matched(continuation: u64, found: &[(u64, u64)], filled: u64) -> Reply {
-    let entries = found.iter().map(|&(at, len)| Entry { at, len }).collect();
-    Reply { entries, filled, ..answer(continuation, reply::MATCHED) }
+/// One read of a search's `matches`, as the Module spells them.
+fn matches(found: &[(u64, u64)]) -> Vec<Match> {
+    found.iter().map(|&(at, len)| Match { over: NONE, at, len }).collect()
 }
 
 /// What the host met, for the outcome it could not perform: `asked`
@@ -131,7 +119,7 @@ const fn error_no_space() -> u64 {
 /// A search waits on the same numbering every other outcome waits on,
 /// and answers to a number that is not its own move nothing.
 #[test]
-fn a_search_reply_carries_the_wait_it_answers() {
+fn a_search_answer_carries_the_wait_it_answers() {
     let mut vim = on("ab\ncd\n");
     let Effect::Search(want) = typed(&mut vim, "/cd<CR>") else {
         panic!("the key asks for the list it cannot answer from")
@@ -139,102 +127,19 @@ fn a_search_reply_carries_the_wait_it_answers() {
     assert_ne!(want.epoch, 0, "the wait is numbered");
     assert_eq!(vim.position(), (0, 0), "nothing moved while it waits");
 
-    let stale = matched(want.epoch + 9, &[(0, 2)], filled::WHOLE);
-    assert_eq!(vim.reply(&stale), Effect::Nothing, "a list that is gone");
+    let stale = matches(&[(0, 2)]);
+    let answer = vim.matched(want.epoch + 9, &stale, Filled::Whole);
+    assert_eq!(answer, Effect::Nothing, "a list that is gone");
     assert_eq!(vim.position(), (0, 0));
 
-    let its_own = matched(want.epoch, &[(3, 2)], filled::WHOLE);
-    assert_eq!(vim.reply(&its_own), Effect::Moved);
+    let its_own = matches(&[(3, 2)]);
+    assert_eq!(vim.matched(want.epoch, &its_own, Filled::Whole), Effect::Moved);
     assert_eq!(vim.position(), (1, 0));
 
     // One counting, not two: the next outcome that waits takes the
     // number after the search's, whatever kind of wait it is.
     let continuation = wanting(&mut vim, "\"+p");
     assert!(continuation > want.epoch, "one counter for every wait");
-}
-
-/// Every `Effect` the engine makes is the `Outcome` record of its own
-/// kind, and that record is the same `Effect` read back: what crosses
-/// the boundary is declared data and loses nothing.
-#[test]
-fn every_effect_round_trips_through_outcome() {
-    let edit = Edit { at: 3, len: 1, text: "x".into(), join: true };
-    let command = Command { line: "write --address 1,9".into() };
-    let open = Open { path: "note".into(), bang: true };
-    let goto = Goto { over: NONE, line: 4, column: 2, land: land::EXACT };
-    let search = Search {
-        pattern: "wo.d".into(),
-        ignorecase: true,
-        smartcase: false,
-        from: 30,
-        epoch: 4,
-    };
-    let fed = Fed { keys: vec![u64::from('x')], repeat: true };
-    let every = [
-        (Effect::Nothing, kind::NOTHING),
-        (Effect::Moved, kind::MOVED),
-        (Effect::Edits(vec![edit]), kind::EDITS),
-        (Effect::Undo, kind::UNDO),
-        (Effect::Redo, kind::REDO),
-        (Effect::Save(true), kind::SAVE),
-        (Effect::SaveAs("note".into(), true), kind::SAVE_AS),
-        (Effect::Quit(Quit::All(true)), kind::QUIT),
-        (Effect::Switch(Switch::Named("2".into())), kind::SWITCH),
-        (Effect::Close("2".into(), true), kind::CLOSE),
-        (Effect::List, kind::LIST),
-        (Effect::SaveAll, kind::SAVE_ALL),
-        (Effect::Explore(open.clone()), kind::EXPLORE),
-        (Effect::Open(open), kind::OPEN),
-        (Effect::Reload(true), kind::RELOAD),
-        (Effect::Command(command), kind::COMMAND),
-        (Effect::Cli(true), kind::CLI),
-        (Effect::Complete("w".into()), kind::COMPLETE),
-        (Effect::Clipboard(7), kind::CLIPBOARD),
-        (Effect::Goto(goto), kind::GOTO),
-        (Effect::Search(search), kind::SEARCH),
-        (Effect::Fed(fed), kind::FED),
-    ];
-    assert_eq!(every.len(), 22, "one kind for every effect there is");
-    for (made, kind) in every {
-        let outcome = made.outcome();
-        assert_eq!(outcome.kind, kind, "{made:?}");
-        assert_eq!(effect(&outcome), Some(made.clone()), "{made:?}");
-    }
-    // Every way out of the six journeys, each read back as itself.
-    let mut vim = on("abc\n");
-    for keys in ["x", "3dw", ":write\r", "\"+p", "u", "<C-r>"] {
-        let made = typed(&mut vim, keys);
-        assert_eq!(effect(&made.outcome()), Some(made), "{keys}");
-    }
-}
-
-/// A kind no `Outcome` declares is nothing the engine can perform.
-#[test]
-fn an_outcome_of_no_kind_is_no_effect() {
-    let mut outcome: Outcome = Effect::Nothing.outcome();
-    outcome.kind = 22;
-    assert_eq!(effect(&outcome), None);
-}
-
-/// The engine holds no handle and no path of the host's: the shell,
-/// the root, the working directory, the clipboard's rd, the draft's
-/// handle, the file a new Buffer was opened for and the greeting the
-/// next stay shows all belong to the Client, which is where every
-/// reader of them already was.
-#[test]
-fn the_engine_holds_no_path_or_handle() {
-    let shown = format!("{:#?}", Vim::default());
-    let gone = ["shell", "root", "cwd", "clip", "dir", "name", "h", "greeting"];
-    for field in gone {
-        let named = format!("\n    {field}: ");
-        assert!(!shown.contains(&named), "`{field}` is still the engine's");
-    }
-    // The fields the engine keeps are the rds it hands back and keys
-    // its own tables by, which is what settles the rest are not.
-    for field in ["source", "buffer", "alt", "left", "places", "files"] {
-        let named = format!("\n    {field}: ");
-        assert!(shown.contains(&named), "`{field}` is the engine's own");
-    }
 }
 
 /// An editor over `note`, which holds `text`, with `other` beside it
@@ -269,7 +174,7 @@ fn denied() -> Clip {
 fn a_stays_first_list_is_numbered_like_every_other_wait() {
     let (_rig, _tui, _host, editor) =
         over("reply-first-list", b"", Clip::none());
-    assert_ne!(editor.engine().epoch(), 0, "the stay took a number");
+    assert_ne!(editor.epoch(), 0, "the stay took a number");
 }
 
 /// A clipboard read that fails is an end of the read like any other,
@@ -287,7 +192,7 @@ fn a_refused_clipboard_read_answers_the_put() {
         over("reply-clip-denied", b"one\ntwo\n", denied());
     reovim_rig::typed(&mut tui, "\"+p");
 
-    assert_eq!(editor.engine().state().waiting, 0, "nothing waits");
+    assert_eq!(editor.state().waiting, 0, "nothing waits");
     assert_eq!(said(&mut tui), "E353: Nothing in register +");
     assert_eq!(lines(&mut tui), ["one", "two"], "and nothing was put");
 
@@ -311,12 +216,12 @@ fn a_stay_swap_keeps_the_numbering() {
     // The first stay's own waits: the list it opened with, and the
     // number the edit after it drew.
     reovim_rig::typed(&mut tui, "x:w<CR>");
-    let first = editor.engine().epoch();
+    let first = editor.epoch();
     assert!(first > 1, "the first stay numbered more than its opening");
 
     reovim_rig::typed(&mut tui, ":e other<CR>");
     assert_eq!(lines(&mut tui), ["three", "four"], "the second stay");
-    let second = editor.engine().epoch();
+    let second = editor.epoch();
     assert!(
         second > first,
         "the second stay opened on {second}, the first stay's last {first}"

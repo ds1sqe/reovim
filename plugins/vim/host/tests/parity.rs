@@ -11,7 +11,7 @@ use std::path::Path;
 use reovim_client::dev::{self, Clip, Table};
 use reovim_client_tui::{Step, Tui};
 use reovim_plugin_vim::notation::keys;
-use reovim_plugin_vim::{Kind, Register, Vim};
+use reovim_plugin_vim::{Kind, Register};
 use reovim_plugin_vim_host::Editor;
 use reovim_rig::Rig;
 
@@ -30,7 +30,7 @@ fn state(bytes: &[u8]) -> Option<(String, String, Vec<u8>)> {
 /// as `getreg` gives it, a linewise one ending in its newline, a
 /// block's type carrying its width, an empty type for a register
 /// nothing has filled.
-fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
+fn state_of(vim: &Editor) -> (String, String, Vec<u8>) {
     let (line, column) = vim.position();
     let Some(Register { text, kind }) = vim.register() else {
         return (format!("{}:{}", line + 1, column + 1), String::new(), vec![]);
@@ -41,7 +41,7 @@ fn state_of(vim: &Vim) -> (String, String, Vec<u8>) {
         Kind::Block => format!("\u{16}{}", width.unwrap_or(0)),
         Kind::Char => "v".to_string(),
     };
-    let mut bytes = text.clone().into_bytes();
+    let mut bytes = text.into_bytes();
     if kind == "V" {
         bytes.push(b'\n');
     }
@@ -58,7 +58,7 @@ fn counted(case: &Path) -> Option<String> {
 /// The same two numbers off the engine. A list that is not whole has
 /// none, and the case fails on it: a case whose keys leave the fill
 /// half done is no comparison with nvim, which blocks.
-fn count_of(vim: &Vim) -> String {
+fn count_of(vim: &Editor) -> String {
     vim.counted().map_or_else(
         || String::from("none, the list not being whole"),
         |(current, total)| format!("{current}/{total}"),
@@ -121,7 +121,7 @@ fn replay(case: &Path) -> Result<(), String> {
         // every case here is over a text one slice covers, and a case
         // whose end state depended on a later frame would be no
         // comparison with nvim, which blocks.
-        if vim.engine().waiting() {
+        if vim.waiting() {
             return Err(format!("{name}: a frame ended waiting"));
         }
         if let Step::Quit(code) = step {
@@ -131,8 +131,8 @@ fn replay(case: &Path) -> Result<(), String> {
     }
     let code = quit.ok_or_else(|| format!("{name}: the keys did not quit"))?;
     let file = rig.disk("file");
-    let ours = state_of(&vim.engine());
-    let ours_count = count.as_ref().map(|_| count_of(&vim.engine()));
+    let ours = state_of(&vim);
+    let ours_count = count.as_ref().map(|_| count_of(&vim));
     let theirs_of: Vec<Vec<u8>> =
         others.iter().map(|other| rig.disk(other)).collect();
     let matched = (code, &file, &ours) == (exit, &out, &theirs)

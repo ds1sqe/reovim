@@ -916,7 +916,7 @@ fn a_seek_refills_the_view_from_its_from() {
     sut.seek_call(sought(view.rd, "ab", 0)).unwrap();
 
     let after = sut.progress(view.progress);
-    assert_eq!(after.done, 0, "the new fill has gone nowhere yet");
+    assert_eq!(after.done, after.total, "the seek's own first slice ran");
     assert_eq!(after.total, THREE.len() as u64, "the total open measured");
     assert_eq!(sut.ls("/self/search"), named, "the same <n>, no new view");
     assert_eq!(
@@ -944,15 +944,45 @@ fn a_seek_on_a_whole_list_fills_again() {
     assert_eq!(before.done, before.total, "whole before the seek");
 
     sut.seek_call(sought(view.rd, "c", 0)).unwrap();
+    let after = sut.progress(view.progress);
+    assert_eq!(after.total, before.total, "the same text as before");
     assert_eq!(
-        sut.progress(view.progress).done,
-        0,
-        "a whole list fills again from its start"
+        after.done, after.total,
+        "the seek's own first slice ran, which is this whole small text"
     );
 
     let found = drained(&sut, view.matches);
     let got: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
     assert_eq!(got, [(4, 1)], "c alone");
+}
+
+/// `seek` runs one budgeted slice inside its own call, as `open`
+/// does: a view a line seeks is not one read behind a view the same
+/// line would have opened, so the first frame after a key shows what
+/// the pattern found either way.
+#[test]
+fn a_sought_view_has_run_its_first_slice_as_an_opened_one_has() {
+    let text = generated(2000);
+    let sut = Sut::with_budget("seek-first-slice", 1 << 10);
+    let source = sut.source("f", text.as_bytes());
+    let view = sut.opened(args(source, "x", 0));
+
+    let opened = sut.progress(view.progress);
+    assert!(opened.done > 0, "open ran one slice inside its own call");
+    assert!(opened.done < opened.total, "and one is not the whole text");
+    let held = sut.read(view.matches, 0, 1 << 20).unwrap();
+    assert!(!held.is_empty(), "whose entries the first read already has");
+
+    sut.seek_call(sought(view.rd, "x", 0)).unwrap();
+
+    let after = sut.progress(view.progress);
+    assert_eq!(after.done, opened.done, "and so does the seek's own call");
+    assert_eq!(after.total, opened.total, "over the text open measured");
+    assert_eq!(
+        sut.read(view.matches, 0, 1 << 20).unwrap(),
+        held,
+        "the first read of a sought view holds what an opened one's does"
+    );
 }
 
 #[test]

@@ -305,7 +305,7 @@ fn stale_replay_reaches_its_first_edit_then_drops_its_tail() {
         "W12: changed in another Client and here; :e! takes theirs"
     );
     assert_eq!(
-        editor.engine().position(),
+        editor.position(),
         (0, 2),
         "the first fed l ran; later l keys were discarded"
     );
@@ -333,7 +333,7 @@ fn a_dot_inside_a_run_ends_where_its_keys_end() {
     typed(&mut tui, "u");
     assert_eq!(lines(&mut tui), [".", "abc!", "abc"]);
     assert_eq!(
-        vim.engine().position(),
+        vim.position(),
         (2, 2),
         "the undo cursor is where the repeat's first edit began"
     );

@@ -147,7 +147,7 @@ fn ctrl_6_is_ctrl_caret() {
     s.go("jl:e b<CR>");
     s.tui.key(Key::Ctrl('6')).unwrap();
     assert_eq!(lines(&mut s.tui), ["abc", "def"]);
-    assert_eq!(s.editor.engine().position(), (1, 1));
+    assert_eq!(s.editor.position(), (1, 1));
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn a_switch_onto_its_own_buffer_answers_nothing() {
     s.go(":b 1<CR>:e b<CR>");
     assert_eq!(s.asks.get(), before, "no new region selection");
     assert_eq!(cat(&s.host, "jumps"), jumps);
-    assert_eq!(s.editor.engine().position(), (1, 1));
+    assert_eq!(s.editor.position(), (1, 1));
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn bd_drops_the_place_and_the_jumps_of_what_it_closed() {
     assert!(!cat(&s.host, "jumps").lines().any(|row| row.ends_with("/b")));
     s.go("<C-^>");
     assert_eq!(lines(&mut s.tui), ["ghi", "jkl"]);
-    assert_eq!(s.editor.engine().position(), (0, 0));
+    assert_eq!(s.editor.position(), (0, 0));
     assert!(!cat(&s.host, "marks").lines().any(|row| row.starts_with("a ")));
     s.go("jlma");
     assert!(cat(&s.host, "marks").lines().any(|row| row == "a 2 1"));
@@ -325,7 +325,7 @@ fn bd_drops_the_place_and_the_jumps_of_what_it_closed() {
     assert!(!cat(&s.host, "jumps").lines().any(|row| row.ends_with("/b")));
     s.go("<C-^>");
     assert_eq!(lines(&mut s.tui), ["ghi", "jkl"]);
-    assert_eq!(s.editor.engine().position(), (0, 0));
+    assert_eq!(s.editor.position(), (0, 0));
     assert!(!cat(&s.host, "marks").lines().any(|row| row.starts_with("a ")));
 }
 

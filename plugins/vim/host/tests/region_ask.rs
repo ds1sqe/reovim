@@ -46,7 +46,7 @@ fn a_region_delivers_every_field_of_the_declared_ask() {
     assert_eq!(ask.plugin, "vim");
     assert_eq!(ask.name, "kept");
     assert_eq!(ask.line, 2);
-    assert_eq!(editor.engine().position(), (1, 0));
+    assert_eq!(editor.position(), (1, 0));
     region
         .asks(
             &ctx,

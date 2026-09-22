@@ -9,23 +9,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Write as _;
 
-use reovim_search_api::LINE;
+use reovim_search_api::{LINE, search::Match};
 
-use reovim_client_api::filled;
-
-use crate::{Effect, Motion, Pending, Reply, Vim, Want, counted};
-
-/// How far a reply says the fill got, as the list holds it: a number
-/// the reply does not declare fills nothing.
-const fn how(filled: u64) -> Filled {
-    match filled {
-        filled::MORE => Filled::More,
-        filled::WHOLE => Filled::Whole,
-        filled::SPENT => Filled::Spent,
-        filled::REFUSED => Filled::Refused,
-        _ => Filled::Absent,
-    }
-}
+use crate::{Effect, Motion, Pending, Vim, Want, counted};
 
 /// The most spans a `View` carries (clients/core/api's declaration).
 pub const SPANS: usize = 4096;
@@ -441,27 +427,38 @@ impl Vim {
         Some(Effect::Search(self.asking()))
     }
 
-    /// What one read of `matches` found, and how far the fill got.
+    /// What one read of a view's `matches` found, and how far the
+    /// fill got: the search's own door, which the host calls with the
+    /// Module's own [`Match`]es rather than a record of the
+    /// resolver's — the contract names no offset and no length.
     ///
-    /// Another epoch is nobody's: the list it names was dropped. Else
-    /// the entries join their runs, and the motion that waited runs
-    /// again — whatever `filled` says, since the door reads it and
-    /// answers again or lets the word be said.
-    pub(crate) fn matched(&mut self, reply: &Reply) -> Effect {
-        if reply.continuation != self.found.epoch {
+    /// `epoch` is the list the entries are of, which is the number
+    /// [`Want`] asked on. Another epoch is nobody's: the
+    /// list it names was dropped. Else the entries join their runs,
+    /// and the motion that waited runs again — whatever `filled`
+    /// says, since the door reads it and answers again or lets the
+    /// word be said.
+    ///
+    /// A [`Match`]'s `over` is the view's own source, which Vim knows
+    /// already; the entry is its `at` and its `len`.
+    pub fn matched(
+        &mut self,
+        epoch: u64,
+        found: &[Match],
+        filled: Filled,
+    ) -> Effect {
+        if epoch != self.found.epoch {
             return Effect::Nothing;
         }
-        let entries: Vec<(usize, usize)> = reply
-            .entries
+        let entries: Vec<(usize, usize)> = found
             .iter()
-            .map(|entry| (counted(entry.at), counted(entry.len)))
+            .map(|one| (counted(one.at), counted(one.len)))
             .collect();
         let start = self.found.start(&self.text);
         let after = entries.iter().filter(|entry| entry.0 >= start);
         self.found.after.extend(after.copied());
         let before = entries.iter().filter(|entry| entry.0 < start);
         self.found.before.extend(before.copied());
-        let filled = how(reply.filled);
         self.found.filled = filled;
         // A list nobody waits for — `hlsearch`'s — would else be
         // opened again at every edit, each paying the whole budget.

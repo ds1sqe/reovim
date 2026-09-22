@@ -130,7 +130,7 @@ fn the_line_of_the_command_line_is_where_vim_begins() {
     rig.file("note", b"one\n  two\nthree\n");
     let at = |line| {
         let (_tui, vim) = editor(&rig, "", Some("note"), line);
-        vim.engine().position()
+        vim.position()
     };
     // Counted from 1, on the line's first non-blank, as `+N` lands.
     assert_eq!(at(None), (0, 0), "the first line without one");
@@ -177,8 +177,8 @@ fn an_opened_line_at_an_unterminated_end_is_a_line_of_its_own() {
     // must both end that line and open the new one, as nvim holds
     // `["11", ""]`, so the cursor is on a line the text has.
     assert_eq!(typed(&mut tui, "i11<Esc>o"), Step::Changed);
-    assert_eq!(vim.engine().text(), "11\n\n");
-    assert_eq!(vim.engine().position(), (1, 0));
+    assert_eq!(vim.text(), "11\n\n");
+    assert_eq!(vim.position(), (1, 0));
     let shown = frame(&mut tui);
     assert_eq!(shown.lines[..2], ["11", ""]);
     assert_eq!(shown.cursor, (1, 0), "the frame's cursor is on the new row");
@@ -187,7 +187,7 @@ fn an_opened_line_at_an_unterminated_end_is_a_line_of_its_own() {
 
     // Backspace on that empty line joins it back onto the first.
     assert_eq!(typed(&mut tui, "a<BS><Esc>:w<CR>"), Step::Changed);
-    assert_eq!(vim.engine().text(), "11\n");
-    assert_eq!(vim.engine().position(), (0, 1));
+    assert_eq!(vim.text(), "11\n");
+    assert_eq!(vim.position(), (0, 1));
     assert_eq!(rig.disk("note"), b"11\n");
 }

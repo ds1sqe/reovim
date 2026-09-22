@@ -228,20 +228,28 @@ impl Search {
         Ok(Kept { matches, progress, source, handle, total: record.total })
     }
 
-    /// `fill` in the view's place: the list, the failure and the
-    /// progress cleared with it, and `fills` moved on, which drops
-    /// whatever slice is still running over the fill before it.
-    fn refilled(&self, kept: &Kept, fill: Fill) -> Result<(), Error> {
+    /// `fill` in the view's place with its first slice already run:
+    /// the list is what that slice found, the failure is its own, the
+    /// progress is where it left off, and `fills` moves on, which
+    /// drops whatever slice is still running over the fill before it.
+    fn refilled(
+        &self,
+        kept: &Kept,
+        fill: Fill,
+        found: &[search::Match],
+        failure: Option<Error>,
+    ) -> Result<(), Error> {
         let (done, total) = fill.progress();
+        let whole = fill.whole();
         let mut state = self.state.borrow_mut();
         let Some(Node::Matches { fill: slot, entries, failed, fills, .. }) =
             state.nodes.get_mut(&kept.matches)
         else {
             return Err(Error::Invalid);
         };
-        *slot = Some(fill);
-        entries.clear();
-        *failed = None;
+        *slot = (!whole).then_some(fill);
+        *entries = encoded(found);
+        *failed = failure;
         *fills += 1;
         if let Some(Node::Progress(record)) =
             state.nodes.get_mut(&kept.progress)
@@ -255,8 +263,9 @@ impl Search {
     /// the pattern already parsed.
     ///
     /// Nothing of the view moves until the new fill stands, so a
-    /// `from` whose own line cannot be read leaves the list it had,
-    /// as an unparsed pattern does.
+    /// `from` whose own line cannot be read — or a first slice that
+    /// fails having found nothing — leaves the list it had, as an
+    /// unparsed pattern does.
     fn sought(
         &self,
         ctx: &dyn Calls,
@@ -266,9 +275,20 @@ impl Search {
     ) -> Result<(), Error> {
         let kept = self.kept(view)?;
         let start = fill::line_start(ctx, kept.handle, from, kept.total)?;
-        let fill =
+        let mut fill =
             Fill::new(pattern, kept.source, kept.handle, start, kept.total);
-        self.refilled(&kept, fill)?;
+        // One budgeted slice inside the call, as the fill `open`
+        // makes runs one inside its own: a view a line seeks is not a
+        // read behind the view the same line would have opened.
+        let (found, outcome) = fill::slice(&mut fill, ctx, self.budget);
+        let failed = match outcome {
+            Ok(()) => None,
+            // Nothing to hand on before the cause, so the view keeps
+            // the list it had, as an unparsed pattern leaves it.
+            Err(error) if found.is_empty() => return Err(error),
+            Err(error) => Some(error),
+        };
+        self.refilled(&kept, fill, &found, failed)?;
         ctx.changed(kept.progress, Kind::Modify)
     }
 

@@ -84,7 +84,7 @@ fn a_spent_pattern_leaves_the_text_and_the_history() {
     let before = revision(&mut tui);
     typed(&mut tui, r":g/\(a*\)*b/d<CR>");
     assert!(said(&mut tui).starts_with("E363:"));
-    assert_eq!(vim.engine().text(), text);
+    assert_eq!(vim.text(), text);
     assert_eq!(revision(&mut tui), before);
 }
 
@@ -108,7 +108,7 @@ fn a_line_that_fails_ends_the_run() {
     let mut tui = editor(&rig.host(), &vim);
     typed(&mut tui, ":g/a/foo<CR>");
     assert_eq!(said(&mut tui), "E492: Not an editor command: foo");
-    assert_eq!(vim.engine().position(), (1, 0));
+    assert_eq!(vim.position(), (1, 0));
     assert_eq!(lines(&mut tui), ["b", "a", "a"]);
 }
 
@@ -123,9 +123,9 @@ fn a_line_that_leaves_ends_the_run() {
     let vim = Editor::new();
     let mut tui = editor(&rig.host(), &vim);
     typed(&mut tui, "G");
-    assert_eq!(vim.engine().position(), (2, 0));
+    assert_eq!(vim.position(), (2, 0));
     typed(&mut tui, ":g/a/cli<CR>");
-    assert_eq!(vim.engine().position(), (0, 0));
+    assert_eq!(vim.position(), (0, 0));
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn a_typed_global_reaches_six_of_eight() {
     let ctx = host.own();
     let rd = cell::resolve(&ctx, SELF, "depth/2").unwrap();
     ops::bytes(&ctx, rd).unwrap();
-    assert_eq!(vim.engine().text(), "b\n".repeat(300));
+    assert_eq!(vim.text(), "b\n".repeat(300));
     let draft = cell::resolve(&ctx, SELF, "dev/buffers/0").unwrap();
     assert_eq!(ops::bytes(&ctx, draft).unwrap(), "b\n".repeat(300).as_bytes());
 }
@@ -228,13 +228,13 @@ fn a_refused_edit_reloads_the_draft_and_ends_the_global() {
     let _ = ops::bytes(&ctx, rd);
     let draft = cell::resolve(&ctx, SELF, "dev/buffers/0").unwrap();
     let actual = ops::bytes(&ctx, draft).unwrap();
-    assert!(vim.engine().status().contains("busy"));
+    assert!(vim.status().contains("busy"));
     let expected = format!("{}{}", "b\n".repeat(256), "a\n".repeat(44));
     assert_eq!(actual, expected.as_bytes());
-    assert_eq!(vim.engine().text().as_bytes(), actual);
+    assert_eq!(vim.text().as_bytes(), actual);
     typed(&mut tui, ":g/a/s//c/<CR>");
     assert_eq!(
-        vim.engine().text(),
+        vim.text(),
         format!("{}{}", "b\n".repeat(256), "c\n".repeat(44))
     );
 }

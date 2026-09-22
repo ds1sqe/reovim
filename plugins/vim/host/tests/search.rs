@@ -10,7 +10,7 @@ mod common;
 use std::cell::Cell;
 use std::rc::Rc;
 
-use common::{cat, one};
+use common::{cat, on, one};
 use reovim_client::dev::Clip;
 use reovim_client::{Host, Rd, Rvm, SELF, bin};
 use reovim_client_api::notation::keys;
@@ -21,10 +21,12 @@ use reovim_kernel_interface::{
 };
 use reovim_module_search::Search;
 use reovim_plugin_vim::bins::subst;
+use reovim_plugin_vim::{Effect, Filled};
 use reovim_plugin_vim_host::Editor;
 use reovim_rig::{Rig, lines, listed, opened, said, typed};
 use reovim_sdk::walk::ROOT;
 use reovim_sdk::{cell, decode, encode, ops};
+use reovim_search_api::search::Match;
 
 /// An editor over `text`, on a Client that loaded the search Module.
 fn over(name: &str, text: &[u8]) -> (Rig, Rc<Host>, Rc<Editor>, Tui) {
@@ -56,6 +58,40 @@ fn held(host: &Rc<Host>) -> Vec<u8> {
     let ctx = host.own();
     let rd = cell::resolve(&ctx, ROOT, "/self/vim/search").unwrap();
     ops::bytes(&ctx, rd).unwrap()
+}
+
+/// The search's answer is a typed door of the engine's own, not a
+/// declared reply: the host hands over the Module's own `Match`es and
+/// how far the fill got, and the key that waited runs again on that
+/// call alone. Nothing of a match is in the resolver's contract,
+/// which names no offset and no length.
+#[test]
+fn a_search_answers_through_its_own_door() {
+    // Through the host, where the entries come off `matches`: the
+    // key lands where the Module's list says it does.
+    let (_rig, _host, vim, mut tui) = over("search-own-door", b"a\nzzz\n");
+    typed(&mut tui, "/zzz<CR>");
+    assert_eq!(vim.position(), (1, 0), "the list the host read landed it");
+
+    // And by hand, which is the door itself: the epoch the want was
+    // asked on, the matches as the Module spells them, and how far
+    // the fill got.
+    let mut engine = on("a\nzzz\n");
+    let Effect::Search(want) = common::typed(&mut engine, "/zzz<CR>") else {
+        panic!("the key asks for the list it cannot answer from")
+    };
+    let found = [Match { over: NONE, at: 2, len: 3 }];
+    assert_eq!(
+        engine.matched(want.epoch + 9, &found, Filled::Whole),
+        Effect::Nothing,
+        "a list that is gone moves nothing"
+    );
+    assert_eq!(engine.position(), (0, 0), "so the key still waits");
+    assert_eq!(
+        engine.matched(want.epoch, &found, Filled::Whole),
+        Effect::Moved
+    );
+    assert_eq!(engine.position(), (1, 0), "the motion ran again");
 }
 
 #[test]
@@ -106,9 +142,9 @@ fn the_lookup_passes_the_entries_before_the_cursor_on_its_line() {
     // entry at 0 is read before the cursor and must be passed.
     let (_rig, _host, vim, mut tui) = over("search-before", b"aXa\nb\n");
     typed(&mut tui, "/a<CR>");
-    assert_eq!(vim.engine().position(), (0, 2), "the one after the cursor");
+    assert_eq!(vim.position(), (0, 2), "the one after the cursor");
     typed(&mut tui, "n");
-    assert_eq!(vim.engine().position(), (0, 0), "then around to the top");
+    assert_eq!(vim.position(), (0, 0), "then around to the top");
 }
 
 #[test]
@@ -148,7 +184,7 @@ fn a_client_without_search_says_so_and_no_key_breaks() {
             .unwrap();
     typed(&mut tui, "/b<CR>");
     assert_eq!(said(&mut tui), "E486: this Client has no /self/search: b");
-    assert_eq!(vim.engine().position(), (0, 0), "nothing moved");
+    assert_eq!(vim.position(), (0, 0), "nothing moved");
     typed(&mut tui, "x");
     assert_eq!(lines(&mut tui), ["b"], "and the key after it runs");
 }
@@ -161,7 +197,7 @@ fn a_text_that_is_not_utf8_is_not_searched() {
         said(&mut tui),
         "E486: this text is not UTF-8 and is not searched"
     );
-    assert_eq!(vim.engine().position(), (0, 0), "nothing moved");
+    assert_eq!(vim.position(), (0, 0), "nothing moved");
     assert_eq!(marks(&host), Vec::new(), "and nothing is marked");
     assert_eq!(held(&host), encode(&NONE), "no view was opened for it");
 }
@@ -203,7 +239,7 @@ fn matches_before_a_spent_offset_are_kept() {
         opened(&host, one(vim.clone()), Clip::none(), "", Some("file"), None)
             .unwrap();
     typed(&mut tui, "/\\(a*\\)*b<CR>");
-    assert_eq!(vim.engine().position(), (1, 0), "what it found is landed on");
+    assert_eq!(vim.position(), (1, 0), "what it found is landed on");
     let row = said(&mut tui);
     assert!(
         row.starts_with("/\\(a*\\)*b  [?/1+]"),
@@ -363,7 +399,7 @@ fn an_error_of_no_cause_ends_the_wait() {
     assert_eq!(said(&mut tui), "E486: Pattern not found: b");
     assert_eq!(cat(&host, "pending"), "", "no operator is left waiting");
     typed(&mut tui, "l");
-    assert_eq!(vim.engine().position(), (0, 1), "the key after it moves");
+    assert_eq!(vim.position(), (0, 1), "the key after it moves");
 }
 
 #[test]
@@ -420,7 +456,7 @@ fn spending(
 fn landed(tui: &mut Tui, vim: &Rc<Editor>) -> usize {
     for frames in 1..200 {
         tui.tick().unwrap();
-        if !vim.engine().waiting() {
+        if !vim.waiting() {
             return frames;
         }
     }
@@ -443,8 +479,8 @@ fn together(host: &Rc<Host>, text: &str) {
 fn a_long_search_answers_moved_then_lands_where_the_whole_one_lands() {
     let (_rig, _host, vim, mut tui) = spending("search-long", &long(), 64);
     typed(&mut tui, "/zzz<CR>");
-    assert_eq!(vim.engine().position(), (0, 0), "nothing has moved yet");
-    assert!(vim.engine().waiting(), "and the search stands");
+    assert_eq!(vim.position(), (0, 0), "nothing has moved yet");
+    assert!(vim.waiting(), "and the search stands");
     let frames = landed(&mut tui, &vim);
     assert!(frames > 1, "it took one frame alone");
     assert!(frames < 100, "it took {frames} frames");
@@ -452,42 +488,35 @@ fn a_long_search_answers_moved_then_lands_where_the_whole_one_lands() {
     // Where the same search lands with no budget to run out of.
     let (_rig, _host, whole, mut tui) = over("search-long-whole", &long());
     typed(&mut tui, "/zzz<CR>");
-    assert!(!whole.engine().waiting(), "one slice covered it");
-    assert_eq!(vim.engine().position(), whole.engine().position());
+    assert!(!whole.waiting(), "one slice covered it");
+    assert_eq!(vim.position(), whole.position());
 }
 
 #[test]
 fn an_operator_deletes_on_landing_and_one_u_undoes_it() {
     let (_rig, _host, vim, mut tui) =
         spending("search-long-operator", &long(), 64);
-    let before = vim.engine().text().to_string();
+    let before = vim.text();
     typed(&mut tui, "d/zzz<CR>");
-    assert!(vim.engine().waiting());
-    assert_eq!(
-        vim.engine().text(),
-        before,
-        "nothing is deleted while it waits"
-    );
+    assert!(vim.waiting());
+    assert_eq!(vim.text(), before, "nothing is deleted while it waits");
     landed(&mut tui, &vim);
-    assert_eq!(vim.engine().text(), "zzz\n", "the delete ran at the landing");
+    assert_eq!(vim.text(), "zzz\n", "the delete ran at the landing");
     typed(&mut tui, "u");
-    assert_eq!(vim.engine().text(), before, "and one `u` takes it back");
+    assert_eq!(vim.text(), before, "and one `u` takes it back");
 }
 
 #[test]
 fn keys_typed_meanwhile_run_after_it_in_order() {
     let (_rig, _host, vim, mut tui) =
         spending("search-long-queued", &long(), 64);
-    let before = vim.engine().text().to_string();
+    let before = vim.text();
     typed(&mut tui, "/zzz<CR>");
     typed(&mut tui, "ix<Esc>");
-    assert!(vim.engine().waiting(), "the keys wait behind the search");
-    assert_eq!(vim.engine().text(), before, "and change nothing meanwhile");
+    assert!(vim.waiting(), "the keys wait behind the search");
+    assert_eq!(vim.text(), before, "and change nothing meanwhile");
     landed(&mut tui, &vim);
-    assert!(
-        vim.engine().text().ends_with("\nxzzz\n"),
-        "the `x` stands at the match"
-    );
+    assert!(vim.text().ends_with("\nxzzz\n"), "the `x` stands at the match");
 }
 
 #[test]
@@ -499,26 +528,26 @@ fn ctrl_c_anywhere_and_esc_at_the_front_end_it() {
     text.push_str("zzz\n");
     let (_rig, host, vim, mut tui) =
         spending("search-long-interrupt", text.as_bytes(), 64);
-    let before = vim.engine().text().to_string();
+    let before = vim.text();
     typed(&mut tui, "d/zzz<CR>");
-    assert!(vim.engine().waiting());
+    assert!(vim.waiting());
     // The `x` stood behind the search, so it goes through the `<C-c>`
     // with it; the `l` was typed after and runs.
     together(&host, "x<C-c>l");
     tui.tick().unwrap();
-    assert!(!vim.engine().waiting(), "the interrupt ended the wait");
-    assert_eq!(vim.engine().text(), before, "the text is whole");
-    assert_eq!(vim.engine().position(), (0, 1), "one to the right");
+    assert!(!vim.waiting(), "the interrupt ended the wait");
+    assert_eq!(vim.text(), before, "the text is whole");
+    assert_eq!(vim.position(), (0, 1), "one to the right");
     assert_eq!(cat(&host, "pending"), "", "no operator is left waiting");
     assert_eq!(said(&mut tui), "", "and nothing is said");
 
     typed(&mut tui, "0d/zzz<CR>");
-    assert!(vim.engine().waiting());
+    assert!(vim.waiting());
     together(&host, "<Esc>l");
     tui.tick().unwrap();
-    assert!(!vim.engine().waiting(), "an Esc at the front ends it too");
-    assert_eq!(vim.engine().text(), before);
-    assert_eq!(vim.engine().position(), (0, 1));
+    assert!(!vim.waiting(), "an Esc at the front ends it too");
+    assert_eq!(vim.text(), before);
+    assert_eq!(vim.position(), (0, 1));
     assert_eq!(cat(&host, "pending"), "");
 }
 
@@ -537,42 +566,38 @@ fn a_macro_waits_at_its_search_and_is_one_undo_step() {
     let before = other.read_all(buffer).unwrap();
 
     typed(&mut tui, "\"a2yy@a");
-    assert!(vim.engine().waiting(), "the run waits at its search");
+    assert!(vim.waiting(), "the run waits at its search");
     assert_eq!(
         other.read_all(buffer).unwrap(),
         before,
         "the frame that waits ends no revision"
     );
     landed(&mut tui, &vim);
-    assert!(
-        vim.engine().text().starts_with("/^zzz\nx\n"),
-        "{}",
-        &vim.engine().text()[..16]
-    );
-    assert!(vim.engine().text().ends_with("\nzz\n"), "the landing's `x`");
+    assert!(vim.text().starts_with("/^zzz\nx\n"), "{}", &vim.text()[..16]);
+    assert!(vim.text().ends_with("\nzz\n"), "the landing's `x`");
     typed(&mut tui, "u");
-    assert_eq!(vim.engine().text(), String::from_utf8(before).unwrap());
+    assert_eq!(vim.text(), String::from_utf8(before).unwrap());
 }
 
 #[test]
 fn a_replayed_n_waits_like_a_typed_one() {
     let (_rig, _host, vim, mut tui) =
         spending("search-long-repeat", &long(), 64);
-    let before = vim.engine().text().to_string();
+    let before = vim.text();
     typed(&mut tui, "/zzz<CR>");
     landed(&mut tui, &vim);
     typed(&mut tui, "ggdn");
-    assert_eq!(vim.engine().text(), "zzz\n", "the list it landed from held it");
+    assert_eq!(vim.text(), "zzz\n", "the list it landed from held it");
     typed(&mut tui, "u");
-    assert_eq!(vim.engine().text(), before, "and the undo drops that list");
+    assert_eq!(vim.text(), before, "and the undo drops that list");
     // Twice: the second `.` is over a list the second `u` dropped too.
     for _ in 0..2 {
         typed(&mut tui, ".");
-        assert!(vim.engine().waiting(), "a replayed `n` waits as a typed one");
+        assert!(vim.waiting(), "a replayed `n` waits as a typed one");
         landed(&mut tui, &vim);
-        assert_eq!(vim.engine().text(), "zzz\n", "and deletes what `dn` did");
+        assert_eq!(vim.text(), "zzz\n", "and deletes what `dn` did");
         typed(&mut tui, "u");
-        assert_eq!(vim.engine().text(), before);
+        assert_eq!(vim.text(), before);
     }
 }
 
@@ -584,7 +609,7 @@ fn a_spent_offset_is_e363_and_length_alone_is_not() {
     let (_rig, _host, vim, mut tui) =
         spending("search-long-spent", text.as_bytes(), 64);
     typed(&mut tui, "/\\(a*\\)*b<CR>");
-    assert!(vim.engine().waiting(), "a long text alone never says E363");
+    assert!(vim.waiting(), "a long text alone never says E363");
     landed(&mut tui, &vim);
     assert_eq!(
         said(&mut tui),
@@ -606,9 +631,9 @@ fn the_row_moves_with_no_key() {
     typed(&mut tui, "/zzz<CR>");
     let mut last = 0;
     let mut seen = 0;
-    while vim.engine().waiting() {
+    while vim.waiting() {
         assert_eq!(tui.tick().unwrap(), Step::Changed, "the row moved");
-        if !vim.engine().waiting() {
+        if !vim.waiting() {
             break;
         }
         let row = said(&mut tui);
@@ -638,9 +663,9 @@ fn a_host_with_no_clock_shows_no_eta() {
             .unwrap();
     typed(&mut tui, "/zzz<CR>");
     let mut seen = 0;
-    while vim.engine().waiting() {
+    while vim.waiting() {
         tui.tick().unwrap();
-        if !vim.engine().waiting() {
+        if !vim.waiting() {
             break;
         }
         let row = said(&mut tui);
@@ -656,7 +681,7 @@ fn a_call_from_elsewhere_that_edits_ends_the_wait() {
     let (_rig, host, vim, mut tui) =
         spending("search-long-called", &long(), 64);
     typed(&mut tui, "d/zzz<CR>");
-    assert!(vim.engine().waiting());
+    assert!(vim.waiting());
     // A name of Vim's own, run from a Client of its own while the
     // search waits: it edits, so it ends the wait.
     let ctx = host.own();
@@ -664,15 +689,12 @@ fn a_call_from_elsewhere_that_edits_ends_the_wait() {
     let args =
         subst::Args { address: String::from("1"), spec: String::from("/a/z/") };
     ops::call_by_name(&ctx, rd, "run", encode(&args)).unwrap();
-    assert!(!vim.engine().waiting(), "the edit ended it");
+    assert!(!vim.waiting(), "the edit ended it");
     assert_eq!(cat(&host, "pending"), "", "no operator is left waiting");
-    assert!(vim.engine().text().starts_with("z\na\n"), "the substitute's own");
+    assert!(vim.text().starts_with("z\na\n"), "the substitute's own");
     tui.tick().unwrap();
     tui.tick().unwrap();
-    assert!(
-        vim.engine().text().starts_with("z\na\n"),
-        "and no frame after it deletes"
-    );
+    assert!(vim.text().starts_with("z\na\n"), "and no frame after it deletes");
 }
 
 #[test]
@@ -684,7 +706,7 @@ fn the_row_fills_then_counts_with_no_key() {
     let (_rig, _host, vim, mut tui) =
         wrapped("search-count-fills", &text, &counting);
     typed(&mut tui, "/a<CR>");
-    assert!(!vim.engine().waiting(), "the first slice landed it");
+    assert!(!vim.waiting(), "the first slice landed it");
     let row = said(&mut tui);
     assert!(row.starts_with("/a  [?/"), "no rank while it fills: {row}");
     // Frames with no key: the fill goes on for the row alone, and the
@@ -723,10 +745,10 @@ fn a_new_pattern_marks_what_its_own_list_has_found() {
         opened(&host, one(vim.clone()), Clip::none(), "", Some("file"), None)
             .unwrap();
     typed(&mut tui, ":set hls<CR>/x*<CR>");
-    while vim.engine().counted().is_none() {
+    while vim.counted().is_none() {
         tui.tick().unwrap();
     }
-    assert_eq!(vim.engine().counted(), Some((2, 7)), "x*'s own list is whole");
+    assert_eq!(vim.counted(), Some((2, 7)), "x*'s own list is whole");
     assert_eq!(
         marks(&host),
         [(0, 1), (1, 2), (3, 4), (4, 5), (6, 7), (8, 9), (10, 11)],
@@ -738,27 +760,18 @@ fn a_new_pattern_marks_what_its_own_list_has_found() {
     // have filled it before the Enter ever read it.
     together(&host, "/$<CR>");
     tui.tick().unwrap();
-    assert_eq!(vim.engine().counted(), None, "$'s own list is still filling");
+    assert_eq!(vim.counted(), None, "$'s own list is still filling");
     assert_eq!(
         marks(&host),
         [(2, 3), (5, 6), (7, 8)],
         "what $ has found so far, and nothing of x*'s"
     );
 
-    // `seek` runs no slice of its own, unlike `open`, which does one
-    // inside its own call: `$`'s view is x*'s, sought rather than
-    // opened, so its list needs one tick more than a fresh `open`'s
-    // own to say it is whole.
+    // `$`'s view is x*'s, sought rather than opened, and a seek runs
+    // one slice inside its own call as an open does: the tick after
+    // is the whole list, no later than a fresh view's own would be.
     tui.tick().unwrap();
-    assert_eq!(vim.engine().counted(), None, "whole not said yet");
-    assert_eq!(
-        marks(&host),
-        [(2, 3), (5, 6), (7, 8), (9, 10), (11, 12)],
-        "every line end already found"
-    );
-
-    tui.tick().unwrap();
-    assert_eq!(vim.engine().counted(), Some((1, 5)), "$'s own list is whole");
+    assert_eq!(vim.counted(), Some((1, 5)), "$'s own list is whole");
     assert_eq!(
         marks(&host),
         [(2, 3), (5, 6), (7, 8), (9, 10), (11, 12)],
@@ -796,9 +809,9 @@ fn the_match_follows_each_key() {
     let near = text.find("fx").unwrap() as u64;
     let (_rig, host, vim, mut tui) = over("inc-follows", text.as_bytes());
     typed(&mut tui, "/");
-    assert_eq!(vim.engine().position(), (0, 0), "an empty line moves none");
+    assert_eq!(vim.position(), (0, 0), "an empty line moves none");
     typed(&mut tui, "f");
-    assert_eq!(vim.engine().position(), (9, 0), "the near one");
+    assert_eq!(vim.position(), (9, 0), "the near one");
     assert_eq!(
         marks(&host),
         [(near, near + 1)],
@@ -806,14 +819,14 @@ fn the_match_follows_each_key() {
     );
     assert_eq!(lines(&mut tui)[0], "line 1", "the window has not moved");
     typed(&mut tui, "o");
-    assert_eq!(vim.engine().position(), (39, 0), "the far one");
+    assert_eq!(vim.position(), (39, 0), "the far one");
     assert_eq!(marks(&host).len(), 1, "and the mark with it");
     assert_ne!(lines(&mut tui)[0], "line 1", "the window followed");
     typed(&mut tui, "<BS>");
-    assert_eq!(vim.engine().position(), (9, 0), "the near one again");
+    assert_eq!(vim.position(), (9, 0), "the near one again");
     assert_eq!(lines(&mut tui)[0], "line 1", "and the window back");
     typed(&mut tui, "<Esc>");
-    assert_eq!(vim.engine().position(), (0, 0), "the origin");
+    assert_eq!(vim.position(), (0, 0), "the origin");
     assert_eq!(marks(&host), Vec::new(), "and no mark");
     assert_eq!(lines(&mut tui)[0], "line 1");
 }
@@ -866,7 +879,7 @@ fn a_line_seeks_one_view_a_key() {
     // own already stands and lands the motion on it, so `b` and `c`
     // are this line's only two calls after its first.
     assert_eq!(counting.seeks.get(), 2, "and sought at every key that grew it");
-    assert_eq!(vim.engine().position(), (1, 4), "and the line landed");
+    assert_eq!(vim.position(), (1, 4), "and the line landed");
 }
 
 /// The view is the stay's: the swap ends it, and the next line opens
@@ -904,7 +917,7 @@ fn a_pattern_that_does_not_parse_keeps_the_view() {
     }
     assert_eq!(seen.len(), 1, "the one view, kept through every refusal");
     assert_eq!(counting.seeks.get(), 5, "a call a key, refused or not");
-    assert_eq!(vim.engine().position(), (1, 1), "and the group's match");
+    assert_eq!(vim.position(), (1, 1), "and the group's match");
     assert_eq!(said(&mut tui), "/a\\(b\\)", "the line says no word");
 }
 
@@ -920,7 +933,7 @@ fn a_macro_of_a_search_opens_one_view() {
     typed(&mut tui, "@a");
     noted(&host, &mut seen);
     assert_eq!(seen.len(), 2, "one view for the whole run");
-    assert_eq!(vim.engine().position(), (0, 1), "and it landed");
+    assert_eq!(vim.position(), (0, 1), "and it landed");
 }
 
 #[test]
@@ -928,18 +941,14 @@ fn typing_never_waits_and_enter_does() {
     let (_rig, _host, vim, mut tui) = spending("inc-no-wait", &long(), 64);
     for key in ["/", "z", "z", "z"] {
         typed(&mut tui, key);
-        assert!(!vim.engine().waiting(), "{key}: typing never waits");
+        assert!(!vim.waiting(), "{key}: typing never waits");
     }
     assert_eq!(said(&mut tui), "/zzz", "the status holds the line");
-    assert_eq!(vim.engine().position(), (0, 0), "nothing found yet");
+    assert_eq!(vim.position(), (0, 0), "nothing found yet");
     typed(&mut tui, "<CR>");
-    assert!(vim.engine().waiting(), "the Enter does");
+    assert!(vim.waiting(), "the Enter does");
     landed(&mut tui, &vim);
-    assert_eq!(
-        vim.engine().position(),
-        (2047, 0),
-        "where the whole search lands"
-    );
+    assert_eq!(vim.position(), (2047, 0), "where the whole search lands");
 }
 
 #[test]

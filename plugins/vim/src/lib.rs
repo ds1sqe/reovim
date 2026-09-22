@@ -40,17 +40,18 @@ pub use macros::BUDGET;
 pub use marks::Pos;
 pub use operator::Motion;
 pub use reovim_client_api::{Key, notation};
+/// How far the search Module's fill got, which the host hands over
+/// beside the matches themselves: see [`Vim::matched`].
+pub use search::Filled;
 pub use visual::Visual;
 
-/// The declared records an [`Effect`] carries, which is what crosses
-/// the boundary: a resolver's outcome is these and nothing else.
-///
-/// One is renamed here because the engine's own name came first: what
-/// a search asks for is a [`Want`] beside the last search itself. The
-/// types are the api's.
-pub use reovim_client_api::resolver::{
-    Command, Edit, Fed, Goto, Open, Outcome, Reply, Search as Want, State,
-};
+/// The declared records an [`Effect`] carries: a line for the shell
+/// and the keys a replay feeds back, which are the resolver
+/// contract's own. What an effect asks of the text, of another
+/// Buffer or of the search Module is Vim's own type below, or the
+/// api of whatever serves it — nothing of that is in a contract
+/// about resolving.
+pub use reovim_client_api::resolver::{Command, Fed, Reply, State};
 
 use jumps::{Jump, Jumps};
 use keymap::{Fact, Held, Keymap};
@@ -59,11 +60,11 @@ use operator::{Find, Operator};
 use reovim_client_api::keyboard::Press;
 use reovim_client_api::resolver::Input;
 use reovim_client_api::{
-    BAR, BLOCK, MATCH, NONE, SELECTION, kind, land, origin, reply, window,
+    BAR, BLOCK, MATCH, NONE, SELECTION, mode, origin, reply, window,
 };
 use reovim_client_sh::Line;
 use reovim_kernel_interface::{Error, Rd};
-use search::{Filled, Found, SPANS, Search};
+use search::{Found, SPANS, Search};
 use visual::{BlockInsert, Selection};
 
 /// A byte count as the engine counts them, from the `u64` a record
@@ -109,15 +110,78 @@ pub const DIVERGENCES: &[Divergence] = &[Divergence {
 /// no file to write and a point has no path to name.
 pub const E32: &str = "E32: No file name";
 
-/// One change to the text, already made in Vim: the declared
-/// [`Edit`], `len` bytes at `at` become `text`.
+/// One change to the text, already made in Vim: `len` bytes at `at`
+/// become `text`.
+///
+/// `join` says the change belongs to the revision before it, which
+/// is what makes one insert session one undo step. The record that
+/// goes down is the region's own (modules/text's `Edit`); this is
+/// Vim's, and the revision bit is Vim's to say.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Edit {
+    pub at: u64,
+    pub len: u64,
+    pub text: String,
+    pub join: bool,
+}
+
+/// A file to show: the path as the person spelled it, and the bang
+/// that goes past a modified draft.
+///
+/// Whether a `PATH:LOCATOR` is one name or two is settled over the
+/// tree, which is the host's, so no locator rides here. It is what
+/// an `open::Ask` needs of Vim and no more.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Open {
+    pub path: String,
+    pub bang: bool,
+}
+
+/// How exactly a [`Goto`] lands.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Land {
+    /// On the line, at whatever column the line's own first byte is.
+    #[default]
+    Line,
+    /// On the line and the column both, as a mark remembered them.
+    Exact,
+    /// On the line, at the column a walk from its start reaches,
+    /// which is where a jump list's own step left off.
+    Walked,
+}
+
+/// A file mark or a jump list entry whose source is not the loaded
+/// Buffer's: the source to show, where in it to stand, and how it
+/// lands there.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Goto {
+    pub over: Rd,
+    pub pos: Pos,
+    pub land: Land,
+}
+
+/// What a search asks the Module for.
+///
+/// The pattern and the two case flags a `search::Seek` takes, the
+/// byte to fill from, and the `epoch` of the list being filled,
+/// which is the wait a [`Vim::matched`] answers.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Want {
+    pub pattern: String,
+    pub ignorecase: bool,
+    pub smartcase: bool,
+    pub from: u64,
+    pub epoch: u64,
+}
+
+/// One change to the text, as the engine counts bytes.
 #[must_use]
 pub const fn edited(at: usize, len: usize, text: String, join: bool) -> Edit {
     Edit { at: at as u64, len: len as u64, text, join }
 }
 
 /// A file to show, by the path as the person spelled it and the
-/// bang, which is the whole of the record (see [`Effect::Open`]).
+/// bang (see [`Effect::Open`]).
 #[must_use]
 pub const fn asked(path: String, bang: bool) -> Open {
     Open { path, bang }
@@ -125,10 +189,11 @@ pub const fn asked(path: String, bang: bool) -> Open {
 
 /// What a key did, before the calls it asks for are made.
 ///
-/// One variant per [`reovim_client_api::kind`] the records
-/// declare, carrying that kind's own record: the enum is the Rust
-/// path's spelling of an [`Outcome`] and nothing more, which
-/// [`Effect::outcome`] and [`effect`] prove by answering each other.
+/// The enum is Vim's own, and so is every payload that is not the
+/// contract's: the host performs one by matching it, which is the
+/// check that each is performed. A second resolver in the same
+/// Client answers its own, and what the two share is the contract —
+/// keys in, a line for the shell, a mode, a reply to a wait.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
     /// Keys for the host's queue, never keyboard writes: a macro's
@@ -217,9 +282,9 @@ pub enum Effect {
     /// [`Reply`] of kind `PASTED` answers it by.
     Clipboard(u64),
     /// A search key the list Vim holds cannot answer: the list to
-    /// fill, which the Plugin opens over its draft and reads. A
-    /// `MATCHED` reply of the want's own `epoch` — its continuation —
-    /// finishes it, running the motion that waited again.
+    /// fill, which the Plugin opens over its draft and reads. A call
+    /// of [`Vim::matched`] on the want's own `epoch` finishes it,
+    /// running the motion that waited again.
     Search(Want),
     /// A file mark or a jump list entry whose source is not the
     /// loaded Buffer's: the source to show here instead, and the
@@ -275,197 +340,9 @@ pub enum Switch {
     Alternate,
 }
 
-/// An [`Outcome`] of `kind` with every payload where it was: what a
-/// kind that names none of them leaves behind. The records declare no
-/// default of their own, so the empty one is spelled once, here.
-const fn blank(kind: u64) -> Outcome {
-    Outcome {
-        kind,
-        continuation: 0,
-        edits: Vec::new(),
-        command: Command { line: String::new() },
-        open: Open { path: String::new(), bang: false },
-        goto: Goto { over: NONE, line: 0, column: 0, land: land::LINE },
-        search: Want {
-            pattern: String::new(),
-            ignorecase: false,
-            smartcase: false,
-            from: 0,
-            epoch: 0,
-        },
-        fed: Fed { keys: Vec::new(), repeat: false },
-        name: String::new(),
-        flag: false,
-    }
-}
-
-/// How a [`Quit`] was asked, as the record's one word and one bit.
-const fn asking(how: Quit) -> (&'static str, bool) {
-    match how {
-        Quit::Ask => ("ask", false),
-        Quit::Force => ("force", false),
-        Quit::Write => ("write", false),
-        Quit::Abort => ("abort", false),
-        Quit::All(forced) => ("all", forced),
-        Quit::WriteAll => ("writeall", false),
-    }
-}
-
-/// Which draft a [`Switch`] selects, as the record's one word: a
-/// Client draft name, or the three that are no name — the next, the
-/// one before, and the alternate, which `#` already spells.
-const fn selecting(to: &Switch) -> &str {
-    match to {
-        Switch::Next => "+",
-        Switch::Previous => "-",
-        Switch::Alternate => "#",
-        Switch::Named(name) => name.as_str(),
-    }
-}
-
-/// The jump to `pos` of `over`, landing as `land` says: the record
-/// as the engine spells one.
-#[must_use]
-pub const fn going(over: Rd, pos: Pos, land: u64) -> Goto {
-    Goto { over, line: pos.line as u64, column: pos.column as u64, land }
-}
-
-/// Where a [`Goto`] lands, as the engine counts lines and columns.
-fn landing(goto: &Goto) -> Pos {
-    Pos { line: counted(goto.line), column: counted(goto.column) }
-}
-
-impl Effect {
-    /// This effect as the record it is: the `kind` it belongs to and
-    /// that kind's own payload, which is what crosses to a consumer
-    /// that is not Rust. [`effect`] reads it back.
-    #[must_use]
-    pub fn outcome(&self) -> Outcome {
-        match self {
-            Self::Nothing => blank(kind::NOTHING),
-            Self::Moved => blank(kind::MOVED),
-            Self::Edits(edits) => {
-                Outcome { edits: edits.clone(), ..blank(kind::EDITS) }
-            }
-            Self::Undo => blank(kind::UNDO),
-            Self::Redo => blank(kind::REDO),
-            Self::Save(bang) => Outcome { flag: *bang, ..blank(kind::SAVE) },
-            Self::SaveAs(name, bang) => Outcome {
-                name: name.clone(),
-                flag: *bang,
-                ..blank(kind::SAVE_AS)
-            },
-            Self::Quit(how) => {
-                let (word, forced) = asking(*how);
-                Outcome {
-                    name: String::from(word),
-                    flag: forced,
-                    ..blank(kind::QUIT)
-                }
-            }
-            Self::Switch(to) => Outcome {
-                name: String::from(selecting(to)),
-                ..blank(kind::SWITCH)
-            },
-            Self::Close(name, bang) => Outcome {
-                name: name.clone(),
-                flag: *bang,
-                ..blank(kind::CLOSE)
-            },
-            Self::List => blank(kind::LIST),
-            Self::SaveAll => blank(kind::SAVE_ALL),
-            Self::Explore(open) => {
-                Outcome { open: open.clone(), ..blank(kind::EXPLORE) }
-            }
-            Self::Open(open) => {
-                Outcome { open: open.clone(), ..blank(kind::OPEN) }
-            }
-            Self::Reload(bang) => {
-                Outcome { flag: *bang, ..blank(kind::RELOAD) }
-            }
-            Self::Command(command) => {
-                Outcome { command: command.clone(), ..blank(kind::COMMAND) }
-            }
-            Self::Cli(bang) => Outcome { flag: *bang, ..blank(kind::CLI) },
-            Self::Complete(line) => {
-                Outcome { name: line.clone(), ..blank(kind::COMPLETE) }
-            }
-            Self::Clipboard(continuation) => Outcome {
-                continuation: *continuation,
-                ..blank(kind::CLIPBOARD)
-            },
-            Self::Goto(goto) => {
-                Outcome { goto: goto.clone(), ..blank(kind::GOTO) }
-            }
-            // The wait a search is answered by is its own `epoch`:
-            // one numbering, read from either field.
-            Self::Search(want) => Outcome {
-                continuation: want.epoch,
-                search: want.clone(),
-                ..blank(kind::SEARCH)
-            },
-            Self::Fed(fed) => Outcome { fed: fed.clone(), ..blank(kind::FED) },
-        }
-    }
-}
-
-/// The effect `outcome` is, or `None` for a `kind` no outcome has.
-///
-/// The pair of [`Effect::outcome`]: what the enum carries and what
-/// the record carries are the same thing, so neither side holds
-/// anything the other cannot say. `:b #` is the alternate under
-/// either spelling, the record's `#` being the one word for both.
-#[must_use]
-pub fn effect(outcome: &Outcome) -> Option<Effect> {
-    let name = || outcome.name.clone();
-    Some(match outcome.kind {
-        kind::NOTHING => Effect::Nothing,
-        kind::MOVED => Effect::Moved,
-        kind::EDITS => Effect::Edits(outcome.edits.clone()),
-        kind::UNDO => Effect::Undo,
-        kind::REDO => Effect::Redo,
-        kind::SAVE => Effect::Save(outcome.flag),
-        kind::SAVE_AS => Effect::SaveAs(name(), outcome.flag),
-        kind::QUIT => Effect::Quit(quit(&outcome.name, outcome.flag)?),
-        kind::SWITCH => Effect::Switch(switch(&outcome.name)),
-        kind::CLOSE => Effect::Close(name(), outcome.flag),
-        kind::LIST => Effect::List,
-        kind::SAVE_ALL => Effect::SaveAll,
-        kind::EXPLORE => Effect::Explore(outcome.open.clone()),
-        kind::OPEN => Effect::Open(outcome.open.clone()),
-        kind::RELOAD => Effect::Reload(outcome.flag),
-        kind::COMMAND => Effect::Command(outcome.command.clone()),
-        kind::CLI => Effect::Cli(outcome.flag),
-        kind::COMPLETE => Effect::Complete(name()),
-        kind::CLIPBOARD => Effect::Clipboard(outcome.continuation),
-        kind::GOTO => Effect::Goto(outcome.goto.clone()),
-        kind::SEARCH => Effect::Search(outcome.search.clone()),
-        kind::FED => Effect::Fed(outcome.fed.clone()),
-        _ => return None,
-    })
-}
-
-/// The quit `word` asks for, `None` for a word that asks for none.
-const fn quit(word: &str, forced: bool) -> Option<Quit> {
-    Some(match word.as_bytes() {
-        b"ask" => Quit::Ask,
-        b"force" => Quit::Force,
-        b"write" => Quit::Write,
-        b"abort" => Quit::Abort,
-        b"all" => Quit::All(forced),
-        b"writeall" => Quit::WriteAll,
-        _ => return None,
-    })
-}
-
-/// The draft `word` selects.
-fn switch(word: &str) -> Switch {
-    match word {
-        "+" => Switch::Next,
-        "-" => Switch::Previous,
-        "#" => Switch::Alternate,
-        _ => Switch::Named(String::from(word)),
-    }
+/// The jump to `pos` of `over`, landing as `land` says.
+pub(crate) const fn going(over: Rd, pos: Pos, land: Land) -> Goto {
+    Goto { over, pos, land }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -478,18 +355,19 @@ pub enum Mode {
 }
 
 impl Mode {
-    /// Its number in a [`State`], which is the order of the names
-    /// below: a reader that is not Rust has the record and not this
-    /// enum, and `/self/vim/mode` spells the name back from it.
+    /// Its number in a [`State`], which is the api's own
+    /// ([`mode`]): a reader that is not Rust
+    /// has the record and the declaration, never this enum, and
+    /// `/self/vim/mode` spells the name back from the number.
     #[must_use]
     pub const fn code(self) -> u64 {
         match self {
-            Self::Normal => 0,
-            Self::Insert => 1,
-            Self::Command => 2,
-            Self::Visual(Visual::Char) => 3,
-            Self::Visual(Visual::Line) => 4,
-            Self::Visual(Visual::Block) => 5,
+            Self::Normal => mode::NORMAL,
+            Self::Insert => mode::INSERT,
+            Self::Command => mode::COMMAND,
+            Self::Visual(Visual::Char) => mode::VISUAL,
+            Self::Visual(Visual::Line) => mode::VISUAL_LINE,
+            Self::Visual(Visual::Block) => mode::VISUAL_BLOCK,
         }
     }
 
@@ -498,11 +376,11 @@ impl Mode {
     #[must_use]
     pub const fn of(code: u64) -> Self {
         match code {
-            1 => Self::Insert,
-            2 => Self::Command,
-            3 => Self::Visual(Visual::Char),
-            4 => Self::Visual(Visual::Line),
-            5 => Self::Visual(Visual::Block),
+            mode::INSERT => Self::Insert,
+            mode::COMMAND => Self::Command,
+            mode::VISUAL => Self::Visual(Visual::Char),
+            mode::VISUAL_LINE => Self::Visual(Visual::Line),
+            mode::VISUAL_BLOCK => Self::Visual(Visual::Block),
             _ => Self::Normal,
         }
     }
@@ -554,17 +432,6 @@ struct Pending {
     register: Option<char>,
     /// A motion is being run for an operator, not for the cursor.
     running: bool,
-}
-
-impl Pending {
-    /// Whether a command has taken anything and not fired yet, which
-    /// is a [`State`]'s `pending`.
-    const fn any(&self) -> bool {
-        self.count > 0
-            || self.key.is_some()
-            || self.operator.is_some()
-            || self.register.is_some()
-    }
 }
 
 /// What `.` needs: the keys of the command under way and of the last
@@ -2228,13 +2095,16 @@ impl Vim {
         self.continuation
     }
 
-    /// The one door a reply comes back through: its `kind` says which
-    /// answer it is, and the continuation it carries says which wait
-    /// it answers. A number no wait has is nothing.
+    /// The door a declared reply comes back through: its `kind` says
+    /// which answer it is — the clipboard's text, or a refusal — and
+    /// the continuation it carries says which wait it answers. A
+    /// number no wait has is nothing.
     ///
-    /// A draft's bytes are not one of these: `loaded` and the
-    /// `opened` a stay begins with take them, the draft being the
-    /// authority over its own text and no record bounding it.
+    /// What a resolver's own outcomes are answered by is its own:
+    /// a draft's bytes go to `loaded` and to the `opened` a stay
+    /// begins with, a completion's candidates to `listed` and
+    /// `offer`, and a search's matches to [`Vim::matched`], each a
+    /// typed call of Vim's and no record of the contract's.
     pub fn reply(&mut self, reply: &Reply) -> Effect {
         let answers_a_put =
             matches!(reply.kind, reply::PASTED | reply::REFUSED);
@@ -2242,7 +2112,6 @@ impl Vim {
             return self.put_back(reply, put);
         }
         match reply.kind {
-            reply::MATCHED => self.matched(reply),
             reply::REFUSED => self.refusal(reply),
             _ => Effect::Nothing,
         }
@@ -2379,7 +2248,7 @@ impl Vim {
         if let Some(goto) = arrive
             && Some(goto.over) == self.source
         {
-            self.jump_to(landing(&goto), goto.land);
+            self.jump_to(goto.pos, goto.land);
         }
     }
 
@@ -2428,7 +2297,7 @@ impl Vim {
     /// to a Buffer over nothing by.
     pub fn leave(&mut self) {
         let walked =
-            self.arrive.as_ref().is_some_and(|g| g.land == land::WALKED);
+            self.arrive.as_ref().is_some_and(|g| g.land == Land::Walked);
         if self.buffer.is_some() && !walked {
             let pos = self.pos_at(self.cursor);
             self.jumps.push(Jump { source: self.source, pos });
@@ -2515,17 +2384,16 @@ impl Vim {
         effect
     }
 
-    /// The one record a frame reads of the resolver: the mode, the
-    /// row's word, what a command has typed so far, whether one is
-    /// under way, and the continuation an outcome waits on. Read once
-    /// beside [`Vim::view`]; the host reads no field beside it.
+    /// The one record a frame reads of the resolver: the mode, what a
+    /// command has typed so far, and the continuation an outcome
+    /// waits on. Read once beside [`Vim::view`]; the host reads no
+    /// field beside it, the row's own word being in the `View` the
+    /// same read answers.
     #[must_use]
     pub fn state(&self) -> State {
         State {
             mode: self.mode.code(),
-            status: self.status(),
             showcmd: self.showcmd(),
-            pending: self.pending.any(),
             waiting: self.waited_on(),
         }
     }
