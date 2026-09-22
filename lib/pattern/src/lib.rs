@@ -499,20 +499,20 @@ impl Pattern {
             Atom::Digit(negated) => {
                 step(c.is_some_and(|c| c.is_ascii_digit() != *negated))
             }
-            Atom::Word(negated) => {
-                step(c.is_some_and(|c| keyword(c) != *negated))
-            }
+            Atom::Word(negated) => step(c.is_some_and(|c| word(c) != *negated)),
             Atom::Space(negated) => {
                 step(c.is_some_and(|c| (c == ' ' || c == '\t') != *negated))
             }
             Atom::LineStart => (at == 0 || before == Some('\n')).then_some(at),
             Atom::LineEnd => (c.is_none() || c == Some('\n')).then_some(at),
-            Atom::WordStart => (c.is_some_and(keyword)
-                && !before.is_some_and(keyword))
-            .then_some(at),
-            Atom::WordEnd => (before.is_some_and(keyword)
-                && !c.is_some_and(keyword))
-            .then_some(at),
+            Atom::WordStart => {
+                let here = c.map_or(0, class);
+                (here > 1 && before.map_or(0, class) != here).then_some(at)
+            }
+            Atom::WordEnd => {
+                let last = before.map_or(0, class);
+                (last > 1 && c.map_or(0, class) != last).then_some(at)
+            }
             // A group holds pieces of its own, so it is matched with
             // the rest of the pattern behind it, which `piece` does.
             Atom::Group(..) => None,
@@ -529,9 +529,64 @@ impl Pattern {
     }
 }
 
-fn keyword(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
+/// `\w` and `\W`. nvim matches `[0-9A-Za-z_]` for `\w` and nothing
+/// else, whatever the encoding, so every multibyte char is one char
+/// that `\W` takes.
+const fn word(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
 }
+
+/// A char's class, as nvim's `utf_class` gives it and its
+/// `charclass()` prints it. A class past 1 is a word char, and `\<`
+/// and `\>` bound a run of *one* class rather than a run of word
+/// chars, so `a漢b` is three words to nvim and to this. Blanks are
+/// left with the punctuation at 1, the two being alike for the one
+/// question asked here.
+///
+/// Under 0x100 the class is the default `'iskeyword'`,
+/// `@,48-57,_,192-255`, which nvim 0.12.5 answers as the ASCII
+/// letters, digits and `_`, plus `µ` and 0xC0-0xFF — not `ª` 0xAA
+/// and not `º` 0xBA, which Unicode calls letters and nvim does not.
+/// Past 0x100 the ranges below are nvim's own answers over the
+/// blocks a search is written in; anything else there is a letter,
+/// as every letter, syllable and ideograph recorded was.
+fn class(c: char) -> u32 {
+    if word(c) || c == '\u{b5}' || ('\u{c0}'..='\u{ff}').contains(&c) {
+        return 2;
+    }
+    if c < '\u{100}' {
+        return 1;
+    }
+    CLASSES
+        .iter()
+        .find(|(lo, hi, _)| (*lo..=*hi).contains(&c))
+        .map_or(2, |(_, _, class)| *class)
+}
+
+/// The classes past 0x100 that are not a letter: what no word takes,
+/// then the syllabaries, the ideographs and the emoji, each bounding
+/// against the others and against a letter. A script's class is its
+/// block's first char, as nvim's is.
+const CLASSES: &[(char, char, u32)] = &[
+    ('\u{300}', '\u{36f}', 1),        // the combining marks
+    ('\u{2000}', '\u{206f}', 1),      // spaces, general punctuation
+    ('\u{2e00}', '\u{2e7f}', 1),      // supplemental punctuation
+    ('\u{3000}', '\u{3020}', 1),      // the ideographic punctuation
+    ('\u{302a}', '\u{302f}', 1),      // the tone marks
+    ('\u{3040}', '\u{309f}', 0x3040), // hiragana
+    ('\u{30a0}', '\u{30ff}', 0x30a0), // katakana
+    ('\u{3300}', '\u{9fff}', 0x4e00), // the ideographs
+    ('\u{ac00}', '\u{d7a3}', 0xac00), // the hangul syllables
+    ('\u{f900}', '\u{faff}', 0x4e00), // the ideographs, compatibility
+    ('\u{fe00}', '\u{fe0f}', 1),      // the variation selectors
+    ('\u{fe20}', '\u{fe6b}', 1),      // half marks, compatibility forms
+    ('\u{ff00}', '\u{ff0f}', 1),      // the fullwidth punctuation
+    ('\u{ff1a}', '\u{ff20}', 1),
+    ('\u{ff3b}', '\u{ff40}', 1),
+    ('\u{ff5b}', '\u{ff65}', 1),
+    ('\u{ff9e}', '\u{ff9f}', 1),
+    ('\u{1f000}', '\u{1faff}', 3), // the emoji
+];
 
 fn fold(c: char) -> char {
     c.to_lowercase().next().unwrap_or(c)
@@ -892,6 +947,40 @@ mod tests {
         assert_eq!(found("\\t", "a\tb"), Some((1, 2)));
         assert_eq!(found("a\\.b", "a.b ab"), Some((0, 3)));
         assert_eq!(found("é.", "aéb"), Some((1, 4)), "chars, not bytes");
+    }
+
+    /// Recorded from nvim 0.12.5: `\w` is `[0-9A-Za-z_]` and nothing
+    /// else, whatever the encoding, so every multibyte char is one
+    /// char that `\W` takes.
+    #[test]
+    fn a_word_char_is_ascii_as_nvims_is() {
+        assert_eq!(found("\\wb", "aéb abc"), Some((5, 7)), "not `éb`");
+        assert_eq!(found("\\w", "é"), None, "`é` is not `\\w`");
+        assert_eq!(found("\\w", "漢字ab"), Some((6, 7)));
+        assert_eq!(found("\\W", "ab漢"), Some((2, 5)), "a char, not a byte");
+        assert_eq!(found("\\w\\+", "a漢b"), Some((0, 1)), "a run stops at it");
+        assert_eq!(found("\\w", "_9Z"), Some((0, 1)));
+    }
+
+    /// `\<` and `\>` are nvim's, which compares the two chars'
+    /// classes rather than asking twice whether a char is a keyword
+    /// char. Recorded from nvim 0.12.5, whose `substitute(s, '\<',
+    /// '|', 'g')` marks `a漢b` as `|a|漢|b`, `aéb` as `|aéb` and
+    /// `aªb` as `|aª|b`.
+    #[test]
+    fn a_word_bound_is_nvims_keyword_class() {
+        assert_eq!(found("\\<is\\>", "this is"), Some((5, 7)));
+        assert_eq!(found("\\<é", "aé é"), Some((4, 6)), "`é` is a letter");
+        assert_eq!(found("\\<ß", "aß ß"), Some((4, 6)), "so is `ß`");
+        assert_eq!(found("\\<ª", "xª ª"), None, "`ª` is punctuation");
+        assert_eq!(found("\\<µ", "aµ µ"), Some((4, 6)), "`µ` is a letter");
+        assert_eq!(found("\\<漢", "a漢 漢"), Some((1, 4)), "another class");
+        assert_eq!(found("\\<가", "a가 가"), Some((1, 4)));
+        assert_eq!(found("\\<😀", "a😀 😀"), Some((1, 5)));
+        assert_eq!(found("\\<。", "a。 。"), None, "`。` is punctuation");
+        assert_eq!(found("\\<b", "a漢b"), Some((4, 5)), "a class ends a word");
+        assert_eq!(found("漢\\>", "a漢b"), Some((1, 4)), "and starts one");
+        assert_eq!(found("a\\>", "aéb"), None, "`é` is the same class");
     }
 
     #[test]
