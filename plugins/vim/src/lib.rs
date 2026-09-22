@@ -533,6 +533,13 @@ struct Undone {
     /// alone, and no longer than the key, so a `Place` carries it as
     /// it carries `walking`.
     want: usize,
+    /// The line a change records its cursor on, at that line's
+    /// column 0, where the key itself stood somewhere else: nvim's
+    /// `do_sub` moves the cursor to the line it is substituting
+    /// before it saves the change, so `u` after a `:s` lands there.
+    /// Taken by [`Vim::changing`] at the next change, snapshot or
+    /// not, so it never reaches a later one.
+    saved: Option<usize>,
 }
 
 /// What one Buffer keeps of Vim between a `left` and the `opened` that
@@ -913,8 +920,9 @@ impl Vim {
         // it, exactly as a typed change's first edit does.
         let first =
             !edits.is_empty() && core::mem::take(&mut self.repeat.first);
+        let saved = self.undone.saved.take().map(|line| (line, 0));
         if starting && (!self.repeat.replaying || first) {
-            self.snapshot(before);
+            self.snapshot(saved.unwrap_or(before));
         }
         for edit in edits {
             self.marked(edit);
@@ -924,7 +932,8 @@ impl Vim {
 
     /// The undo snapshot a revision's own first edit takes: the
     /// cursor before it and the column it wanted, with the `a`-`z`
-    /// marks as they stood.
+    /// marks as they stood. `before` is the change's own cursor
+    /// where it kept one (`Undone::saved`), the key's own else.
     fn snapshot(&mut self, before: (usize, usize)) {
         let made = self.undone.before.len() - self.undone.count;
         self.undone.before.truncate(made);

@@ -719,6 +719,7 @@ impl Vim {
         // and `]` must land on what changed, not on a byte the
         // substitution only carried along unchanged.
         let mut last = None;
+        let mut top = None;
         for (start, end, mut text) in changes {
             self.owed_eol(start, end - start, &mut text);
             let edit = minimal_edit(
@@ -733,11 +734,22 @@ impl Vim {
                 |below| below + text.len() - (end - start),
             ));
             edits.push(edit);
+            // The lines run bottom to top, so the last round is the
+            // topmost line changed; every edit lies below its start,
+            // which leaves that start where it already was.
+            top = Some(start);
         }
         if last.is_none() && self.global.busy {
             return Effect::Nothing;
         }
         let Some(line) = last else { return self.missing(&source) };
+        // Where nvim's `do_sub` saves the change for undo: it moves
+        // the cursor to the line it is substituting first, so `u`
+        // after a `:s` lands at the start of the topmost line
+        // changed, not at the column the key before it stood in.
+        let top = top.map(|at| self.position_of(at).0);
+        self.undone.saved = top;
+        self.undone.want = 0;
         // Where nvim's `do_sub` ends: `beginline(BL_WHITE | BL_FIX)`,
         // the want set there.
         self.cursor = self.first_non_blank(line);
