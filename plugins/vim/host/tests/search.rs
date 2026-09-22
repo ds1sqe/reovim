@@ -228,9 +228,12 @@ fn the_search_cell_names_the_view_vim_holds() {
     let view: Rd = decode(&held(&host)).unwrap();
     assert_ne!(view, NONE, "the view Vim holds");
     assert_eq!(listed(&host, "/self/search"), ["open", "0"]);
-    // A list of another key closes the one before it: Vim holds one.
+    // Another line over the same draft seeks the view Vim already
+    // holds rather than opening a second one.
     typed(&mut tui, "/a<CR>");
-    assert_eq!(listed(&host, "/self/search"), ["open", "1"]);
+    let same: Rd = decode(&held(&host)).unwrap();
+    assert_eq!(same, view, "the one view, sought and not reopened");
+    assert_eq!(listed(&host, "/self/search"), ["open", "0"]);
     // An edit drops the list, and the frame after it drops the view
     // the list was read from, `hlsearch` wanting nothing.
     typed(&mut tui, "x");
@@ -252,17 +255,28 @@ fn the_spans_stop_at_the_views_bound() {
 }
 
 /// The search Module as the rig loads it, wrapped: every read of it
-/// counted, and refused where a case asks for a refusal of no cause.
+/// counted, its calls counted by the method the api declares, and
+/// refused where a case asks for a refusal of no cause.
 struct Watched {
     inner: Search,
     reads: Cell<usize>,
+    /// `search.open`, method 0, however it answered.
+    opens: Cell<usize>,
+    /// `search.seek`, method 1, however it answered.
+    seeks: Cell<usize>,
     deny: bool,
 }
 
 impl Watched {
     fn new(deny: bool, budget: Option<usize>) -> Rc<Self> {
         let inner = budget.map_or_else(Search::new, Search::with_budget);
-        Rc::new(Self { inner, reads: Cell::new(0), deny })
+        Rc::new(Self {
+            inner,
+            reads: Cell::new(0),
+            opens: Cell::new(0),
+            seeks: Cell::new(0),
+            deny,
+        })
     }
 }
 
@@ -299,6 +313,14 @@ impl Driver for Watched {
         method: u16,
         input: &[u8],
     ) -> Reply<Vec<u8>> {
+        let counter = match method {
+            0 => Some(&self.opens),
+            1 => Some(&self.seeks),
+            _ => None,
+        };
+        if let Some(counter) = counter {
+            counter.set(counter.get() + 1);
+        }
         self.inner.call(ctx, h, api, method, input)
     }
 
@@ -722,6 +744,18 @@ fn a_new_pattern_marks_what_its_own_list_has_found() {
         "what $ has found so far, and nothing of x*'s"
     );
 
+    // `seek` runs no slice of its own, unlike `open`, which does one
+    // inside its own call: `$`'s view is x*'s, sought rather than
+    // opened, so its list needs one tick more than a fresh `open`'s
+    // own to say it is whole.
+    tui.tick().unwrap();
+    assert_eq!(vim.engine().counted(), None, "whole not said yet");
+    assert_eq!(
+        marks(&host),
+        [(2, 3), (5, 6), (7, 8), (9, 10), (11, 12)],
+        "every line end already found"
+    );
+
     tui.tick().unwrap();
     assert_eq!(vim.engine().counted(), Some((1, 5)), "$'s own list is whole");
     assert_eq!(
@@ -783,22 +817,94 @@ fn the_match_follows_each_key() {
     assert_eq!(lines(&mut tui)[0], "line 1");
 }
 
+/// The view the first key of a pattern opens is the one every later
+/// key seeks, whether it comes on its own frame or with others: an
+/// `<Esc>` and a wholly new line after it still read that same view,
+/// the source under it unchanged.
 #[test]
-fn a_key_opens_a_view_and_a_frame_of_keys_opens_one() {
+fn a_key_opens_a_view_and_every_later_key_seeks_it() {
     let (_rig, host, _vim, mut tui) = over("inc-views", b"abc\nfoo bar\n");
     let mut seen = vec![held(&host)];
     for key in ["/", "f", "o"] {
         typed(&mut tui, key);
         noted(&host, &mut seen);
     }
-    assert_eq!(seen.len(), 3, "a view a key that changed the line");
+    assert_eq!(seen.len(), 2, "the empty line opens none, `f` one");
     typed(&mut tui, "<Esc>");
     noted(&host, &mut seen);
-    let opened = seen.len();
     together(&host, "/foo<CR>");
     tui.tick().unwrap();
     noted(&host, &mut seen);
-    assert_eq!(seen.len(), opened + 1, "a frame of keys opens one");
+    assert_eq!(seen.len(), 2, "still the one view, sought and not reopened");
+}
+
+/// The views `held` has named over a run, in order and each once.
+/// `NONE` is no view and is none of them.
+fn views(host: &Rc<Host>, seen: &mut Vec<Vec<u8>>) {
+    let now = held(host);
+    if now != encode(&NONE) && !seen.contains(&now) {
+        seen.push(now);
+    }
+}
+
+/// A `/` line's own journey: the view opened at the line's first key
+/// and sought at every key after it, one call a key.
+#[test]
+fn a_line_seeks_one_view_a_key() {
+    let counting = Watched::new(false, None);
+    let (_rig, host, vim, mut tui) =
+        wrapped("inc-one-view", b"abc\nfoo abc\n", &counting);
+    let mut seen = Vec::new();
+    for key in ["/", "a", "b", "c", "<CR>"] {
+        typed(&mut tui, key);
+        views(&host, &mut seen);
+    }
+    assert_eq!(seen.len(), 1, "one view from the first key to the last");
+    assert_eq!(counting.opens.get(), 1, "opened once");
+    // `<CR>` asks the engine no new list of its own: the preview's
+    // own already stands and lands the motion on it, so `b` and `c`
+    // are this line's only two calls after its first.
+    assert_eq!(counting.seeks.get(), 2, "and sought at every key that grew it");
+    assert_eq!(vim.engine().position(), (1, 4), "and the line landed");
+}
+
+/// The view is the stay's: the swap ends it, and the next line opens
+/// one of its own over the source it now has.
+#[test]
+fn a_stay_swap_opens_another_view() {
+    let counting = Watched::new(false, None);
+    let (rig, host, _vim, mut tui) = wrapped("inc-swap", b"abc\n", &counting);
+    rig.file("other", b"xa\n");
+    let mut seen = Vec::new();
+    typed(&mut tui, "/a");
+    views(&host, &mut seen);
+    assert_eq!(counting.opens.get(), 1, "the line's own view");
+    typed(&mut tui, "<Esc>:e other<CR>/a");
+    views(&host, &mut seen);
+    assert_eq!(counting.opens.get(), 2, "another source, another view");
+    assert_eq!(seen.len(), 2, "and it is not the one before it");
+}
+
+/// A half-typed pattern is the line's own middle: the Module refuses
+/// the seek as `Invalid`, the engine hears what a refused `open`
+/// says, and the view keeps the list it had for the next key.
+#[test]
+fn a_pattern_that_does_not_parse_keeps_the_view() {
+    let counting = Watched::new(false, None);
+    let (_rig, host, vim, mut tui) =
+        wrapped("inc-invalid", b"abc\nxab\n", &counting);
+    let mut seen = Vec::new();
+    // `a` parses and every key after it until the group closes does
+    // not: `a\`, `a\(`, `a\(b` and `a\(b\` are each `Invalid`.
+    for key in ["/", "a", "\\", "(", "b", "\\", ")"] {
+        typed(&mut tui, key);
+        views(&host, &mut seen);
+        assert!(counting.opens.get() <= 1, "{key}: no second view");
+    }
+    assert_eq!(seen.len(), 1, "the one view, kept through every refusal");
+    assert_eq!(counting.seeks.get(), 5, "a call a key, refused or not");
+    assert_eq!(vim.engine().position(), (1, 1), "and the group's match");
+    assert_eq!(said(&mut tui), "/a\\(b\\)", "the line says no word");
 }
 
 #[test]

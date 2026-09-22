@@ -156,6 +156,50 @@ fn onward(stay: &Stay, read: usize) {
     }
 }
 
+/// The view a later key of the same line seeks, over the draft it was
+/// opened on: `Invalid` keeps it, its old list still there for the
+/// next key; anything else closes it, so the next `Want` opens
+/// another the way the first key's did.
+fn seeking(
+    ctx: &dyn Calls,
+    stay: &Stay,
+    open: Rd,
+    view: Rd,
+    want: &Want,
+) -> Result<(), Error> {
+    let h = ctx.open(open, Rights::WRITE)?;
+    let mut calls = ctx;
+    let args = search::Seek {
+        view,
+        pattern: want.pattern.clone(),
+        ignorecase: want.ignorecase,
+        smartcase: want.smartcase,
+        from: want.from,
+    };
+    let sought = search::Call(&mut calls, h).seek(args);
+    ops::close(ctx, h)?;
+    match sought {
+        Ok(()) => {
+            resought(stay, want);
+            Ok(())
+        }
+        Err(Error::Invalid) => Err(Error::Invalid),
+        Err(error) => {
+            unsought(ctx, stay);
+            Err(error)
+        }
+    }
+}
+
+/// A successful seek's own bookkeeping: the want it was sought for,
+/// and the list it started over reset to its own head.
+fn resought(stay: &Stay, want: &Want) {
+    if let Some(sought) = stay.sought.borrow_mut().as_mut() {
+        sought.want = want.clone();
+        sought.at = 0;
+    }
+}
+
 /// What a refusal of the Module's says: the two causes it does not
 /// tell apart are the engine's to word.
 const fn refused(error: Error) -> u64 {
@@ -967,8 +1011,8 @@ impl Editor {
     }
 
     /// The view Vim holds, for `want`: the one it has where that is
-    /// this key's and this epoch's, else that one closed and another
-    /// opened over the draft.
+    /// this key's and this epoch's, sought again where it is not but
+    /// there is one already, else opened fresh over the draft.
     fn viewing(
         &self,
         ctx: &dyn Calls,
@@ -979,7 +1023,23 @@ impl Editor {
         if stay.sought.borrow().as_ref().is_some_and(|s| s.want == *want) {
             return Ok(());
         }
-        unsought(ctx, stay);
+        let view = stay.sought.borrow().as_ref().map(|sought| sought.view);
+        view.map_or_else(
+            || self.viewed(ctx, stay, open, want),
+            |view| seeking(ctx, stay, open, view, want),
+        )
+    }
+
+    /// The view a line's first key opens, one Want's own: `open`
+    /// called fresh over the draft, as `viewing` calls it where there
+    /// is no view already held to seek instead.
+    fn viewed(
+        &self,
+        ctx: &dyn Calls,
+        stay: &Stay,
+        open: Rd,
+        want: &Want,
+    ) -> Result<(), Error> {
         let source = self.vim.borrow().buffer().ok_or(Error::Closed)?;
         let h = ctx.open(open, Rights::WRITE)?;
         let mut calls = ctx;
