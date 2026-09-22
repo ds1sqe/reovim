@@ -50,6 +50,7 @@ fn decl() -> Decl {
             m(1, "set", Ty::Bytes(16), Ty::Unit, Rights::WRITE),
             m(2, "later", Ty::Unit, Ty::Bytes(64), Rights::READ),
         ],
+        records: Vec::new(),
     }
 }
 
@@ -212,7 +213,10 @@ fn blob(bytes: &[u8]) -> Vec<u8> {
 }
 
 /// Pinned on 2026-09-16; a change here is a wire-visible change.
-const GOLDEN: Hash = Hash(0x6fd5_f6d9_6c0e_7f0a);
+/// Moved on 2026-09-22, the canonical form having gained the records
+/// a declaration names: every api's hash changed with it, and both
+/// sides of the door compute theirs from the declaration.
+const GOLDEN: Hash = Hash(0x025b_6a7e_8293_4caa);
 
 #[test]
 fn declaration_hash_is_stable_and_order_free() {

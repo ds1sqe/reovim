@@ -244,9 +244,22 @@ fn wide() -> Decl {
         ver: 3,
         methods: vec![
             m(2, "later", Ty::Unit, choice, Rights::READ),
-            m(0, "get", Ty::Unit, record, Rights::READ),
+            m(0, "get", Ty::Unit, record.clone(), Rights::READ),
             m(1, "set", Ty::Bytes(16), Ty::Unit, Rights::WRITE),
         ],
+        records: vec![
+            ("Wide".to_string(), fields_of(record)),
+            ("Empty".to_string(), Vec::new()),
+        ],
+    }
+}
+
+/// The fields of a `Ty::Record`, which is the only shape a declared
+/// record has.
+fn fields_of(ty: Ty) -> Vec<Field> {
+    match ty {
+        Ty::Record(fields) => fields,
+        other => panic!("no record: {other:?}"),
     }
 }
 
@@ -263,6 +276,7 @@ fn a_declaration_parses_back_from_its_canonical_bytes() {
     for method in &decl.methods {
         assert_eq!(parsed.method(method.number), Some(method));
     }
+    assert_eq!(parsed.records, decl.records, "the records came back");
     assert_eq!(parsed.canonical(), decl.canonical());
 
     let bytes = decl.canonical();
@@ -275,4 +289,48 @@ fn a_declaration_parses_back_from_its_canonical_bytes() {
     let mut twice = decl;
     twice.methods.push(twice.methods[0].clone());
     assert_eq!(Decl::parse(&twice.canonical()), Err(Error::Invalid), "check");
+}
+
+/// A declaration's records are part of what it is: a record-only api
+/// — `keyboard`, `resolver` — declares no method at all, so its name
+/// and version are the whole of its identity unless the records it
+/// names are hashed too, and a reshaped record passes the Kernel's
+/// check as the shape both sides already agreed on.
+#[test]
+fn a_records_field_list_changes_the_hash() {
+    let only = |fields: Vec<Field>| Decl {
+        api: "only".to_string(),
+        ver: 1,
+        methods: Vec::new(),
+        records: vec![("Input".to_string(), fields)],
+    };
+    let one = vec![field("press", Ty::U64)];
+    let decl = only(one.clone());
+
+    assert_eq!(decl.hash(), only(one.clone()).hash(), "two builds agree");
+    assert_ne!(
+        decl.hash(),
+        only(vec![field("pressed", Ty::U64)]).hash(),
+        "a field renamed"
+    );
+    assert_ne!(
+        decl.hash(),
+        only(vec![field("press", Ty::U32)]).hash(),
+        "a field retyped"
+    );
+    let two = vec![field("press", Ty::U64), field("origin", Ty::U64)];
+    assert_ne!(decl.hash(), only(two).hash(), "a field added");
+    assert_ne!(
+        decl.hash(),
+        Decl { records: Vec::new(), ..only(one) }.hash(),
+        "the record dropped"
+    );
+
+    // The name is the record's own, and the order is the declared one.
+    let mut renamed = decl.clone();
+    renamed.records[0].0 = "Output".to_string();
+    assert_ne!(decl.hash(), renamed.hash(), "a record renamed");
+
+    let parsed = Decl::parse(&decl.canonical()).unwrap();
+    assert_eq!(parsed, decl, "and every byte of it parses back");
 }

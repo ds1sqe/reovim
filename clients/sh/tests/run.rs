@@ -264,8 +264,12 @@ fn first_puts_a_directory_ahead_and_a_default_shell_never_walks_it() {
         output: Ty::Rd,
         right: Rights::READ,
     };
-    let decl =
-        Decl { api: "shadow".to_string(), ver: 1, methods: vec![method] };
+    let decl = Decl {
+        api: "shadow".to_string(),
+        ver: 1,
+        methods: vec![method],
+        records: Vec::new(),
+    };
     let rd = ctx.register(DriverId(0), bin, Some("ls")).unwrap();
     ctx.report(rd, Flags::READ | Flags::CONTAINER, &[decl]).unwrap();
 

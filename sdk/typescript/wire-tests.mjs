@@ -164,9 +164,16 @@ test('a declaration parses and a value shows by it', () => {
   str('id'); canonical.push(4); str('parent'); canonical.push(4); str('label'); canonical.push(8, 16, 0, 0, 0);
   str('head'); canonical.push(4); str('published'); canonical.push(4);
   canonical.push(1, 0, 0, 0);
+  // The records the api names, after the methods: one `Tree`, whose
+  // own field list is part of the hash the Kernel checks.
+  canonical.push(1, 0, 0, 0);
+  str('Tree'); canonical.push(1, 0, 0, 0); str('head'); canonical.push(4);
   const decl = parseDecl(Uint8Array.from(canonical));
   assert.equal(decl.api, 'history');
   assert.equal(decl.methods[0].name, 'tree');
+  assert.equal(decl.records.length, 1);
+  assert.equal(decl.records[0][0], 'Tree');
+  assert.deepEqual(decl.records[0][1].map((f) => f.name), ['head']);
   const tree = [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 111, 112, 101, 110,
     1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0];
   const value = decodeValue(decl.methods[0].output, Uint8Array.from(tree));

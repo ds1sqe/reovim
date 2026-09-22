@@ -35,7 +35,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-pub use command::{Typed, options, typed};
+pub use command::options;
 pub use macros::BUDGET;
 pub use marks::Pos;
 pub use operator::Motion;

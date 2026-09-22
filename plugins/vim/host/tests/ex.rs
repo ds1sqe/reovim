@@ -91,8 +91,8 @@ fn the_address_and_the_bang_reach_a_run_as_flags() {
 
     // Both are flags now, read off the line and not an environment a
     // token never fills: `write` takes `-b`, `--address ADDRESS`
-    // (read and not used yet) and a path, `substitute` `--address
-    // ADDRESS` and its spec.
+    // (the lines a ranged `:w` writes) and a path, `substitute`
+    // `--address ADDRESS` and its spec.
     assert_eq!(typed(&mut tui, ":help write<CR>"), Step::Changed);
     assert_eq!(said(&mut tui), "write [-b] [--address ADDRESS] [path]");
     assert_eq!(typed(&mut tui, ":help substitute<CR>"), Step::Changed);

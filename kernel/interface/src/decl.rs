@@ -1,7 +1,8 @@
-//! Declarations: data, not code. An api name, a version and per method
+//! Declarations: data, not code. An api name, a version, per method
 //! a number, a name, an input type, an output type and the right it
-//! needs. The canonical bytes are identical from any language and their
-//! hash is the declaration's identity.
+//! needs, and the records the declaration names. The canonical bytes
+//! are identical from any language and their hash is the
+//! declaration's identity.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -83,6 +84,15 @@ pub struct Decl {
     pub ver: u32,
     /// Methods in any order; canonical form sorts by number.
     pub methods: Vec<Method>,
+    /// The records the declaration names, each with its fields, in
+    /// the order declared.
+    ///
+    /// A record reaches a method as its input or output type, so the
+    /// methods alone would carry every shape a caller sends — except
+    /// where there is no method: a record-only api (`keyboard`,
+    /// `resolver`) is its records and nothing else, and without them
+    /// its identity would be its name and version alone.
+    pub records: Vec<(String, Vec<Field>)>,
 }
 
 impl Ty {
@@ -207,6 +217,12 @@ impl Decl {
             method.output.write(&mut out);
             put_u32(&mut out, method.right.bits());
         }
+        let records = u32::try_from(self.records.len());
+        put_u32(&mut out, records.unwrap_or(u32::MAX));
+        for (name, fields) in &self.records {
+            put_str(&mut out, name);
+            put_fields(&mut out, fields);
+        }
         out
     }
 
@@ -230,7 +246,10 @@ impl Decl {
         let ver = r.u32()?;
         let n = r.u32()?;
         let methods = (0..n).map(|_| Method::read(r)).collect::<Option<_>>()?;
-        Some(Self { api, ver, methods })
+        let n = r.u32()?;
+        let record = |_| Some((r.str()?, read_fields(r, 1)?));
+        let records = (0..n).map(record).collect::<Option<_>>()?;
+        Some(Self { api, ver, methods, records })
     }
 
     /// The identity: FNV-1a 64 over the canonical bytes.

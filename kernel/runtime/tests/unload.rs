@@ -31,7 +31,12 @@ fn decl() -> Decl {
         output: Ty::Unit,
         right: Rights::WRITE,
     };
-    Decl { api: "t".to_string(), ver: 1, methods: vec![release] }
+    Decl {
+        api: "t".to_string(),
+        ver: 1,
+        methods: vec![release],
+        records: Vec::new(),
+    }
 }
 
 impl Module for Test {

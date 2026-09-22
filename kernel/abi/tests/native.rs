@@ -40,6 +40,7 @@ fn decl() -> Decl {
             m(2, "rename", Ty::Unit),
             m(3, "bye", Ty::Unit),
         ],
+        records: Vec::new(),
     }
 }
 

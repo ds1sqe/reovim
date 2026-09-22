@@ -770,8 +770,10 @@ pub fn options(word: &str) -> Vec<String> {
 }
 
 /// A `:` line past its range, as Vim's own rule reads it: `name[!] arg`,
-/// the argument being everything left.
-pub struct Typed<'a> {
+/// the argument being everything left. [`ex`]'s own reading and
+/// nothing the engine hands out: a caller outside reads a line by
+/// running it.
+struct Typed<'a> {
     /// The run of letters at the front; empty for a line that begins
     /// with none, which no name of Vim's can be.
     pub name: &'a str,
@@ -785,7 +787,7 @@ pub struct Typed<'a> {
 }
 
 /// `line` read by that rule: the name, the bang on it, the argument.
-pub fn typed(line: &str) -> Typed<'_> {
+fn typed(line: &str) -> Typed<'_> {
     let letters = line.bytes().take_while(u8::is_ascii_alphabetic).count();
     let (name, rest) = line.split_at(letters);
     let (bang, rest) =
@@ -828,6 +830,10 @@ fn address_span(line: &str) -> (&str, &str) {
 /// Whether `line` opens with an address of its own, as [`address_span`]
 /// reads it — what a bound line already carrying `'<,'>` or any other
 /// address is told from one that does not.
+///
+/// `mod command` is private, so this reaches no caller outside the
+/// crate however it is spelled; `pub(crate)` and `pub(super)` are
+/// both `redundant_pub_crate` here, which the workspace denies.
 pub fn addressed_by(line: &str) -> bool {
     !address_span(line).0.is_empty()
 }

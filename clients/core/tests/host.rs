@@ -252,7 +252,12 @@ fn decl() -> Decl {
         output: Ty::Unit,
         right: Rights::WRITE,
     };
-    Decl { api: "store".to_string(), ver: 1, methods: vec![put] }
+    Decl {
+        api: "store".to_string(),
+        ver: 1,
+        methods: vec![put],
+        records: Vec::new(),
+    }
 }
 
 /// A Host over a Client of `rig`, with the test's two Drivers loaded

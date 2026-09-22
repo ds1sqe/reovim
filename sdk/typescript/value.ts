@@ -27,6 +27,9 @@ export interface Decl {
   api: string;
   ver: number;
   methods: Method[];
+  /** The records the api names, each with its fields, in the order
+   * declared: an api of records and no method is its records. */
+  records: [string, Field[]][];
 }
 
 const TAGS = [
@@ -68,8 +71,11 @@ export function parseDecl(bytes: Uint8Array): Decl {
     const input = readTy(r), output = readTy(r), right = r.u32();
     methods.push({ number, name, input, output, right });
   }
+  const records: [string, Field[]][] = [];
+  const count = r.u32();
+  for (let i = 0; i < count; i += 1) records.push([r.str(), readFields(r)]);
   if (!r.done()) throw new RangeError('trailing bytes');
-  return { api, ver, methods };
+  return { api, ver, methods, records };
 }
 
 export type Value =

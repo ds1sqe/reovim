@@ -864,8 +864,14 @@ impl Editor {
     }
 
     /// One input, and what the budget makes of its origin: a typed
-    /// key zeroes what a replay has spent, a macro's key and a
-    /// repeat's count, and a key a prefix let go neither.
+    /// key zeroes what a replay has spent, every key nobody typed
+    /// counts, and a key a prefix let go neither.
+    ///
+    /// `TYPED` is the one origin that is a person's, so every other
+    /// number is charged — `FED`, `REPEAT`, and any the api has not
+    /// declared. A key of an unnamed origin is still a key the
+    /// editor did not read from a keyboard, and reading it as free
+    /// would make the bound false for every number but three.
     ///
     /// The engine sets its own fed context from the origin it takes,
     /// a released key's maker's among them, and it stands there until
@@ -876,10 +882,7 @@ impl Editor {
             // zeroed, already.
             _ if input.released => {}
             TYPED => self.spent.set(0),
-            origin::FED | origin::REPEAT => {
-                self.spent.set(self.spent.get() + 1);
-            }
-            _ => {}
+            _ => self.spent.set(self.spent.get() + 1),
         }
         self.vim.borrow_mut().key(input)
     }
@@ -902,9 +905,10 @@ impl Editor {
         let mut queue = self.queue.borrow_mut();
         queue.retain(|input| {
             // A released key charges nothing, so the bound it was
-            // charged under is already spent on the key it came from.
-            let fed = !input.released
-                && matches!(input.origin, origin::FED | origin::REPEAT);
+            // charged under is already spent on the key it came from;
+            // every other key nobody typed is one this bound holds,
+            // as [`Self::key`] charges it.
+            let fed = !input.released && input.origin != TYPED;
             let keep = !fed || spare != 0;
             spare = spare.saturating_sub(usize::from(fed));
             keep
@@ -1374,23 +1378,30 @@ impl Editor {
     /// The full name `token` stands for, an exact lookup under Vim's
     /// own `bin` and [`canonical`] over it: `None` for an empty token
     /// and for one that names nothing there, which is the line the
-    /// shell is handed for Tab to complete over PATH as any other.
+    /// shell is handed to run, and to complete over PATH, as any
+    /// other.
+    ///
+    /// The one lookup a `:` line's first token pays in this host,
+    /// whichever door reads the line: whether the line is Vim's own,
+    /// which is [`Self::ran`]'s row (a listing goes in whole only for
+    /// Vim's own), and what its name is written out, which is
+    /// [`Self::completing`]'s, are one answer and carried from here.
     ///
     /// No prefix is read here or anywhere in the host: `token` is
     /// already whole, one abbreviation among [`abbreviated`]'s own or
     /// a full name, and the shell's own lookup under `bin` is exact.
-    fn canonical_bin(
+    fn vims_own<'a>(
         &self,
         ctx: &dyn Calls,
-        token: &str,
-    ) -> Result<Option<String>, Error> {
+        token: &'a str,
+    ) -> Result<Option<&'a str>, Error> {
         if token.is_empty() {
             return Ok(None);
         }
         if ops::lookup(ctx, self.stay()?.cells.bin, token).is_err() {
             return Ok(None);
         }
-        Ok(Some(String::from(canonical(token))))
+        Ok(Some(canonical(token)))
     }
 
     /// `edit` into the revision the draft holds. The first of the two
@@ -2179,7 +2190,8 @@ impl Editor {
     /// it — `:cli`'s own read of where it stands among them, still
     /// mid-run, `self.shell` held by no borrow to conflict with.
     fn ran(&self, ctx: &dyn Calls, line: &str) -> Result<(), Error> {
-        let vims_own = self.named_bin(ctx, line)?;
+        let first = line.split_whitespace().next().unwrap_or_default();
+        let vims_own = self.vims_own(ctx, first)?.is_some();
         let mut shell = self.shell.borrow().clone();
         let was = shell.cwd();
         let outcome = sh::run(ctx, &mut shell, line);
@@ -2191,17 +2203,6 @@ impl Editor {
             Err(miss) => self.fails(&format!("{miss}")),
         }
         if moved == was { Ok(()) } else { self.rebased(ctx, moved) }
-    }
-
-    /// Whether `line`'s first token is one of Vim's own bin names, an
-    /// exact lookup under `/self/vim/bin` and none of the shell's own
-    /// tokenizing — enough to tell the two apart for [`Self::ran`]'s
-    /// own row, and nothing this reads elsewhere.
-    fn named_bin(&self, ctx: &dyn Calls, line: &str) -> Result<bool, Error> {
-        let Some(first) = line.split_whitespace().next() else {
-            return Ok(false);
-        };
-        Ok(ops::lookup(ctx, self.stay()?.cells.bin, first).is_ok())
     }
 
     /// Where `:cd` left the Shell, taken as the directory Vim works
@@ -2243,7 +2244,7 @@ impl Editor {
             self.vim.borrow_mut().listed(found.from, candidates, alone);
             return Ok(());
         };
-        let Some(name) = self.canonical_bin(ctx, first)? else {
+        let Some(name) = self.vims_own(ctx, first)? else {
             let found = sh::complete(ctx, &shell, line);
             self.vim.borrow_mut().offer(found.from, found.candidates);
             return Ok(());
@@ -2252,7 +2253,7 @@ impl Editor {
         let from = line.rfind(' ').map_or(0, |at| at + 1);
         let word = String::from(&line[from..]);
         self.vim.borrow_mut().expand(&line);
-        let found = match name.as_str() {
+        let found = match name {
             "set" => options(&word),
             "write" | "edit" | "explore" => self.names(ctx, &word),
             // Every other name of Vim's takes nothing from the tree.
@@ -2820,6 +2821,28 @@ mod macro_queue_tests {
         drop(vim);
         editor.tail();
         assert_eq!(origins(), [], "a macro's go with its run");
+    }
+
+    /// An origin no constant names is a key nobody typed: the budget
+    /// charges it as it charges a fed one and the bell drops it with
+    /// the rest of a run. Reading an unnamed number as "typed" would
+    /// make the declared rule false for every value but three, and a
+    /// replay that spelled one would edit for ever.
+    #[test]
+    fn an_origin_no_constant_names_is_charged_as_synthetic() {
+        // A number no constant of the api's names.
+        const OTHER: u64 = 7;
+        let (_rig, editor, host, _tui) = scene("origin-unnamed");
+        editor.spent.set(BUDGET - 1);
+        let mut queue = editor.queue.borrow_mut();
+        queue.push_back(tapped(Key::Char('x'), OTHER));
+        queue.push_back(tapped(Key::Char('x'), OTHER));
+        drop(queue);
+        let ctx = host.own();
+        while editor.step(&ctx).unwrap() {}
+        assert_eq!(editor.spent.get(), BUDGET, "the first key was charged");
+        assert_eq!(editor.text(), "bc\n", "and the second never ran");
+        assert!(editor.queue.borrow().is_empty(), "the bound swept it");
     }
 
     #[test]

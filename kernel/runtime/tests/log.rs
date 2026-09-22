@@ -294,6 +294,7 @@ fn decl() -> Decl {
             output: Ty::Unit,
             right: Rights::READ,
         }],
+        records: Vec::new(),
     }
 }
 

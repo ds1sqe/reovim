@@ -86,6 +86,10 @@ struct Kept {
     handle: Handle,
     /// The source length `open` measured.
     total: u64,
+    /// The number of fills the view had when the `seek` read it: a
+    /// `seek` that lands while this one reads out of the Module
+    /// moves it, and this one then writes nothing.
+    fills: u64,
 }
 
 /// The Driver and its Module in one; pass it twice at `load`.
@@ -216,7 +220,7 @@ impl Search {
             return Err(Error::Invalid);
         };
         let (matches, progress) = (*matches, *progress);
-        let Some(Node::Matches { source, handle, .. }) =
+        let Some(Node::Matches { source, handle, fills, .. }) =
             state.nodes.get(&matches)
         else {
             return Err(Error::Invalid);
@@ -224,14 +228,28 @@ impl Search {
         let Some(Node::Progress(record)) = state.nodes.get(&progress) else {
             return Err(Error::Invalid);
         };
-        let (source, handle) = (*source, *handle);
-        Ok(Kept { matches, progress, source, handle, total: record.total })
+        let (source, handle, fills) = (*source, *handle, *fills);
+        Ok(Kept {
+            matches,
+            progress,
+            source,
+            handle,
+            total: record.total,
+            fills,
+        })
     }
 
     /// `fill` in the view's place with its first slice already run:
     /// the list is what that slice found, the failure is its own, the
     /// progress is where it left off, and `fills` moves on, which
     /// drops whatever slice is still running over the fill before it.
+    ///
+    /// `Busy` where `fills` is no longer the one the `seek` read at
+    /// its start: another `seek` landed while this one read the
+    /// source — its two reads are calls out of this Module, the same
+    /// re-entry window a slice's own read is — and that later seek is
+    /// the one the view was told last. Nothing of this one goes in,
+    /// as [`Self::went_on`] refuses a slice whose view moved.
     fn refilled(
         &self,
         kept: &Kept,
@@ -247,6 +265,9 @@ impl Search {
         else {
             return Err(Error::Invalid);
         };
+        if *fills != kept.fills {
+            return Err(Error::Busy);
+        }
         *slot = (!whole).then_some(fill);
         *entries = encoded(found);
         *failed = failure;

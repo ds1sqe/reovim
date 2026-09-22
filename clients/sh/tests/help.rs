@@ -148,8 +148,12 @@ fn a_name_two_directories_of_path_hold_resolves_at_the_earlier_one() {
         output: Ty::Rd,
         right: Rights::READ,
     };
-    let decl =
-        Decl { api: "shadow".to_string(), ver: 1, methods: vec![method] };
+    let decl = Decl {
+        api: "shadow".to_string(),
+        ver: 1,
+        methods: vec![method],
+        records: Vec::new(),
+    };
     let at = cell::resolve(ctx, ROOT, "/self/bin").unwrap();
     let rd = ctx.register(DriverId(0), at, Some("ls")).unwrap();
     ctx.report(rd, Flags::READ | Flags::CONTAINER, &[decl]).unwrap();
@@ -172,7 +176,12 @@ fn a_name_whose_declaration_cannot_be_read_is_under_path_all_the_same() {
 
     // `/self/bin` gains a name whose declaration holds no `run`: it is
     // under PATH, and what it takes cannot be read.
-    let decl = Decl { api: "zz".to_string(), ver: 1, methods: Vec::new() };
+    let decl = Decl {
+        api: "zz".to_string(),
+        ver: 1,
+        methods: Vec::new(),
+        records: Vec::new(),
+    };
     let at = cell::resolve(ctx, ROOT, "/self/bin").unwrap();
     let rd = ctx.register(DriverId(0), at, Some("zz")).unwrap();
     ctx.report(rd, Flags::READ, &[decl]).unwrap();

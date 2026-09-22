@@ -101,7 +101,8 @@ macro_rules! declare {
             use $crate::{Decode, Encode, Reader, Typed};
             $( use $( $seg )::+ ; )*
 
-            /// The declaration, as the Kernel hashes it.
+            /// The declaration, as the Kernel hashes it: its
+            /// methods and the records it names.
             #[must_use]
             pub fn decl() -> Decl {
                 Decl {
@@ -115,6 +116,17 @@ macro_rules! declare {
                         output: $crate::__ty!( $out $( ( $outb ) )? ),
                         right: Rights::$right,
                     } ),* ],
+                    // Every record the block names, in the order it
+                    // names them: an api with no method at all is its
+                    // records, and its hash would see nothing of them
+                    // otherwise.
+                    records: vec![ $( (
+                        stringify!($record).to_string(),
+                        vec![ $( Field {
+                            name: stringify!($field).to_string(),
+                            ty: $crate::__ty!( $ft $( ( $fb ) )? ),
+                        } ),* ],
+                    ) ),* ],
                 }
             }
 

@@ -183,7 +183,7 @@ pub fn declared() -> [(&'static str, Decl); 26] {
 /// `ex`/`exp`/`expl`/`explo`/`explor`, and `cli` is `cl` alone. `wq`,
 /// `buffers`, `bind`, `point`, `goto` and `search` take no shorter
 /// form at all.
-const ABBREVIATED: &[(&str, usize)] = &[
+static ABBREVIATED: &[(&str, usize)] = &[
     ("write", 1),
     ("quit", 1),
     ("xit", 1),
@@ -230,12 +230,18 @@ pub fn abbreviated() -> Vec<(&'static str, &'static str)> {
 /// answers for it, else `name` back unchanged — every name a `:`
 /// line's dispatch is ever handed is one `/self/vim/bin` registered,
 /// so that last case names nothing real.
+///
+/// Read straight off the table [`abbreviated`] expands, as the tree
+/// holds it: `name` stands for `full` exactly where it is a prefix of
+/// it no shorter than that name's minimum and shorter than the whole
+/// spelling, so the eighty pairs are never built here. A `:` line
+/// asks this twice and a Tab candidate once.
 #[must_use]
 pub fn canonical(name: &str) -> &str {
-    abbreviated()
-        .into_iter()
-        .find(|(short, _)| *short == name)
-        .map_or(name, |(_, full)| full)
+    let stands_for = |(full, min): &&(&'static str, usize)| {
+        (*min..full.len()).contains(&name.len()) && full.starts_with(name)
+    };
+    ABBREVIATED.iter().find(stands_for).map_or(name, |(full, _)| *full)
 }
 
 #[cfg(test)]

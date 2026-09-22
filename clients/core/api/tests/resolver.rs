@@ -2,11 +2,13 @@
 //! sdk and nothing of any Plugin: the five records through the public
 //! `Encode`/`Decode`, the continuation pairing a wait with the reply
 //! that answers it, a refusal's error, the `Press` a synthetic key
-//! carries, and the number a mode is.
+//! carries, the number a mode is, and the declaration's own identity
+//! over the records it names.
 
 use core::fmt::Debug;
 
 use reovim_client_api::keyboard::Press;
+use reovim_client_api::resolver;
 use reovim_client_api::resolver::{Command, Fed, Input, Reply, State};
 use reovim_client_api::{NONE, mode, origin, reply};
 use reovim_sdk::{Decode, Encode, decode, encode};
@@ -182,4 +184,31 @@ fn a_mode_is_the_apis_number() {
         assert_eq!(back.mode, mode);
         assert_eq!(back.showcmd, "", "nothing typed yet");
     }
+}
+
+#[test]
+fn a_record_only_api_hashes_its_records() {
+    // `api resolver ver 1 {}`: no method, five records. Its name and
+    // its version are all a hash over the methods can see, so a
+    // reshaped record would be the same declaration to the Kernel's
+    // identity check, on both sides of the door.
+    let decl = resolver::decl();
+    assert!(decl.methods.is_empty(), "the resolver declares no method");
+    let named: Vec<&str> =
+        decl.records.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(named, ["Input", "Fed", "Command", "Reply", "State"]);
+
+    let fields: Vec<&str> =
+        decl.records[0].1.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(fields, ["press", "origin", "released"], "Input's own");
+
+    assert_eq!(resolver::hash(), decl.hash(), "two builds of one api");
+
+    let mut renamed = decl.clone();
+    renamed.records[0].1[1].name = String::from("whose");
+    assert_ne!(renamed.hash(), decl.hash(), "one field renamed");
+
+    let mut dropped = decl.clone();
+    dropped.records.pop();
+    assert_ne!(dropped.hash(), decl.hash(), "one record gone");
 }

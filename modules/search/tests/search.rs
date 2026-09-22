@@ -1116,3 +1116,41 @@ fn a_seek_mid_fill_drops_the_slice_in_flight() {
     let whole = sut.progress(view.progress);
     assert_eq!(whole.done, whole.total, "the new fill goes whole through");
 }
+
+#[test]
+fn a_seek_in_a_seeks_slice_keeps_the_later_pattern() {
+    // The mirror of the case above: the re-entry window is a `seek`'s
+    // own, not a read's. `seek` reads the source twice out of this
+    // Module — the line it starts at and its first slice — and the
+    // Host allows a Driver call to land there. The seek that runs
+    // inside is the later one and the one the view was told last, so
+    // the outer seek's fill may not be written over it.
+    let mut text = "a\n".repeat(50);
+    text.push_str("b\n");
+    let sut = Sut::with_budget("seek-in-seek", 16);
+    let trap = Rc::new(Trap {
+        text: text.clone().into_bytes(),
+        armed: RefCell::new(None),
+    });
+    sut.host.load("trap", trap.clone(), vec![trap.clone()]).unwrap();
+    let source = cell::resolve(&sut.calls(), ROOT, "/self/trap/text").unwrap();
+
+    // A view holding no entry at all, so what stands at the end is
+    // the seek's own doing and nothing the open left.
+    let view = sut.opened(args(source, "zz", 0));
+    assert!(drained(&sut, view.matches).is_empty(), "nothing found yet");
+
+    *trap.armed.borrow_mut() = Some(sought(view.rd, "b", 0));
+    assert_eq!(
+        sut.seek_call(sought(view.rd, "a", 0)),
+        Err(Error::Busy),
+        "the view moved under it, as a slice's own read is told"
+    );
+    assert!(trap.armed.borrow().is_none(), "the inner seek ran");
+
+    let found = drained(&sut, view.matches);
+    let got: Vec<(u64, u64)> = found.iter().map(|m| (m.at, m.len)).collect();
+    assert_eq!(got, [(100, 1)], "the last seek is the one that stands");
+    let whole = sut.progress(view.progress);
+    assert_eq!(whole.done, whole.total, "and its fill goes whole through");
+}
