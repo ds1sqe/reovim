@@ -114,7 +114,11 @@ Client as user: `lookup`, `info`, `parent`, `children`, `open`, `read`,
 Client as Driver: the seven slots down; up, only `done` and
 `changed`. A Client's own Modules register under its `self`, and the
 Kernel mirrors those rows as somebody asks for them, so no
-`register`, `name`, `report` or `unregister` crosses. `changed`
+`register`, `name`, `report` or `unregister` crosses. The mirror is
+for everybody else: a Client that meets its own `client/<cid>/self`,
+by that path or as a child of its own client rd, answers on its own
+root and sends nothing, an op forwarded back to its sender being one
+that waits on the thread that sent it. `changed`
 carries four kinds where a Module's carries two: `Modify` and
 `Attrib` are events; `Gone` retires the mirrored row with its
 subtree; `Create` unmarks its listing, so the next `children` asks

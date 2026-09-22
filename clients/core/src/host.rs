@@ -452,6 +452,10 @@ pub struct Host {
     state: RefCell<State>,
     depth: Cell<u8>,
     clock: fn() -> u64,
+    /// The server's row for this Client's own root, beside the client
+    /// rd it hangs under: what [`Host::mirror`] learned and what says
+    /// whether it still holds.
+    mirror: Cell<Option<(Rd, Rd)>>,
     /// How far the sweep of [`Host::serve`] has read the ring. It is
     /// the Host's own and is held for this and nothing else, the ring
     /// being read and not drained, so a local Plugin's cursor means
@@ -500,6 +504,7 @@ impl Host {
             state: RefCell::new(state),
             depth,
             clock,
+            mirror: Cell::new(None),
             said: Cell::new(0),
         }
     }
@@ -747,6 +752,48 @@ impl Host {
         self.wire.borrow_mut().request(op).map_err(|f| refused(&f))
     }
 
+    /// The server's own row for this Client's root, the `self` under
+    /// `/session/<id>/client/<cid>`, or `None` while the wire cannot
+    /// say. One `Lookup` per connection buys it: the Kernel answers
+    /// that one from its table, the row standing since the link
+    /// connected, and forwards nothing for it. A reconnect is a fresh
+    /// client rd, which is what says the pair kept here went stale.
+    fn mirror(&self) -> Option<Rd> {
+        let cid = self.wire.borrow().cid();
+        let known = |(at, rd): (Rd, Rd)| (at == cid).then_some(rd);
+        if let Some(rd) = self.mirror.get().and_then(known) {
+            return Some(rd);
+        }
+        let name = String::from("self");
+        let Ok(Out::Rd(rd)) = self.sent(Op::Lookup { rd: cid, name }) else {
+            return None;
+        };
+        self.mirror.set(Some((cid, rd)));
+        Some(rd)
+    }
+
+    /// `rd` as this Client holds it: [`SELF`] where the server named
+    /// the mirror of this Client's own root, and `rd` everywhere
+    /// else.
+    ///
+    /// The mirror is this Client's tree seen from the other side, and
+    /// the Kernel forwards every op on it back here. An op this
+    /// Client sends there is one only this Client can answer, and it
+    /// cannot: it is inside the send, the served op rides a `Since`
+    /// it will not reach ([`Self::serve`]), and `Tree::wait` asks a
+    /// token that never retires. So the three ops the Kernel forwards
+    /// on an rd come through here and stay home.
+    ///
+    /// The root is the one server rd that is certainly no mirror row,
+    /// and `lookup(ROOT, "self")` is the walk every path takes: it is
+    /// answered here without asking the wire where the mirror is.
+    fn home(&self, rd: Rd) -> Rd {
+        if local(rd.0) || rd == ROOT {
+            return rd;
+        }
+        if self.mirror() == Some(rd) { SELF } else { rd }
+    }
+
     /// One op on the union, one step deeper; past the cap it is `Busy`,
     /// so a chain of Drivers ends at an error and not at the stack.
     ///
@@ -755,11 +802,17 @@ impl Host {
     fn run(&self, module: ModuleId, op: Op) -> Answer {
         let Some(_depth) = self.deeper() else { return Err(Error::Busy) };
         match op {
-            Op::Lookup { rd, name } => lookup(self, rd, &name),
+            // The three that go out on an rd stand at home where
+            // the rd is this Client's own ([`Self::home`]); `Info`
+            // and `Parent` the Kernel answers from the mirror itself
+            // and forwards nowhere, so they ask as they are.
+            Op::Lookup { rd, name } => lookup(self, self.home(rd), &name),
             Op::Info { rd } => info(self, rd),
             Op::Parent { rd } => parent(self, rd),
-            Op::Children { rd } => children(self, rd),
-            Op::Open { rd, rights } => open(self, module, rd, rights),
+            Op::Children { rd } => children(self, self.home(rd)),
+            Op::Open { rd, rights } => {
+                open(self, module, self.home(rd), rights)
+            }
             Op::Read { h, at, len } => read(self, h, at, len),
             Op::Write { h, at, bytes } => write(self, h, at, bytes),
             Op::Call { h, api, method, input } => {
