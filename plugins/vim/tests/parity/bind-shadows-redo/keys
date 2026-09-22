@@ -1,0 +1,1 @@
+:bind <lt>C-r> 3<CR>xu<C-r>:wq<CR>

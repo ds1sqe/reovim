@@ -76,6 +76,40 @@ fn a_bound_key_runs_its_line() {
     assert_eq!(rig.disk("note"), b"ne\ntwo\nthree\n", "`@:` is not write");
 }
 
+/// nvim's rule: a mapping wins over the key's built-in meaning in the
+/// mode it is mapped for (`:nnoremap <C-r> :3<CR>` is not redo). The
+/// corpus carries that against nvim as `bind-shadows-redo`,
+/// `bind-shadows-u` and `bind-shadows-dd`; here the same rule over
+/// the tui, where undo and redo are the host's own and not the
+/// engine's effect alone, and in visual, which no corpus case reaches
+/// (nvim reads no rc under `--clean`).
+#[test]
+fn a_bound_key_shadows_the_built_in() {
+    let (rig, mut tui, host, _seen) = three("bind-shadows");
+    typed(&mut tui, ":bind <lt>C-r> 3<CR>");
+    assert_eq!(said(&mut tui), "");
+    typed(&mut tui, "xu");
+    assert_eq!(lines(&mut tui)[..1], ["one"], "the `x` undone");
+
+    // Redo is the host's, over the revisions it keeps; the binding is
+    // asked first, so the text stands where undo left it.
+    typed(&mut tui, "<C-r>");
+    assert_eq!(lines(&mut tui)[..1], ["one"], "the binding, not redo");
+    assert!(status(&mut tui).starts_with("note  3:1"), "{}", status(&mut tui));
+
+    // `u` likewise: bound, it is its line and not undo.
+    typed(&mut tui, ":bind u write<CR>gg");
+    typed(&mut tui, "xu");
+    assert_eq!(lines(&mut tui)[..1], ["ne"], "the binding, not undo");
+    assert_eq!(rig.disk("note"), b"ne\ntwo\nthree\n", "its line wrote");
+
+    // Visual is the other mode the map answers in: a bound `d` is its
+    // line there too, and leaves visual as a typed `:` does.
+    typed(&mut tui, ":bind d nohlsearch<CR>vld");
+    assert_eq!(lines(&mut tui)[..1], ["ne"], "the binding, not delete");
+    assert_eq!(cat(&host, "mode"), "normal\n");
+}
+
 #[test]
 fn bind_fills_two_fields_and_w_is_unchanged() {
     let (rig, mut tui, _host, _seen) = three("bind-two-fields");
@@ -512,6 +546,25 @@ fn an_exact_prefix_with_longer_runs_on_mismatch() {
     assert_eq!(rig.disk("note"), b"ne\ntwo\nthree\n", "`,w` ran");
     assert_eq!(cat(&host, "mode"), "insert\n");
     assert_eq!(lines(&mut tui)[..1], ["nxe"], "`a` then `x`, in order");
+}
+
+/// A prefix that turns out to be none hands its keys back to the
+/// built-ins, which is nvim's rule too: with only `<C-r>x` mapped,
+/// `<C-r>l` ends where it ends with nothing mapped at all.
+#[test]
+fn a_failed_prefix_releases_to_the_built_in() {
+    let (_rig, mut tui, _host, _seen) = three("bind-releases");
+    typed(&mut tui, ":bind <lt>C-r>x nohlsearch<CR>");
+    assert_eq!(said(&mut tui), "");
+    typed(&mut tui, "xu");
+    assert_eq!(lines(&mut tui)[..1], ["one"], "the `x` undone");
+
+    // `<C-r>` is a prefix and no binding of its own: the `l` settles
+    // that none was typed, and both keys go to the built-ins in the
+    // order they were held.
+    typed(&mut tui, "<C-r>l");
+    assert_eq!(lines(&mut tui)[..1], ["ne"], "the key let go redid");
+    assert!(status(&mut tui).starts_with("note  1:2"), "{}", status(&mut tui));
 }
 
 #[test]
