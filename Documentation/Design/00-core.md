@@ -35,9 +35,10 @@ Everything is a Resource.
 
 The Kernel owns the ID. Everything else is reported by the Driver and
 cached by the Kernel. A stale cache is normal; `watch` says it moved.
-Three queries read that cache and never reach a Driver: `info(rd)`,
-`parent(rd) -> rd`, `children(rd) -> [rd]`. They take an rd, not a
-handle: metadata needs no right, like stat by inode.
+`info(rd)` and `parent(rd) -> rd` read that cache and never reach a
+Driver; `children(rd) -> [rd]` asks the Container's Driver to list
+once and answers from the cache from then on. All three take an rd,
+not a handle: metadata needs no right, like stat by inode.
 
 ## Module
 
@@ -108,15 +109,18 @@ Lower and upper are positions, not kinds; a Driver does both.
 
 - Children are lazy: resolving a name asks the Container's Driver
   `lookup`, which registers the child then. An empty name means
-  "register all children now"; the Kernel asks once before the first
-  `children` on that rd. A row flagged `CONTAINER` holds only the
-  names it registered, so a name it has no child of, and whose Driver
-  answers `Unsupported` for (no `lookup` of its own), is `Invalid` —
-  on any Container a Driver owns, and on a Module's home the same way,
-  the home's missing names being the Module's first Driver's to
-  answer (`DriverId(0)`, a home carrying no `DriverId` of its own). A
-  row that is no Container keeps `Unsupported`, and a Driver with a
-  `lookup` of its own still answers for itself.
+  "register all children now"; the Kernel asks a Driver-owned
+  Container once before the first `children` on it. A Module's home
+  is the Kernel's own row and is never asked to list: it holds what
+  the Module registered under it and nothing else.
+- A row flagged `CONTAINER` holds only the names it registered, so a
+  name it has no child of, and whose Driver answers `Unsupported` for
+  (no `lookup` of its own), is `Invalid` — on any Container a Driver
+  owns, and on a Module's home the same way, a missing name there
+  going to the Module's first Driver (`DriverId(0)`, a home carrying
+  no `DriverId` of its own). A row that is no Container keeps
+  `Unsupported`, and a Driver with a `lookup` of its own still
+  answers for itself.
 - `read` fills `len`; 0 with `Ready(Ok)` is EOF. A stream Driver
   ignores `at`. Where a Driver has frames, one `read` or `write` is one
   frame; per-frame metadata is a package api, not a Kernel op.
@@ -132,7 +136,7 @@ Lower and upper are positions, not kinds; a Driver does both.
   sys/            id 1   Kernel   modules/<name>, decls/<hash>, var
   module/<name>/         Kernel   only Module <name> registers below
   session/<id>/          Kernel   common; made when a Client connects
-    client/<cid>/        Kernel   display, input, state
+    client/<cid>/        Kernel   capability, heard, self
     <name>/…             Module   per-session state, owner-only below
   var/                   Kernel   common, global
 ```
@@ -150,6 +154,15 @@ deleted Session takes its Module state with it. An rd never changes
 parent: moving is unregister, then register with a new id. Relations
 across roots are pointer rds, never registrations in another owner's
 tree. A pointer rd is a Read rd whose content is the target rd id.
+
+A Client's own rds stand under `client/<cid>/self`, mirrored row by
+row as somebody asks for them: the metadata is the mirror's and costs
+no message, while every op that acts is forwarded and the Client's
+answer is the truth. The Client announces its side with `changed`,
+which carries four kinds over the wire where a Module's carries two:
+`Modify` and `Attrib` are events; `Gone` retires the mirrored row
+with its subtree; `Create` unmarks that row's listing, so the next
+`children` asks the Client again.
 
 ## Declaration
 
