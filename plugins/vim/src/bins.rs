@@ -34,12 +34,12 @@ reovim_sdk::declare! {
 
 reovim_sdk::declare! {
     /// A name that reads a bang and a path: `write`, `edit`,
-    /// `explore`. `address` is read and not used — this door writes
-    /// no range apart yet, and a bound or typed `:` from visual
-    /// always puts `'<,'>` on its line, so the field stands here only
-    /// so that keeps reaching no farther than it always has, in
-    /// silence, rather than the shell's own refusal of a flag no
-    /// field is named for.
+    /// `explore`. `address` is the range's own text: `write` writes
+    /// the lines it names apart, and `edit` and `explore` take none
+    /// (E481), declaring the field so a bound or typed `:` from
+    /// visual, which always puts `'<,'>` on its line, reaches them at
+    /// all rather than the shell's own refusal of a flag no field is
+    /// named for.
     api file ver 1 {
         0 run(args: Args) -> Rd: READ;
     }

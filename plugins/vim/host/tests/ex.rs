@@ -169,6 +169,91 @@ fn a_colon_line_is_a_shell_line() {
     assert_eq!(said(&mut tui), "coreutils", "the pipe filters it");
 }
 
+/// `:{range}w [FILE]`, as nvim 0.12.5 has it (the oracle table in
+/// tmp/ranged-write-evidence/00-oracle.md): the lines the address
+/// names, each ended by its newline, written to FILE and nothing
+/// else, while the draft, its source and its modified flag stay
+/// exactly as they were. A write is not a save.
+#[test]
+fn a_ranged_write_writes_its_lines_and_leaves_the_draft_alone() {
+    let (rig, mut tui, _host) = over("ex-range-write");
+
+    assert_eq!(typed(&mut tui, ":2,3w out<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "", "a write of its own says nothing");
+    assert_eq!(rig.disk("d/out"), b"two a\nthree a\n");
+    assert_eq!(rig.disk("d/note"), b"one a\ntwo a\nthree a\n");
+    assert_eq!(lines(&mut tui), ["one a", "two a", "three a"]);
+
+    // A file that is there already is E13 and takes nothing; the
+    // bang writes over it, as `:w! NAME` does.
+    assert_eq!(typed(&mut tui, ":1w out<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E13: File exists (add ! to override)");
+    assert_eq!(rig.disk("d/out"), b"two a\nthree a\n");
+    assert_eq!(typed(&mut tui, ":1w! out<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(rig.disk("d/out"), b"one a\n");
+
+    // The modified flag is the draft's own: an insert this write
+    // carried to another file is still unsaved here, and `:q`
+    // refuses it as it would have before the write.
+    assert_eq!(typed(&mut tui, "ix<Esc>:2,3w! out<CR>"), Step::Changed);
+    assert_eq!(rig.disk("d/out"), b"two a\nthree a\n");
+    assert_eq!(rig.disk("d/note"), b"one a\ntwo a\nthree a\n");
+    assert_eq!(typed(&mut tui, ":q<CR>"), Step::Changed);
+    let e37 = "E37: No write since last change (add ! to override)";
+    assert_eq!(said(&mut tui), e37);
+}
+
+/// The two refusals nvim words for a range: E140 for a partial buffer
+/// with no file of its own to go to, E481 for a range on a name whose
+/// grammar has none.
+#[test]
+fn a_range_with_no_file_is_e140_and_a_range_on_edit_is_e481() {
+    let (rig, mut tui, _host) = over("ex-range-refused");
+
+    assert_eq!(typed(&mut tui, "ix<Esc>:2,3w<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E140: Use ! to write partial buffer");
+    assert_eq!(rig.disk("d/note"), b"one a\ntwo a\nthree a\n");
+
+    // nvim's test is a partial draft over *the draft's own file*,
+    // which a name reaches as well as an empty one: E140 either way,
+    // and E13 belongs to another file that is there already.
+    assert_eq!(typed(&mut tui, ":2,3w note<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E140: Use ! to write partial buffer");
+    assert_eq!(rig.disk("d/note"), b"one a\ntwo a\nthree a\n");
+
+    // The bang writes the range over the draft's own file, which is
+    // what nvim's `:{range}w!` leaves on disk; the draft is untouched.
+    assert_eq!(typed(&mut tui, ":2,3w!<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(rig.disk("d/note"), b"two a\nthree a\n");
+    assert_eq!(lines(&mut tui), ["xone a", "two a", "three a"]);
+
+    // `:e` and reovim's own `:explore` take no range at all.
+    assert_eq!(typed(&mut tui, ":2,3e<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+    assert_eq!(typed(&mut tui, ":2,3explore<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "E481: No range allowed");
+    assert_eq!(lines(&mut tui), ["xone a", "two a", "three a"]);
+
+    // The bang takes the draft's own file by name too.
+    assert_eq!(typed(&mut tui, ":1w! note<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(rig.disk("d/note"), b"xone a\n");
+}
+
+/// A selection is an address like any other: the `'<,'>` the binding
+/// puts on the line names the lines the write takes.
+#[test]
+fn a_selection_writes_the_lines_it_covers() {
+    let (rig, mut tui, _host) = over("ex-visual-write");
+
+    assert_eq!(typed(&mut tui, "Vj:w sel<CR>"), Step::Changed);
+    assert_eq!(said(&mut tui), "");
+    assert_eq!(rig.disk("d/sel"), b"one a\ntwo a\n");
+    assert_eq!(rig.disk("d/note"), b"one a\ntwo a\nthree a\n");
+}
+
 #[test]
 fn a_name_of_vims_own_runs_from_outside_every_frame_of_its_own() {
     let (rig, mut tui, host) = over("ex-outside");

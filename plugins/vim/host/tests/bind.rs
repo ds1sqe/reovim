@@ -289,7 +289,12 @@ fn a_bound_alt_in_visual_runs_its_line_and_leaves_visual() {
     typed(&mut tui, ":bind <lt>M-w> write<CR>");
     typed(&mut tui, "x");
     typed(&mut tui, "v<M-w>");
-    assert_eq!(rig.disk("note"), b"ne\ntwo\nthree\n");
+    // The line ran with the selection's own `'<,'>` on it, which is
+    // what nvim's `vnoremap <M-w> :write<CR>` runs: `:'<,'>write`, a
+    // partial buffer over the draft's own file, E140 without a bang.
+    // The message is the proof the line ran; nothing was written.
+    assert_eq!(said(&mut tui), "E140: Use ! to write partial buffer");
+    assert_eq!(rig.disk("note"), b"one\ntwo\nthree\n");
     assert_eq!(cat(&host, "mode"), "normal\n", "visual was left first");
     // No `<Esc>` and no `w` were let go, so the cursor never moved.
     assert!(status(&mut tui).starts_with("note  1:1"), "{}", status(&mut tui));

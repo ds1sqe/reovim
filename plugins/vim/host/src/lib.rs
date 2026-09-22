@@ -232,6 +232,11 @@ const E37: &str = "E37: No write since last change (add ! to override)";
 const E13: &str = "E13: File exists (add ! to override)";
 /// What a write says when the host would not make the file.
 const E212: &str = "E212: Can't open file for writing";
+/// What a write of part of a draft says when the file it would write
+/// is the draft's own and no bang says to take it.
+const E140: &str = "E140: Use ! to write partial buffer";
+/// What a name whose grammar holds no range says to one.
+const E481: &str = "E481: No range allowed";
 /// What a `:` line says of a first token neither Vim's own list nor
 /// PATH has.
 const E492: &str = "E492: Not an editor command:";
@@ -1416,18 +1421,30 @@ impl Editor {
     }
 
     /// The file `path` names made under the root and the head written
-    /// to it: every missing directory on the way by `mkdir`, then
-    /// `create`. A file that appeared since is E13 unless `bang` says
-    /// to write over it; anything that refuses to make the file, the
-    /// host and a file where a directory is wanted alike, is E212.
+    /// to it.
     fn written_to(
         &self,
         ctx: &dyn Calls,
         path: &str,
         bang: bool,
     ) -> Result<bool, Error> {
+        self.onto(ctx, path, bang, |target| self.published_to(ctx, target))
+    }
+
+    /// The file `path` names made under the root — every missing
+    /// directory on the way by `mkdir`, then `create` — and `write`
+    /// run over it. A file that appeared since is E13 unless `bang`
+    /// says to write over it; anything that refuses to make the file,
+    /// the host and a file where a directory is wanted alike, is E212.
+    fn onto(
+        &self,
+        ctx: &dyn Calls,
+        path: &str,
+        bang: bool,
+        write: impl FnOnce(Rd) -> Result<bool, Error>,
+    ) -> Result<bool, Error> {
         match self.making(ctx, path, bang) {
-            Ok(Some(target)) => self.published_to(ctx, target),
+            Ok(Some(target)) => write(target),
             Ok(None) => {
                 self.fails(E13);
                 Ok(false)
@@ -1439,6 +1456,60 @@ impl Editor {
                 Ok(false)
             }
         }
+    }
+
+    /// `:{range}w PATH`: `text`, the lines an address named, written
+    /// to that file and nothing else, `PATH` resolved where `:w NAME`
+    /// resolves it. The draft is not published and no edit is sent,
+    /// so its source, its history and its modified flag stand exactly
+    /// as they were — a ranged write is not a save, which is what
+    /// nvim leaves behind.
+    pub(crate) fn lines_to(
+        &self,
+        ctx: &dyn Calls,
+        path: &str,
+        bang: bool,
+        text: String,
+    ) -> Result<(), Error> {
+        self.onto(ctx, path, bang, |target| {
+            ops::put(ctx, target, text.into_bytes()).map(|_| true)
+        })
+        .map(drop)
+    }
+
+    /// `:{range}w!` with no path: those same lines over the draft's
+    /// own file, which is where nvim puts them and which only the
+    /// bang allows (E140 otherwise, said by the run). A Buffer over
+    /// nothing writes the file it was opened for and has no file name
+    /// without one, as [`Self::save`] has it.
+    pub(crate) fn lines_over(
+        &self,
+        ctx: &dyn Calls,
+        bang: bool,
+        text: String,
+    ) -> Result<(), Error> {
+        let source = self.vim.borrow().source();
+        if let Some(source) = source {
+            return ops::put(ctx, source, text.into_bytes()).map(drop);
+        }
+        let Some(name) = self.stay()?.name.clone() else {
+            self.fails(E32);
+            return Ok(());
+        };
+        self.lines_to(ctx, &rooted(&name), bang, text)
+    }
+
+    /// Whether `path` names the very file the draft is over — nvim's
+    /// "the current file", which a partial write of the draft reaches
+    /// only under a bang (E140 otherwise), where another file that is
+    /// there already is E13.
+    pub(crate) fn own(
+        &self,
+        ctx: &dyn Calls,
+        path: &str,
+    ) -> Result<bool, Error> {
+        let source = self.vim.borrow().source();
+        Ok(source.is_some() && self.at(ctx, path)? == source)
     }
 
     /// The head written to `target`, which a Buffer over nothing goes

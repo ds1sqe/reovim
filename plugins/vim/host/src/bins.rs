@@ -19,7 +19,7 @@ use reovim_plugin_vim::bins::{
 };
 use reovim_plugin_vim::{Effect, Quit, Switch, Vim, asked};
 
-use crate::{Editor, named};
+use crate::{E140, E481, Editor, named};
 
 /// One call on a name of Vim's: the rd it came in on is a full name or
 /// one of its abbreviations, [`canonical`] reading either back to the
@@ -104,18 +104,31 @@ impl bang::Api for Editor {
 }
 
 impl file::Api for Editor {
-    /// `:w[!] [PATH]`, `:e[!] PATH` and `:exp[lore][!] [DIR]`. The path
-    /// is the rest of the line, so `:w my file` is one name, and it is
-    /// resolved where the editor stands.
+    /// `:[range]w[!] [PATH]`, `:e[!] PATH` and `:exp[lore][!] [DIR]`.
+    /// The path is the rest of the line, so `:w my file` is one name,
+    /// and it is resolved where the editor stands.
+    ///
+    /// An address makes `write` another door (`wrote`, below) and is no
+    /// part of `edit` or `explore` at all; it is resolved ahead of
+    /// `did`, as `point`'s is, a write of its own being the host's
+    /// call and the message it leaves this run's own to print.
     fn run(
         &self,
         ctx: &dyn Calls,
         rd: Rd,
         args: file::Args,
     ) -> Result<Rd, Error> {
-        let file::Args { bang, address: _, path } = args;
+        let file::Args { bang, address, path } = args;
+        let name = named(ctx, rd)?;
+        let lines = match addressed(&self.vim, &address) {
+            Ok(lines) => lines,
+            Err(text) => return self.said(ctx, rd, text),
+        };
+        if let Some(lines) = lines {
+            return wrote(self, ctx, rd, canonical(&name), lines, &path, bang);
+        }
         let held = !path.is_empty();
-        let effect = match canonical(&named(ctx, rd)?) {
+        let effect = match canonical(&name) {
             "write" if held => Effect::SaveAs(path, bang),
             "write" => Effect::Save(bang),
             "edit" if held => Effect::Open(asked(path, bang)),
@@ -125,6 +138,45 @@ impl file::Api for Editor {
         };
         self.did(ctx, rd, |_| effect)
     }
+}
+
+/// A name of the `file` shape run with an address on it, as nvim
+/// 0.12.5 answers one: `:{range}w PATH` writes the lines the address
+/// named, and nothing else, to PATH; a partial draft over the draft's
+/// own file, named or not, is `E140` without a bang and a write with
+/// one; and a range on `edit` or `explore` is `E481`.
+///
+/// Nothing here publishes the draft or sends it an edit, so its
+/// source and its modified flag stand as they were: nvim's
+/// `:2,3w out` leaves an unsaved draft unsaved.
+fn wrote(
+    editor: &Editor,
+    ctx: &dyn Calls,
+    rd: Rd,
+    name: &str,
+    lines: (usize, usize),
+    path: &str,
+    bang: bool,
+) -> Result<Rd, Error> {
+    let text = editor.vim.borrow().text_of(lines);
+    match name {
+        "write" if bang && path.is_empty() => {
+            editor.lines_over(ctx, bang, text)?;
+        }
+        "write" if bang => editor.lines_to(ctx, path, bang, text)?,
+        // nvim's E140 is about a partial draft over *the draft's own
+        // file*, which a name reaches as well as an empty one; another
+        // file that is there already is E13, and the bang above is the
+        // whole of the difference.
+        "write" if path.is_empty() || editor.own(ctx, path)? => {
+            editor.fails(E140);
+        }
+        "write" => editor.lines_to(ctx, path, bang, text)?,
+        "edit" | "explore" => editor.fails(E481),
+        _ => return Err(Error::Unsupported),
+    }
+    let said = editor.vim.borrow_mut().saying();
+    editor.said(ctx, rd, said)
 }
 
 impl numbered::Api for Editor {

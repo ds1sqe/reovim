@@ -334,6 +334,22 @@ impl Vim {
         Ok((from.min(to), from.max(to)))
     }
 
+    /// The text of the lines `lines` names, each ended by its own
+    /// newline as a file's lines are: what `:{range}w FILE` writes.
+    /// A last line the text ends without one still gets one here,
+    /// which is what nvim writes under `fixeol`.
+    #[must_use]
+    pub fn text_of(&self, (first, last): Lines) -> String {
+        let Some(from) = self.line_at(first) else {
+            return String::new();
+        };
+        let to =
+            self.line_at(last).map_or(self.text.len(), |at| self.line_end(at));
+        let mut text = String::from(&self.text[from..to]);
+        text.push('\n');
+        text
+    }
+
     /// One address item: its base, `here` the line relative addresses
     /// and an empty base read from, then its own `+`/`-` offsets,
     /// clamped to the text.
