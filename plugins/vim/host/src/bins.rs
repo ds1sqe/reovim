@@ -15,7 +15,7 @@ use core::cell::RefCell;
 use reovim_kernel_interface::{Calls, Error, Rd};
 use reovim_plugin_vim::bins::{
     bang, bound, canonical, each, file, lines, located, numbered, option,
-    plain, point, subst,
+    plain, point, sought, subst,
 };
 use reovim_plugin_vim::{Effect, Quit, Switch, Vim, asked};
 
@@ -53,6 +53,7 @@ pub fn dispatch(
         "bind" => bound::dispatch(vim, ctx, rd, number, input),
         "point" => point::dispatch(vim, ctx, rd, number, input),
         "goto" => located::dispatch(vim, ctx, rd, number, input),
+        "search" => sought::dispatch(vim, ctx, rd, number, input),
         _ => Err(Error::Unsupported),
     }
 }
@@ -248,6 +249,23 @@ impl located::Api for Editor {
         args: located::Args,
     ) -> Result<Rd, Error> {
         self.did(ctx, rd, move |vim| vim.goto(&args.locator))
+    }
+}
+
+impl sought::Api for Editor {
+    /// `:search [--backward] [PATTERN]`: the `/` line by another
+    /// door. The pattern is the rest of the line, verbatim, so
+    /// `:search a b` looks for `a b`, and with none the prompt opens
+    /// — `bind <C-s> search` makes `C-s` the `/` key and `bind <C-r>
+    /// search --backward` the `?` key.
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: sought::Args,
+    ) -> Result<Rd, Error> {
+        let sought::Args { backward, pattern } = args;
+        self.did(ctx, rd, move |vim| vim.searching(&pattern, backward))
     }
 }
 

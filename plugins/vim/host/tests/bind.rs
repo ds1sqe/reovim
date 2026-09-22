@@ -124,10 +124,10 @@ fn help_bind_says_its_form() {
     let (_rig, mut tui, host, _seen) = three("bind-help");
     typed(&mut tui, ":help bind<CR>");
     assert_eq!(said(&mut tui), "bind [keys] [line]");
-    // 25 full names and every abbreviation nvim takes for one of
+    // 26 full names and every abbreviation nvim takes for one of
     // them, plus `explore` and `cli`'s own — reovim's, nvim naming
     // neither — each an exact node of its own under `bin`.
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 105);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 106);
 
     // `b` is one of `buffer`'s own abbreviations, an exact name under
     // `bin` and not a prefix resolved at the call.

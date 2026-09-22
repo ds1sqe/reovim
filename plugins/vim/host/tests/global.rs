@@ -40,7 +40,7 @@ fn the_three_names_resolve_and_s_stays_substitute() {
     rig.file("note", b"a\n");
     let host = rig.host();
     let mut tui = editor(&host, &Editor::new());
-    // The listing is the 25 full names, in `declared`'s own order,
+    // The listing is the 26 full names, in `declared`'s own order,
     // and every abbreviation nvim takes for one of them beside them —
     // the shell's exact lookup finding either, no order among them
     // resolving a prefix any more.
@@ -50,7 +50,7 @@ fn the_three_names_resolve_and_s_stays_substitute() {
     for name in &full {
         at += names[at..].iter().position(|n| n.as_str() == *name).unwrap() + 1;
     }
-    assert_eq!(names.len(), 105, "25 full names and every abbreviation");
+    assert_eq!(names.len(), 106, "26 full names and every abbreviation");
     typed(&mut tui, ":help global<CR>");
     assert_eq!(said(&mut tui), "global [-b] [--address ADDRESS] [spec]");
     typed(&mut tui, ":help delete<CR>");

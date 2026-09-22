@@ -212,17 +212,18 @@ fn the_listing_is_every_full_name_and_every_abbreviation() {
         "bind",
         "point",
         "goto",
+        "search",
     ];
-    // The 25 full names, in `declared`'s own order, and 80
+    // The 26 full names, in `declared`'s own order, and 80
     // abbreviations beside them: nvim's own minimum for a name it
-    // has (`nohlsearch` needs `noh`, not the `n` a fixed 25-name set
+    // has (`nohlsearch` needs `noh`, not the `n` a fixed 26-name set
     // would leave unique), and `explore`/`cli`'s own, reovim's own
     // names, which nvim names no minimum for at all.
     let mut at = 0;
     for name in full {
         at += names[at..].iter().position(|n| n == name).unwrap() + 1;
     }
-    assert_eq!(names.len(), 105);
+    assert_eq!(names.len(), 106);
     for (short, canonical) in [
         ("w", "write"),
         ("wq", "wq"),
@@ -253,7 +254,7 @@ fn the_listing_is_every_full_name_and_every_abbreviation() {
             "{short}"
         );
     }
-    // `nohlsearch` needs `noh`: a fixed 25-name set would leave `n`
+    // `nohlsearch` needs `noh`: a fixed 26-name set would leave `n`
     // unique too, but nvim does not take it, and neither does this.
     assert!(!names.iter().any(|n| n == "n"), "n is not nohlsearch's");
     // `c` is nvim's `:change` and reovim has none: `cquit` begins at
@@ -262,10 +263,11 @@ fn the_listing_is_every_full_name_and_every_abbreviation() {
     // `buffers` takes no shorter form at all: `b`..`buffe` are
     // `buffer`'s own, `buf` among them.
     assert_eq!(reovim_plugin_vim::bins::canonical("buf"), "buffer");
-    // `bind`, `point` and `goto` are reovim's own, none of nvim's,
-    // and take no shorter form at all — a fixed 25-name set would
-    // leave `bi`, `p` and `go` unique, but nothing here answers them.
-    for short in ["bi", "p", "go"] {
+    // `bind`, `point`, `goto` and `search` are reovim's own, none of
+    // nvim's, and take no shorter form at all — a fixed 26-name set
+    // would leave `bi`, `p`, `go` and `sea` unique, but nothing here
+    // answers them.
+    for short in ["bi", "p", "go", "sea"] {
         assert!(!names.iter().any(|n| n == short), "{short} names nothing");
     }
 

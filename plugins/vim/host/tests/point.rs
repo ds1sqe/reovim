@@ -59,7 +59,7 @@ fn the_cursor_is_path_line() {
     // The cell is the same reading, for a script that never typed a
     // key: one method with arguments, one cell.
     assert_eq!(cat(&host, "point"), "/README.md:11\n");
-    assert_eq!(listed(&host, "/self/vim/bin").len(), 105);
+    assert_eq!(listed(&host, "/self/vim/bin").len(), 106);
 }
 
 #[test]

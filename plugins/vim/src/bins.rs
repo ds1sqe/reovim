@@ -4,9 +4,12 @@
 //! and the rd a call comes in on is which name it is — where a Module
 //! whose names each have a shape of their own tells them apart by the
 //! api's hash. What a name takes is its declaration and nothing beside
-//! it: the range and the bang are Vim's own language and reach a run as
-//! the environment its host set, matched by name and type, `from` and
-//! `to` being lines from 0 as the engine counts them.
+//! it: the range and the bang are Vim's own language, and the engine's
+//! own `ex` puts them back on the line as `--address` and `--bang`,
+//! for the shell to read as it reads any other flag. An address is
+//! text wherever it goes and never a pair of lines: a name that
+//! declares one resolves it at the run through the engine's one
+//! resolver, [`crate::Vim::lines_of`].
 //!
 //! What a run of one does is the host's: it holds the `Api` impls,
 //! each answering the one effect the arm `ex` used to have.
@@ -118,6 +121,17 @@ reovim_sdk::declare! {
     record Args { locator: utf8(64) }
 }
 
+reovim_sdk::declare! {
+    /// `search`: a pattern to look for and the way to go. The pattern
+    /// is the rest of the line, verbatim, so `:search a b` looks for
+    /// `a b`; none at all opens the prompt, which is what makes a key
+    /// bound to this name the `/` key.
+    api sought ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { backward: bool, pattern: utf8(1024) }
+}
+
 /// The full names, each with the declaration of the shape it takes.
 ///
 /// [`abbreviated`] is every shorter name nvim also takes for one of
@@ -125,7 +139,7 @@ reovim_sdk::declare! {
 /// `start`, both tables: the shell's PATH lookup is by exact name, so
 /// no order here resolves a prefix the way it once did.
 #[must_use]
-pub fn declared() -> [(&'static str, Decl); 25] {
+pub fn declared() -> [(&'static str, Decl); 26] {
     let (plain, bang, file) = (plain::decl(), bang::decl(), file::decl());
     [
         ("write", file.clone()),
@@ -154,6 +168,7 @@ pub fn declared() -> [(&'static str, Decl); 25] {
         ("bind", bound::decl()),
         ("point", point::decl()),
         ("goto", located::decl()),
+        ("search", sought::decl()),
     ]
 }
 
@@ -166,7 +181,8 @@ pub fn declared() -> [(&'static str, Decl); 25] {
 /// all, and take one each short of what they would collide with:
 /// `edit` standing first takes `e`/`ed`/`edi`, so `explore` is
 /// `ex`/`exp`/`expl`/`explo`/`explor`, and `cli` is `cl` alone. `wq`,
-/// `buffers`, `bind`, `point` and `goto` take no shorter form at all.
+/// `buffers`, `bind`, `point`, `goto` and `search` take no shorter
+/// form at all.
 const ABBREVIATED: &[(&str, usize)] = &[
     ("write", 1),
     ("quit", 1),
@@ -240,7 +256,7 @@ mod tests {
         assert!(!short.iter().any(|(s, _)| *s == "c"), "c names nothing");
         assert!(short.contains(&("cl", "cli")));
         // The rest of reovim's own take no shorter form at all.
-        for name in ["wq", "buffers", "bind", "point", "goto"] {
+        for name in ["wq", "buffers", "bind", "point", "goto", "search"] {
             assert!(
                 !short.iter().any(|(_, full)| *full == name),
                 "{name} has no abbreviation"

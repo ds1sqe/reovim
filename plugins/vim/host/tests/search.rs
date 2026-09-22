@@ -986,3 +986,85 @@ fn hlsearch_marks_every_match_of_the_line_so_far() {
     typed(&mut tui, "<Esc>");
     assert_eq!(marks(&host), [(1, 2), (3, 4), (6, 7)], "the last pattern's");
 }
+
+/// One search run to the end of its list: the row, the cursor, the
+/// views the Client holds, and where `n` goes after it — all a person
+/// sees of a `/` line, and what the `search` name must leave alike.
+///
+/// `n` is the last pattern's own door: a name that searched without
+/// setting it would move nowhere.
+fn sought(
+    name: &str,
+    keys: &str,
+) -> (String, (usize, usize), Vec<String>, (usize, usize)) {
+    let (_rig, host, vim, mut tui) = over(name, b"foo one\nbar\nfoo two\n");
+    typed(&mut tui, keys);
+    let mut frames = 0;
+    while vim.counted().is_none() {
+        tui.tick().unwrap();
+        frames += 1;
+        assert!(
+            frames < 500,
+            "{keys}: the list never turned whole: {}",
+            said(&mut tui)
+        );
+    }
+    let row = said(&mut tui);
+    let at = vim.position();
+    let views = listed(&host, "/self/search");
+    typed(&mut tui, "n");
+    (row, at, views, vim.position())
+}
+
+/// `search` is a name on PATH and the `/` line is that name chosen:
+/// `:search foo` does what `/foo` does, and `--backward` what `?`
+/// does — the same cursor, the same last pattern, the same count row
+/// and the same one view.
+#[test]
+fn search_the_name_is_the_slash_line() {
+    assert_eq!(
+        sought("search-name-forward", ":search foo<CR>"),
+        sought("search-slash-forward", "/foo<CR>"),
+    );
+    assert_eq!(
+        sought("search-name-backward", ":search --backward foo<CR>"),
+        sought("search-question-backward", "?foo<CR>"),
+    );
+}
+
+/// The name with no pattern opens the prompt the `/` key opens, so a
+/// key bound to it is the `/` key: `bind <C-s> search` and `<C-s>foo`
+/// is `/foo`.
+#[test]
+fn search_with_no_pattern_opens_the_prompt() {
+    assert_eq!(
+        sought("search-name-prompt", ":search<CR>foo<CR>"),
+        sought("search-slash-prompt", "/foo<CR>"),
+    );
+    assert_eq!(
+        sought("search-name-bound", ":bind <lt>C-s> search<CR><C-s>foo<CR>"),
+        sought("search-slash-bound", "/foo<CR>"),
+    );
+}
+
+/// The view is the stay's, whichever door asked for it: a `/` line
+/// opens one and the name after it seeks that same one, as 04.8's
+/// counting wrapper shows.
+#[test]
+fn search_is_one_view_a_stay_with_the_slash_line() {
+    let counting = Watched::new(false, None);
+    let (_rig, host, vim, mut tui) =
+        wrapped("search-name-one-view", b"abc\nfoo abc\n", &counting);
+    let mut seen = Vec::new();
+    typed(&mut tui, "/a<CR>");
+    views(&host, &mut seen);
+    let view = held(&host);
+    assert_eq!(vim.position(), (1, 4), "the `/` line landed");
+    typed(&mut tui, ":search b<CR>");
+    views(&host, &mut seen);
+    let row = said(&mut tui);
+    assert_eq!(vim.position(), (1, 5), "the name's line after it: {row}");
+    assert_eq!(held(&host), view, "the one view, sought and not reopened");
+    assert_eq!(seen.len(), 1, "one view across the two lines");
+    assert_eq!(counting.opens.get(), 1, "opened once");
+}

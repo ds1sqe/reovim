@@ -229,6 +229,25 @@ impl Vim {
         self.motion(Motion::Search { forward }, n)
     }
 
+    /// `search [--backward] [PATTERN]`, the name on PATH whose line
+    /// the `/` and `?` keys are one door of: a pattern is searched
+    /// for from the cursor exactly as a typed line's is — the same
+    /// motion, the same view, and the pattern the last one after it,
+    /// so `n` and `N` and `hlsearch` follow it. No pattern opens the
+    /// prompt those keys open, which is what makes a key bound to
+    /// this name the `/` key.
+    pub fn searching(&mut self, pattern: &str, backward: bool) -> Effect {
+        let forward = !backward;
+        let at = if forward { '/' } else { '?' };
+        if pattern.is_empty() {
+            return self.prompt(at, 0);
+        }
+        // A search is a motion: the want is set where it lands, as
+        // `run` sets it for the line a person typed.
+        self.keep_want = false;
+        self.searched(String::from(pattern), forward, 1)
+    }
+
     /// One line of `init`, which no key typed: the `:` line it is,
     /// run apart from whatever ran before it, so its edits begin a
     /// revision of their own rather than joining a replay's.
