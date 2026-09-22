@@ -33,12 +33,26 @@ pub struct Options {
 
 /// The last search: its pattern, its direction, and whether `:noh`
 /// has hidden its marks.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Search {
     pub pattern: String,
     pub forward: bool,
     pub stale: bool,
     pub options: Options,
+}
+
+/// nvim's `v:searchforward` starts at `1`: a pattern set on a draft
+/// nothing has searched — by a `:s` or a `:g`, which leave the
+/// direction alone — is one `n` goes forward through.
+impl Default for Search {
+    fn default() -> Self {
+        Self {
+            pattern: String::new(),
+            forward: true,
+            stale: false,
+            options: Options::default(),
+        }
+    }
 }
 
 /// How far the list goes, as the last read of `matches` left it.

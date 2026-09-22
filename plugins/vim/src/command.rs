@@ -311,11 +311,14 @@ impl Vim {
         if address.is_empty() {
             return Effect::Moved;
         }
-        let range = match self.lines_of(address) {
+        let range = match self.resolved_lines(address) {
             Ok(range) => range,
             Err(effect) => return effect,
         };
-        let at = self.line_at(range.1).unwrap_or(self.cursor);
+        // nvim's `do_one_cmd` clamps a bare address to the last line
+        // where a name past the same address is `E16` instead.
+        let last = self.line_count().saturating_sub(1);
+        let at = self.line_at(range.1.min(last)).unwrap_or(self.cursor);
         self.go_clamped(self.at_screen_column(at, self.want))
     }
 
@@ -330,10 +333,27 @@ impl Vim {
     /// merely answered, since a bin's own call has nowhere else to
     /// say it; `E486` the same way for a pattern not found.
     ///
+    /// A range whose last line stands past the text is
+    /// `E16: Invalid range` and nothing runs, which is nvim's own
+    /// `invalid_range`: `:99d` and `:8,99d` on ten lines say it. A
+    /// bare address with no name past it clamps instead, which is
+    /// where this and the engine's own `:99` part.
+    ///
     /// # Errors
     /// The `Effect` the failure already said, `Nothing` in every case
     /// today.
     pub fn lines_of(&mut self, address: &str) -> Result<Lines, Effect> {
+        let lines = self.resolved_lines(address)?;
+        if lines.1 > self.line_count().saturating_sub(1) {
+            self.error("E16: Invalid range");
+            return Err(Effect::Nothing);
+        }
+        Ok(lines)
+    }
+
+    /// The address resolved, its lines as the text names them and not
+    /// yet judged against the text's end.
+    fn resolved_lines(&mut self, address: &str) -> Result<Lines, Effect> {
         if address == "%" {
             return Ok((0, self.line_count().saturating_sub(1)));
         }
@@ -379,8 +399,11 @@ impl Vim {
         last: usize,
     ) -> Result<usize, Effect> {
         let (base, rest) = self.resolved_base(text, here, last)?;
-        let offset = offset_of(rest);
-        Ok(base.saturating_add_signed(offset).min(last))
+        let line = base.saturating_add_signed(offset_of(rest));
+        // A `+N` past a pattern is the search's own offset, which
+        // nvim's `do_search` clamps to the text; every other base's
+        // offset stands as written, for `lines_of` to refuse.
+        Ok(if text.starts_with(['/', '?']) { line.min(last) } else { line })
     }
 
     /// One address base and what follows it past the base alone: `.`,
@@ -407,7 +430,7 @@ impl Vim {
         }
         let digits = text.bytes().take_while(u8::is_ascii_digit).count();
         let number: usize = text[..digits].parse().unwrap_or(here + 1);
-        Ok((number.saturating_sub(1).min(last), &text[digits..]))
+        Ok((number.saturating_sub(1), &text[digits..]))
     }
 
     /// `'x`: the mark's own line, `E20` for one not set or one in
@@ -429,11 +452,12 @@ impl Vim {
         Ok((line.min(last), &rest[name.len_utf8()..]))
     }
 
-    /// `/pat/` or `?pat?`: the next (`/`) or previous (`?`) line past
-    /// `here` the pattern matches, wrapping, and never `here` itself —
-    /// nvim's own "next line" and "previous line". An empty pattern is
-    /// the last one searched, which this also becomes for the next
-    /// empty one.
+    /// `/pat/` or `?pat?`: the next (`/`) or previous (`?`) line the
+    /// pattern matches, wrapping all the way round to `here` itself.
+    /// An empty pattern is the last one searched, which this also
+    /// becomes for the next empty one — and the delimiter is the last
+    /// search's direction, as nvim's `v:searchforward` records it, so
+    /// `n` after `:/x/d` goes forward and after `:?x?d` back.
     fn resolved_pattern<'a>(
         &mut self,
         text: &'a str,
@@ -451,6 +475,7 @@ impl Vim {
             String::from(pattern)
         };
         self.search.pattern.clone_from(&source);
+        self.search.forward = forward;
         let options = self.search.options;
         let Some(compiled) =
             Pattern::parse(&source, options.ignorecase, options.smartcase)
@@ -470,12 +495,14 @@ impl Vim {
         last: usize,
         forward: bool,
     ) -> Result<usize, Effect> {
-        // nvim's own rule: "next line" and "previous line" never
-        // include a match on `here` itself, wrapped around to or not.
+        // Under `wrapscan` nvim's address search runs from the
+        // cursor's own position all the way round, so `here` is the
+        // last line tried and not one skipped: `:/alpha/d` at line 1
+        // of `alpha` takes line 1 itself.
         let order: Vec<usize> = if forward {
-            (here + 1..=last).chain(0..here).collect()
+            (here + 1..=last).chain(0..=here).collect()
         } else {
-            (0..here).rev().chain((here + 1..=last).rev()).collect()
+            (0..here).rev().chain((here..=last).rev()).collect()
         };
         self.first_matching(pattern, &order)
     }
