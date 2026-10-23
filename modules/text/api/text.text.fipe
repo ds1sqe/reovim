@@ -1,0 +1,25 @@
+##! Every Buffer: the edits of one call are one state; `expected`
+##! is the head revision the caller saw, 0 for any, and a different
+##! one is `Stale`. What makes one insert one undo step is the
+##! draft a Client holds, which sends a session as one call.
+##! text api, version 1.
+## The Edit type.
+pub type Edit {
+    ## The at field.
+    pub at: U64,
+    ## The len field.
+    pub len: U64,
+    ## The text field.
+    pub text: String,
+}
+## The Many type.
+pub type Many {
+    ## The expected field.
+    pub expected: U64,
+    ## The edits field.
+    pub edits: Vec<Edit>,
+}
+## Needs WRITE.
+pub replace: (h: Rd<text.text>) -> (at: U64) -> (len: U64) -> (text: String) -> ()
+## Needs WRITE.
+pub replace_many: (h: Rd<text.text>) -> (expected: U64) -> (edits: Vec<Edit>) -> ()

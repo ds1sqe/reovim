@@ -1,0 +1,60 @@
+##! `/self/dev/display`: what the Client shows, a Container of
+##! however many forms the tree under it holds — `0` today.
+##!
+##! `display/0/info` is what THIS one is, a file a fact, as
+##! `/sys/info` is what the Kernel is: `rows` and `cols`, decimal
+##! text the drawer wrote, are the whole terminal (not the
+##! region's own `windows/0/size`, which is `rows - 1`, the status
+##! row taken out), and a missing file is a fact this display has
+##! not — a gui would add `pixels`, `ppi`, a length, none of it
+##! moving what is here.
+##!
+##! `display/0/text` is what it shows: the frame the drawer laid
+##! out. `lines` are its rows top to bottom, a tab already its
+##! spaces and the rows below the last not sent; `status` stays
+##! apart, as it does in a [`window::View`]. `row` and `col` are
+##! the cursor: the line, and the BYTE in that line's `text` —
+##! what a column is belongs to the reader, a tui counting cells
+##! and a gui glyphs. `rows` is carried again here, the height
+##! this frame was drawn for, so one read of `text` alone says
+##! what it was drawn for and a resize cannot land between two
+##! reads of it.
+##!
+##! A `Run` is in the bytes of its `Line`'s `text`, as a `View`'s
+##! `Span` is in the bytes of `over`, `to` one past `text`'s own
+##! length where the run runs on into the newline `text` does not
+##! carry. `style` is a look ([`reovim_sdk::look`]), the drawer's
+##! theme having resolved it already: never 0, and a line's runs
+##! never overlap and stand in order of `from`.
+##! display api, version 1.
+## The Screen type.
+pub type Screen {
+    ## The rows field.
+    pub rows: U64,
+    ## The row field.
+    pub row: U64,
+    ## The col field.
+    pub col: U64,
+    ## The shape field.
+    pub shape: U64,
+    ## The lines field.
+    pub lines: Vec<Line>,
+    ## The status field.
+    pub status: String,
+}
+## The Line type.
+pub type Line {
+    ## The text field.
+    pub text: String,
+    ## The runs field.
+    pub runs: Vec<Run>,
+}
+## The Run type.
+pub type Run {
+    ## The from field.
+    pub from: U64,
+    ## The to field.
+    pub to: U64,
+    ## The style field.
+    pub style: U64,
+}

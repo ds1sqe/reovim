@@ -1,0 +1,56 @@
+##! `/self/search/open` and `/module/search/open`: a view over
+##! `source` from `from`, filled by `pattern`'s matches. `open`
+##! answers a `Rd`; `/self/search/<n>` and `/module/search/<n>` are
+##! its shape, `n` a count from 0 that never goes back.
+##!
+##! `seek` is the journey a line makes. A `/` or an `M-x search`
+##! opens one view at its first key and seeks it at every key
+##! after, reading the same `matches` and `progress` as it goes:
+##! one view and one call a key, never a view a key. A `Seek`'s
+##! `view` drops the list it holds and fills again from `from`
+##! with `pattern`, over the source it was opened on and the
+##! length `open` measured; both cells read the new fill from the
+##! next read on. A pattern that does not parse is `Invalid` and
+##! the view keeps the list it had, so a half-typed line still
+##! shows the last whole one; a `view` that is no view of this
+##! Module's is `Invalid`.
+##! search api, version 1.
+## The Open type.
+pub type Open {
+    ## The source field.
+    pub source: Rd<()>,
+    ## The pattern field.
+    pub pattern: String,
+    ## The ignorecase field.
+    pub ignorecase: Bool,
+    ## The smartcase field.
+    pub smartcase: Bool,
+    ## The from field.
+    pub from: U64,
+}
+## The Seek type.
+pub type Seek {
+    ## The view field.
+    pub view: Rd<()>,
+    ## The pattern field.
+    pub pattern: String,
+    ## The ignorecase field.
+    pub ignorecase: Bool,
+    ## The smartcase field.
+    pub smartcase: Bool,
+    ## The from field.
+    pub from: U64,
+}
+## The Match type.
+pub type Match {
+    ## The over field.
+    pub over: Rd<()>,
+    ## The at field.
+    pub at: U64,
+    ## The len field.
+    pub len: U64,
+}
+## Needs WRITE.
+pub open: (h: Rd<search.search>) -> (source: Rd<()>) -> (pattern: String) -> (ignorecase: Bool) -> (smartcase: Bool) -> (from: U64) -> Rd<()>
+## Needs WRITE.
+pub seek: (h: Rd<search.search>) -> (view: Rd<()>) -> (pattern: String) -> (ignorecase: Bool) -> (smartcase: Bool) -> (from: U64) -> ()

@@ -1,0 +1,7 @@
+##! `/module/text/open`: a Buffer over any rd, or over nothing:
+##! `new` makes one that is empty and cannot save.
+##! open api, version 1.
+## Needs WRITE.
+pub open: (h: Rd<text.open>) -> (source: Rd<()>) -> Rd<()>
+## Needs WRITE.
+pub new: (h: Rd<text.open>) -> Rd<()>

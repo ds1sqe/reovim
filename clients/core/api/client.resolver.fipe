@@ -1,0 +1,84 @@
+##! The resolver's own records: what a Client hands whatever turns
+##! input into editing decisions, and what it is handed back.
+##!
+##! A resolver is neither a Driver nor a Resource — the Rust path
+##! calls one with typed calls of its own — so this api declares
+##! data and no method: the records are what crosses where the
+##! other side is not Rust, and the shape both sides agree on
+##! where it is.
+##!
+##! Five records are what resolving is, and none of them is the
+##! text. [`Input`] is one key on its way in, a [`Press`] kept
+##! whole with an `origin` ([`origin`](crate::origin)) saying
+##! whose it is — the user's, a macro's or a `.`'s — and
+##! `released` saying whether a held prefix that matched nothing
+##! let it go, which is a second fact and not another origin: a
+##! macro's released key is still the macro's. A synthetic key
+##! carries the `Press` of the key that made it, so no clock and
+##! no source is invented and a recorded stream replays. [`Fed`]
+##! is the keys a macro or a `.` replays, which the host pushes
+##! back as `Input`s rather than the resolver feeding itself.
+##! [`Command`] is a line for the shell, whether it was typed or a
+##! binding resolved to it: a name on PATH and its arguments, the
+##! grammar a resolver reads off its own front — Vim's address and
+##! bang — already flags on the line. [`Reply`] answers a wait:
+##! `kind` ([`reply`](crate::reply)) says which answer it is,
+##! `text` what the clipboard held or which operation was refused,
+##! and `error` the `Error` as the Kernel numbers it, read for a
+##! `REFUSED` alone; a continuation no longer waited for is stale
+##! and means nothing. [`State`] is what a frame reads once: the
+##! `mode` ([`mode`](crate::mode)), the `showcmd` a pending count
+##! and operator spell (`3d`), and `waiting` the continuation
+##! still unanswered, 0 for none. The host reads no other field of
+##! a resolver.
+##!
+##! What a resolver decides beyond a line for the shell is its
+##! own host's, in that host's own types: an edit belongs to the
+##! api of the region it is made in, a jump to the Plugin that
+##! serves what is jumped to, a search to the search Module's own
+##! records. Nothing of them is declared here, and nothing is
+##! declared here for a consumer that does not exist: when one
+##! does, it brings its own declaration with it.
+##! resolver api, version 1.
+use client.keyboard
+## The Input type.
+pub type Input {
+    ## The press field.
+    pub press: client.keyboard.Press,
+    ## The origin field.
+    pub origin: U64,
+    ## The released field.
+    pub released: Bool,
+}
+## The Fed type.
+pub type Fed {
+    ## The keys field.
+    pub keys: Vec<U64>,
+    ## The repeat field.
+    pub repeat: Bool,
+}
+## The Command type.
+pub type Command {
+    ## The line field.
+    pub line: String,
+}
+## The Reply type.
+pub type Reply {
+    ## The continuation field.
+    pub continuation: U64,
+    ## The kind field.
+    pub kind: U64,
+    ## The text field.
+    pub text: String,
+    ## The error field.
+    pub error: U64,
+}
+## The State type.
+pub type State {
+    ## The mode field.
+    pub mode: U64,
+    ## The showcmd field.
+    pub showcmd: String,
+    ## The waiting field.
+    pub waiting: U64,
+}

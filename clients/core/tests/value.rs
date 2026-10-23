@@ -40,8 +40,10 @@ fn a_tree_decodes_by_name_and_prints_on_one_line() {
 
 #[test]
 fn every_scalar_a_choice_and_an_array_print() {
-    let choice =
-        Ty::Choice(vec![field("none", Ty::Unit), field("some", Ty::Rd)]);
+    let choice = Ty::Choice(
+        "test.Maybe".into(),
+        vec![field("none", Ty::Unit), field("some", Ty::Rd)],
+    );
     let mut some = vec![1u8];
     some.extend_from_slice(&7u64.to_le_bytes());
     assert_eq!(show(&choice, &some).unwrap(), b"some(7)\n");

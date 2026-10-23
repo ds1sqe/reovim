@@ -144,7 +144,8 @@ fn a_name_two_directories_of_path_hold_resolves_at_the_earlier_one() {
     let method = Method {
         number: 0,
         name: "run".to_string(),
-        input: Ty::Record(Vec::new()),
+        input_name: Some("input".into()),
+        input: Ty::Record("test.Empty".into(), Vec::new()),
         output: Ty::Rd,
         right: Rights::READ,
     };

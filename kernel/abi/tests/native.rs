@@ -27,6 +27,7 @@ fn decl() -> Decl {
     let m = |number, name: &str, output| Method {
         number,
         name: name.to_string(),
+        input_name: None,
         input: Ty::Unit,
         output,
         right: Rights::READ,

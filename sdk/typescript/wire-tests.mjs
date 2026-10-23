@@ -154,16 +154,18 @@ test('an Invalid reply to a frame that never decoded retires it all the same', (
 });
 
 test('a declaration parses and a value shows by it', () => {
-  // history: 0 tree() -> Tree, as modules/text declares it (one method).
+  // history: tree() -> Tree and goto(rev: U64) -> ().
   const canonical = [];
   const str = (s) => { const b = new TextEncoder().encode(s); canonical.push(b.length, 0, 0, 0, ...b); };
-  str('history'); canonical.push(1, 0, 0, 0, 1, 0, 0, 0);
-  canonical.push(0, 0); str('tree'); canonical.push(0);
-  canonical.push(9, 3, 0, 0, 0);
-  str('nodes'); canonical.push(10, 0, 16, 0, 0, 9, 3, 0, 0, 0);
+  str('history'); canonical.push(1, 0, 0, 0, 2, 0, 0, 0);
+  canonical.push(0, 0); str('tree'); canonical.push(0, 0);
+  canonical.push(9); str('history.Tree'); canonical.push(3, 0, 0, 0);
+  str('nodes'); canonical.push(10, 0, 16, 0, 0, 9); str('history.Node'); canonical.push(3, 0, 0, 0);
   str('id'); canonical.push(4); str('parent'); canonical.push(4); str('label'); canonical.push(8, 16, 0, 0, 0);
   str('head'); canonical.push(4); str('published'); canonical.push(4);
   canonical.push(1, 0, 0, 0);
+  canonical.push(1, 0); str('goto'); canonical.push(1); str('rev');
+  canonical.push(4, 0, 2, 0, 0, 0);
   // The records the api names, after the methods: one `Tree`, whose
   // own field list is part of the hash the Kernel checks.
   canonical.push(1, 0, 0, 0);
@@ -171,6 +173,11 @@ test('a declaration parses and a value shows by it', () => {
   const decl = parseDecl(Uint8Array.from(canonical));
   assert.equal(decl.api, 'history');
   assert.equal(decl.methods[0].name, 'tree');
+  assert.equal(decl.methods[0].input_name, undefined);
+  assert.equal(decl.methods[1].name, 'goto');
+  assert.equal(decl.methods[1].input_name, 'rev');
+  assert.equal(decl.methods[0].output.name, 'history.Tree');
+  assert.equal(decl.methods[0].output.fields[0].ty.item.name, 'history.Node');
   assert.equal(decl.records.length, 1);
   assert.equal(decl.records[0][0], 'Tree');
   assert.deepEqual(decl.records[0][1].map((f) => f.name), ['head']);

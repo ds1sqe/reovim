@@ -49,6 +49,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fipe"
+version = "0.2.0-dev.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1133be9b574797fcca5f77ec20ac6b332ea44df1deed10c8d4e18b1a595b5985"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -401,6 +407,7 @@ dependencies = [
 name = "reovim-sdk"
 version = "0.16.0-dev"
 dependencies = [
+ "fipe",
  "reovim-kernel-interface",
  "reovim-text-api",
 ]

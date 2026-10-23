@@ -21,7 +21,7 @@ declare! {
 declare! {
     api text ver 1 {
         0 replace(edit: Edit) -> (): WRITE;
-        1 replace_many(edits: Many) -> (): WRITE;
+        1 replace_many(many: Many) -> (): WRITE;
     }
     record Edit { at: u64, len: u64, text: utf8(1 << 20) }
     record Many { expected: u64, edits: [Edit; 256] }
@@ -193,11 +193,14 @@ fn rest_declares_and_round_trips() {
     let named = |name: &str, ty| Field { name: name.to_string(), ty };
     assert_eq!(
         ty,
-        Ty::Record(vec![
-            named("backward", Ty::Bool),
-            named("keys", Ty::Utf8(8)),
-            named("line", Ty::Rest(64)),
-        ])
+        Ty::Record(
+            "spoken.Args".into(),
+            vec![
+                named("backward", Ty::Bool),
+                named("keys", Ty::Utf8(8)),
+                named("line", Ty::Rest(64)),
+            ]
+        )
     );
     assert!(spoken::decl().check().is_ok(), "last is where a rest stands");
 
@@ -215,4 +218,17 @@ fn rest_declares_and_round_trips() {
     let value = dynamic::decode(&ty, &bytes).unwrap();
     assert_eq!(dynamic::encode(&ty, &value), Ok(bytes));
     assert_eq!(value.field("line"), Some(&Value::Utf8(args.line)));
+}
+
+#[test]
+fn input_labels_are_canonical() {
+    use reovim_kernel_interface::Decl;
+
+    let decl = history::decl();
+    assert_eq!(decl.methods[0].input_name, None);
+    assert_eq!(decl.methods[1].input_name.as_deref(), Some("rev"));
+    let mut renamed = decl.clone();
+    renamed.methods[1].input_name = Some("revision".into());
+    assert_ne!(renamed.hash(), decl.hash());
+    assert_eq!(Decl::parse(&renamed.canonical()), Ok(renamed));
 }

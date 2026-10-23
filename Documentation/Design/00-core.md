@@ -167,7 +167,8 @@ with its subtree; `Create` unmarks that row's listing, so the next
 ## Declaration
 
 A declaration is data, not code: an api id, a version, per method a
-number, a name, an input type, an output type from a closed tag set, and
+number, a name, an input label when present, an input type, an output type
+from a closed tag set, and
 the right it needs, and the records the api names, each with its fields
 in the order declared. Its canonical bytes are identical from any
 language; their hash is its identity.
@@ -188,7 +189,9 @@ api "history"  id=…  ver=1
   offers that hash, the method exists, the handle holds its right and
   the input fits, then calls the vtable. No match returns Unsupported
   before the Driver runs.
-- The records are hashed with the methods, so a reshaped record is a new
+- A Record or Choice carries its qualified type name in the canonical
+  bytes: equally shaped types with different names have different identities.
+  The records are hashed with the methods, so a reshaped record is a new
   identity even where no method's type names it: an api of records and
   no method at all is its records.
 - Methods never change at runtime. New bytes are a new hash, and an rd

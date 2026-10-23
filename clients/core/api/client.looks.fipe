@@ -1,0 +1,37 @@
+##! `/self/<plugin>/<n>/looks`: what a Plugin draws over a Buffer.
+##!
+##! `<n>` is the name the draft goes by under `/self/dev/buffers`,
+##! so one Plugin serves one node per Buffer it decorates. The
+##! drawer finds them by this declaration and not by the Plugin's
+##! name: it walks the homes under `/self`, and a node that does not
+##! offer this api is passed over.
+##!
+##! `runs` answers the looks over the bytes `from..to`, which is the
+##! viewport and no more, in whatever order the Plugin found them. A
+##! `Look` is in the bytes of the Buffer, as a [`window::Span`] is:
+##! `style` is a meaning of the theme ([`reovim_sdk::sgr`]) and
+##! never a colour, and `priority` orders the painting, the higher
+##! over the lower and the region's own spans over both. The Plugin
+##! is called and never ticked: it parses what the range holds when
+##! it is asked.
+##! looks api, version 1.
+## The Range type.
+pub type Range {
+    ## The from field.
+    pub from: U64,
+    ## The to field.
+    pub to: U64,
+}
+## The Look type.
+pub type Look {
+    ## The from field.
+    pub from: U64,
+    ## The to field.
+    pub to: U64,
+    ## The style field.
+    pub style: U64,
+    ## The priority field.
+    pub priority: U64,
+}
+## Needs READ.
+pub runs: (h: Rd<client.looks>) -> (from: U64) -> (to: U64) -> Vec<Look>

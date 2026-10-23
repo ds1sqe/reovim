@@ -80,8 +80,7 @@ fn methods(decl: &Decl) -> String {
 }
 
 /// A type as the declaration's text form writes it; a Record and a
-/// Choice by their fields, since the canonical bytes keep no name for
-/// the type itself.
+/// Choice by their fields to keep the human-facing listing expanded.
 fn shown(ty: &Ty) -> String {
     match ty {
         Ty::Unit => "()".to_string(),
@@ -98,11 +97,11 @@ fn shown(ty: &Ty) -> String {
         Ty::Sequence(max, item) | Ty::Array(max, item) => {
             format!("[{}; {max}]", shown(item))
         }
-        Ty::Record(fields) | Ty::Choice(fields) => {
+        Ty::Record(_, fields) | Ty::Choice(_, fields) => {
             let part = |f: &Field| format!("{}: {}", f.name, shown(&f.ty));
             let parts: Vec<String> = fields.iter().map(part).collect();
             let (open, sep, close) = match ty {
-                Ty::Choice(_) => ("<", " | ", ">"),
+                Ty::Choice(..) => ("<", " | ", ">"),
                 _ => ("{", ", ", "}"),
             };
             format!("{open}{}{close}", parts.join(sep))

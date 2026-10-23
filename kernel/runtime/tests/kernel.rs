@@ -38,6 +38,7 @@ fn decl() -> Decl {
     let m = |number, name: &str, input, output, right| Method {
         number,
         name: name.to_string(),
+        input_name: if input == Ty::Unit { None } else { Some("input".into()) },
         input,
         output,
         right,
@@ -216,7 +217,7 @@ fn blob(bytes: &[u8]) -> Vec<u8> {
 /// Moved on 2026-09-22, the canonical form having gained the records
 /// a declaration names: every api's hash changed with it, and both
 /// sides of the door compute theirs from the declaration.
-const GOLDEN: Hash = Hash(0x025b_6a7e_8293_4caa);
+const GOLDEN: Hash = Hash(0x5248_14d0_cc2c_c7c0);
 
 #[test]
 fn declaration_hash_is_stable_and_order_free() {
@@ -488,6 +489,7 @@ fn declarations_are_stored_once_and_served() {
     wide.methods.extend((3..300).map(|n| Method {
         number: n,
         name: "m".into(),
+        input_name: None,
         input: Ty::Unit,
         output: Ty::Unit,
         right: Rights::READ,

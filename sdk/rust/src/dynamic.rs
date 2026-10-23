@@ -81,7 +81,7 @@ fn put(ty: &Ty, value: &Value, out: &mut Vec<u8>) -> Option<()> {
         (Ty::Utf8(_) | Ty::Rest(_), Value::Utf8(text)) => {
             put_bytes(out, text.as_bytes());
         }
-        (Ty::Record(fields), Value::Record(named)) => {
+        (Ty::Record(_, fields), Value::Record(named)) => {
             return put_record(fields, named, out);
         }
         (Ty::Sequence(_, item), Value::Sequence(items)) => {
@@ -91,7 +91,7 @@ fn put(ty: &Ty, value: &Value, out: &mut Vec<u8>) -> Option<()> {
         (Ty::Array(_, item), Value::Sequence(items)) => {
             return items.iter().try_for_each(|v| put(item, v, out));
         }
-        (Ty::Choice(fields), Value::Choice(name, item)) => {
+        (Ty::Choice(_, fields), Value::Choice(name, item)) => {
             let at = fields.iter().position(|f| f.name == *name)?;
             out.push(u8::try_from(at).ok()?);
             put(&fields[at].ty, item, out)?;
@@ -167,13 +167,13 @@ fn take(ty: &Ty, r: &mut Reader<'_>) -> Option<Value> {
         Ty::Rd => Value::Rd(Rd(r.u64()?)),
         Ty::Bytes(_) => Value::Bytes(r.bytes()?),
         Ty::Utf8(_) | Ty::Rest(_) => Value::Utf8(r.str()?),
-        Ty::Record(fields) => Value::Record(record(fields, r)?),
+        Ty::Record(_, fields) => Value::Record(record(fields, r)?),
         Ty::Sequence(_, item) => {
             let n = r.u32()?;
             Value::Sequence(items(n, item, r)?)
         }
         Ty::Array(n, item) => Value::Sequence(items(*n, item, r)?),
-        Ty::Choice(fields) => {
+        Ty::Choice(_, fields) => {
             let field = fields.get(usize::from(r.u8()?))?;
             Value::Choice(field.name.clone(), Box::new(take(&field.ty, r)?))
         }

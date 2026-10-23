@@ -27,6 +27,7 @@ fn decl() -> Decl {
     let release = Method {
         number: 0,
         name: "release".to_string(),
+        input_name: None,
         input: Ty::Unit,
         output: Ty::Unit,
         right: Rights::WRITE,

@@ -1,0 +1,43 @@
+##! `/self/dev/open`: the region shows something else.
+##!
+##! A Plugin asks its Client to show `target` here, in the Plugin
+##! `plugin` names or, with an empty name, in the one the Client's
+##! table gives that rd's shape. `name` is the path a region over
+##! nothing was opened with, there being no such file, and `line`
+##! the line to begin at, counted from 1; 0 is none of either.
+##!
+##! `locator` is where in what it opens the region is to land, in
+##! the grammar the Plugin that serves the target owns: text's is
+##! `LINE`, `LINE:COL`, `FROM-TO` and `LINE:COL-LINE:COL`, and
+##! another domain's begins with a letter that names it. Whoever
+##! makes the ask never reads it; an empty one asks for nothing,
+##! and one the Plugin cannot read is that Plugin's to answer.
+##!
+##! The call answers nothing, the asking Plugin being on the stack:
+##! the Client records the ask and acts on it at the next read of
+##! the region's view, which is after the call it is inside has
+##! returned. A Client with no Plugin for the ask leaves the region
+##! as it is and says so in the log.
+##!
+##! `back` is the other way: the region shows again what it showed
+##! before the last `open`, in a Plugin made afresh. A region that
+##! has taken no step yet has nothing to go back to, and the Client
+##! ends there.
+##! open api, version 1.
+## The Ask type.
+pub type Ask {
+    ## The target field.
+    pub target: Rd<()>,
+    ## The plugin field.
+    pub plugin: String,
+    ## The name field.
+    pub name: String,
+    ## The line field.
+    pub line: U64,
+    ## The locator field.
+    pub locator: String,
+}
+## Needs WRITE.
+pub open: (h: Rd<client.open>) -> (target: Rd<()>) -> (plugin: String) -> (name: String) -> (line: U64) -> (locator: String) -> ()
+## Needs WRITE.
+pub back: (h: Rd<client.open>) -> ()

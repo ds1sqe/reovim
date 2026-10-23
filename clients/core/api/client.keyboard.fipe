@@ -1,0 +1,20 @@
+##! `/self/dev/input/keyboard`: what was typed, a stream.
+##!
+##! A write of the cell is key codes, eight bytes little endian
+##! each, so a line typed from another Client is one op; a read
+##! gives one `Press` and takes it for that handle alone.
+##! `when` and `source` are the Client's and not the writer's, as
+##! `/sys/log`'s `time` and `mark` are the Kernel's: `when` is the
+##! clock the Host was made with, and `source` the rd of whoever
+##! put the key there. Neither is a cursor; they are there from the
+##! first key so a stream recorded today merges and replays later.
+##! keyboard api, version 1.
+## The Press type.
+pub type Press {
+    ## The key field.
+    pub key: U64,
+    ## The when field.
+    pub when: U64,
+    ## The source field.
+    pub source: Rd<()>,
+}

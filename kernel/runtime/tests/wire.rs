@@ -215,26 +215,33 @@ fn field(name: &str, ty: Ty) -> Field {
 
 /// A declaration using every type once, nested where a type can nest.
 fn wide() -> Decl {
-    let record = Ty::Record(vec![
-        field("unit", Ty::Unit),
-        field("bool", Ty::Bool),
-        field("u8", Ty::U8),
-        field("u32", Ty::U32),
-        field("u64", Ty::U64),
-        field("i64", Ty::I64),
-        field("f64", Ty::F64),
-        field("bytes", Ty::Bytes(16)),
-        field("utf8", Ty::Utf8(32)),
-        field("rd", Ty::Rd),
-    ]);
-    let choice = Ty::Choice(vec![
-        field("none", Ty::Unit),
-        field("some", Ty::Sequence(4, Box::new(record.clone()))),
-        field("fixed", Ty::Array(2, Box::new(Ty::Rd))),
-    ]);
+    let record = Ty::Record(
+        "test.Record".into(),
+        vec![
+            field("unit", Ty::Unit),
+            field("bool", Ty::Bool),
+            field("u8", Ty::U8),
+            field("u32", Ty::U32),
+            field("u64", Ty::U64),
+            field("i64", Ty::I64),
+            field("f64", Ty::F64),
+            field("bytes", Ty::Bytes(16)),
+            field("utf8", Ty::Utf8(32)),
+            field("rd", Ty::Rd),
+        ],
+    );
+    let choice = Ty::Choice(
+        "test.Choice".into(),
+        vec![
+            field("none", Ty::Unit),
+            field("some", Ty::Sequence(4, Box::new(record.clone()))),
+            field("fixed", Ty::Array(2, Box::new(Ty::Rd))),
+        ],
+    );
     let m = |number, name: &str, input, output, right| Method {
         number,
         name: name.to_string(),
+        input_name: if input == Ty::Unit { None } else { Some("input".into()) },
         input,
         output,
         right,
@@ -258,7 +265,7 @@ fn wide() -> Decl {
 /// record has.
 fn fields_of(ty: Ty) -> Vec<Field> {
     match ty {
-        Ty::Record(fields) => fields,
+        Ty::Record(_, fields) => fields,
         other => panic!("no record: {other:?}"),
     }
 }
@@ -341,7 +348,8 @@ fn holding(ty: Ty) -> Decl {
     let method = Method {
         number: 0,
         name: "run".to_string(),
-        input: Ty::Record(vec![field("spec", ty)]),
+        input_name: Some("input".into()),
+        input: Ty::Record("test.Record".into(), vec![field("spec", ty)]),
         output: Ty::Rd,
         right: Rights::READ,
     };
@@ -409,7 +417,11 @@ fn a_rest_declaration_must_be_last_and_alone() {
         let method = Method {
             number: 0,
             name: "run".to_string(),
-            input: Ty::Record(vec![field("a", first), field("b", second)]),
+            input_name: Some("input".into()),
+            input: Ty::Record(
+                "test.Record".into(),
+                vec![field("a", first), field("b", second)],
+            ),
             output: Ty::Rd,
             right: Rights::READ,
         };
@@ -429,7 +441,10 @@ fn a_rest_declaration_must_be_last_and_alone() {
         two(Ty::Rest(64), Ty::Utf8(8)),
         two(Ty::Rest(8), Ty::Rest(8)),
         holding(Ty::Sequence(4, Box::new(Ty::Rest(8)))),
-        holding(Ty::Choice(vec![field("one", Ty::Rest(8))])),
+        holding(Ty::Choice(
+            "test.Choice".into(),
+            vec![field("one", Ty::Rest(8))],
+        )),
     ] {
         assert_eq!(Decl::parse(&decl.canonical()), Err(Error::Invalid));
     }
@@ -439,6 +454,7 @@ fn a_rest_declaration_must_be_last_and_alone() {
         methods: vec![Method {
             number: 0,
             name: "run".to_string(),
+            input_name: Some("input".into()),
             input: Ty::Rest(8),
             output: Ty::Rd,
             right: Rights::READ,
@@ -446,4 +462,19 @@ fn a_rest_declaration_must_be_last_and_alone() {
         records: Vec::new(),
     };
     assert_eq!(Decl::parse(&bare.canonical()), Err(Error::Invalid));
+}
+
+#[test]
+fn named_types_of_one_shape_have_distinct_identities() {
+    for named in [Ty::Record, Ty::Choice] {
+        let fields = vec![field("value", Ty::U64)];
+        let mut first = wide();
+        first.methods.sort_by_key(|method| method.number);
+        first.methods[0].output = named("wide.First".into(), fields.clone());
+        let mut second = first.clone();
+        second.methods[0].output = named("wide.Second".into(), fields);
+        assert_ne!(first.hash(), second.hash());
+        assert_eq!(Decl::parse(&first.canonical()), Ok(first));
+        assert_eq!(Decl::parse(&second.canonical()), Ok(second));
+    }
 }

@@ -224,7 +224,7 @@ pub fn fields(
     let rd = lookup(ctx, shell, name)?;
     let read = ops::method(ctx, rd, "run").ok();
     match read.map(|(_, method)| method.input) {
-        Some(Ty::Record(fields)) => Some(fields),
+        Some(Ty::Record(_, fields)) => Some(fields),
         _ => Some(Vec::new()),
     }
 }

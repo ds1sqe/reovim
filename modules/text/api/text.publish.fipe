@@ -1,0 +1,9 @@
+##! Every Buffer: the head written back to the source. `save_as`
+##! writes it to another rd instead; a Buffer over nothing takes
+##! that rd as its source and goes on as its Buffer, which is what
+##! `:w NAME` on a scratch Buffer asks for.
+##! publish api, version 1.
+## Needs WRITE.
+pub save: (h: Rd<text.publish>) -> ()
+## Needs WRITE.
+pub save_as: (h: Rd<text.publish>) -> (target: Rd<()>) -> ()

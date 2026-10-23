@@ -7,7 +7,7 @@ import { Reader } from './codec.js';
 export type Ty =
   | { tag: 'unit' | 'bool' | 'u8' | 'u32' | 'u64' | 'i64' | 'f64' | 'rd' }
   | { tag: 'bytes' | 'utf8'; max: number }
-  | { tag: 'record' | 'choice'; fields: Field[] }
+  | { tag: 'record' | 'choice'; name: string; fields: Field[] }
   | { tag: 'sequence' | 'array'; n: number; item: Ty };
 
 export interface Field {
@@ -18,6 +18,7 @@ export interface Field {
 export interface Method {
   number: number;
   name: string;
+  input_name?: string;
   input: Ty;
   output: Ty;
   right: number;
@@ -42,7 +43,7 @@ function readTy(r: Reader): Ty {
   if (tag === undefined) throw new RangeError('type tag');
   switch (tag) {
     case 'bytes': case 'utf8': return { tag, max: r.u32() };
-    case 'record': case 'choice': return { tag, fields: readFields(r) };
+    case 'record': case 'choice': return { tag, name: r.str(), fields: readFields(r) };
     case 'sequence': case 'array': {
       const n = r.u32();
       return { tag, n, item: readTy(r) };
@@ -68,8 +69,9 @@ export function parseDecl(bytes: Uint8Array): Decl {
   const methods: Method[] = [];
   for (let i = 0; i < n; i += 1) {
     const number = r.u16(), name = r.str();
+    const input_name = r.bool() ? r.str() : undefined;
     const input = readTy(r), output = readTy(r), right = r.u32();
-    methods.push({ number, name, input, output, right });
+    methods.push({ number, name, input_name, input, output, right });
   }
   const records: [string, Field[]][] = [];
   const count = r.u32();

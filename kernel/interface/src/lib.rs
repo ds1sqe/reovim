@@ -11,6 +11,7 @@ pub mod codec;
 mod decl;
 mod driver;
 mod op;
+mod render;
 mod types;
 pub mod value;
 pub mod wire;

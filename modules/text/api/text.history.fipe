@@ -1,0 +1,29 @@
+##! Every Buffer: the `history` api of 00-core.md. Revisions count
+##! from 1; 0 is "none" as a parent or as `published`.
+##! history api, version 1.
+## The Tree type.
+pub type Tree {
+    ## The nodes field.
+    pub nodes: Vec<Node>,
+    ## The head field.
+    pub head: U64,
+    ## The published field.
+    pub published: U64,
+}
+## The Node type.
+pub type Node {
+    ## The id field.
+    pub id: U64,
+    ## The parent field.
+    pub parent: U64,
+    ## The label field.
+    pub label: String,
+}
+## Needs READ.
+pub tree: (h: Rd<text.history>) -> Tree
+## Needs WRITE.
+pub goto: (h: Rd<text.history>) -> (rev: U64) -> ()
+## Needs WRITE.
+pub undo: (h: Rd<text.history>) -> ()
+## Needs WRITE.
+pub redo: (h: Rd<text.history>) -> ()

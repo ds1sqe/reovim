@@ -248,6 +248,7 @@ fn decl() -> Decl {
     let put = Method {
         number: 0,
         name: "put".to_string(),
+        input_name: Some("input".into()),
         input: Ty::Utf8(64),
         output: Ty::Unit,
         right: Rights::WRITE,

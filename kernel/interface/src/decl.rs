@@ -46,14 +46,14 @@ pub enum Ty {
     /// holds at most one and it is the record's last field, which
     /// [`Decl::check`] refuses a declaration for breaking.
     Rest(u32),
-    /// Fields in order.
-    Record(Vec<Field>),
+    /// Qualified type name and fields in order.
+    Record(String, Vec<Field>),
     /// u32 count then at most that many items.
     Sequence(u32, Box<Self>),
     /// Exactly that many items.
     Array(u32, Box<Self>),
-    /// u8 tag then that variant's payload.
-    Choice(Vec<Field>),
+    /// Qualified type name; u8 tag then that variant's payload.
+    Choice(String, Vec<Field>),
     /// An rd id as u64; the callee opens it under its own rights.
     Rd,
 }
@@ -74,6 +74,8 @@ pub struct Method {
     pub number: u16,
     /// Name for language helpers.
     pub name: String,
+    /// Written input label, absent when the method takes no input.
+    pub input_name: Option<String>,
     /// Input type.
     pub input: Ty,
     /// Output type.
@@ -114,10 +116,10 @@ impl Ty {
             Self::F64 => 6,
             Self::Bytes(_) => 7,
             Self::Utf8(_) => 8,
-            Self::Record(_) => 9,
+            Self::Record(..) => 9,
             Self::Sequence(..) => 10,
             Self::Array(..) => 11,
-            Self::Choice(_) => 12,
+            Self::Choice(..) => 12,
             Self::Rd => 13,
             Self::Rest(_) => 14,
         }
@@ -129,7 +131,8 @@ impl Ty {
             Self::Bytes(max) | Self::Utf8(max) | Self::Rest(max) => {
                 put_u32(out, *max);
             }
-            Self::Record(fields) | Self::Choice(fields) => {
+            Self::Record(name, fields) | Self::Choice(name, fields) => {
+                put_str(out, name);
                 put_fields(out, fields);
             }
             Self::Sequence(n, item) | Self::Array(n, item) => {
@@ -155,10 +158,10 @@ impl Ty {
             6 => Self::F64,
             7 => Self::Bytes(r.u32()?),
             8 => Self::Utf8(r.u32()?),
-            9 => Self::Record(read_fields(r, depth)?),
+            9 => Self::Record(r.str()?, read_fields(r, depth)?),
             10 => Self::Sequence(r.u32()?, Box::new(Self::read(r, depth + 1)?)),
             11 => Self::Array(r.u32()?, Box::new(Self::read(r, depth + 1)?)),
-            12 => Self::Choice(read_fields(r, depth)?),
+            12 => Self::Choice(r.str()?, read_fields(r, depth)?),
             13 => Self::Rd,
             14 => Self::Rest(r.u32()?),
             _ => return None,
@@ -168,7 +171,7 @@ impl Ty {
 
     fn depth(&self) -> usize {
         match self {
-            Self::Record(fields) | Self::Choice(fields) => {
+            Self::Record(_, fields) | Self::Choice(_, fields) => {
                 1 + fields.iter().map(|f| f.ty.depth()).max().unwrap_or(0)
             }
             Self::Sequence(_, item) | Self::Array(_, item) => 1 + item.depth(),
@@ -193,10 +196,23 @@ fn read_fields(r: &mut Reader, depth: usize) -> Option<Vec<Field>> {
 }
 
 impl Method {
+    fn write(&self, out: &mut Vec<u8>) {
+        put_u16(out, self.number);
+        put_str(out, &self.name);
+        out.push(u8::from(self.input_name.is_some()));
+        if let Some(name) = &self.input_name {
+            put_str(out, name);
+        }
+        self.input.write(out);
+        self.output.write(out);
+        put_u32(out, self.right.bits());
+    }
+
     fn read(r: &mut Reader) -> Option<Self> {
         Some(Self {
             number: r.u16()?,
             name: r.str()?,
+            input_name: if r.bool()? { Some(r.str()?) } else { None },
             input: Ty::read(r, 1)?,
             output: Ty::read(r, 1)?,
             right: Rights::from_bits(r.u32()?)?,
@@ -233,14 +249,12 @@ fn placed(ty: &Ty) -> bool {
 /// a record is the one place one stands.
 fn inner(ty: &Ty) -> bool {
     match ty {
-        Ty::Record(fields) => fields.iter().enumerate().all(|(at, field)| {
-            if at + 1 == fields.len() {
-                inner(&field.ty)
-            } else {
-                placed(&field.ty)
-            }
-        }),
-        Ty::Choice(fields) => fields.iter().all(|field| placed(&field.ty)),
+        Ty::Record(_, fields) => {
+            fields.split_last().is_none_or(|(last, rest)| {
+                rest.iter().all(|field| placed(&field.ty)) && inner(&last.ty)
+            })
+        }
+        Ty::Choice(_, fields) => fields.iter().all(|field| placed(&field.ty)),
         Ty::Sequence(_, item) | Ty::Array(_, item) => placed(item),
         _ => true,
     }
@@ -257,11 +271,7 @@ impl Decl {
         put_u32(&mut out, self.ver);
         put_u32(&mut out, u32::try_from(methods.len()).unwrap_or(u32::MAX));
         for method in methods {
-            put_u16(&mut out, method.number);
-            put_str(&mut out, &method.name);
-            method.input.write(&mut out);
-            method.output.write(&mut out);
-            put_u32(&mut out, method.right.bits());
+            method.write(&mut out);
         }
         let records = u32::try_from(self.records.len());
         put_u32(&mut out, records.unwrap_or(u32::MAX));

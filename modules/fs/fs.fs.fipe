@@ -1,0 +1,8 @@
+##! Every directory: a new empty file or a new directory below it.
+##! A name already on disk is `Stale`, one the mirror does not
+##! accept is `Invalid`.
+##! fs api, version 1.
+## Needs WRITE.
+pub create: (h: Rd<fs.fs>) -> (name: String) -> Rd<()>
+## Needs WRITE.
+pub mkdir: (h: Rd<fs.fs>) -> (name: String) -> Rd<()>

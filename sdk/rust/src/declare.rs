@@ -86,7 +86,7 @@ impl Call for &dyn Calls {
 macro_rules! declare {
     (
         $( use $( $seg:ident )::+ ; )*
-        $( #[$meta:meta] )*
+        $( #[$($meta:tt)*] )*
         api $api:ident ver $ver:literal {
             $( $number:literal $method:ident
                 ( $( $arg:ident : $in:tt $( ( $inb:expr ) )? )? )
@@ -96,7 +96,7 @@ macro_rules! declare {
             $( $field:ident : $ft:tt $( ( $fb:expr ) )? ),* $(,)?
         } )*
     ) => {
-        $( #[$meta] )*
+        $( #[$($meta)*] )*
         #[allow(clippy::module_name_repetitions)]
         pub mod $api {
             use $crate::__interface::{
@@ -116,6 +116,8 @@ macro_rules! declare {
                     methods: vec![ $( Method {
                         number: $number,
                         name: stringify!($method).to_string(),
+                        input_name: None $(.or(Some(
+                            stringify!($arg).to_string())))?,
                         input: $crate::__ty!(
                             $( $in $( ( $inb ) )? )? ),
                         output: $crate::__ty!( $out $( ( $outb ) )? ),
@@ -133,6 +135,19 @@ macro_rules! declare {
                         } ),* ],
                     ) ),* ],
                 }
+            }
+
+            /// Fipe host-module source, including this api's Rust docs.
+            ///
+            /// ```ignore
+            /// let source = api::text("client");
+            /// ```
+            #[must_use]
+            pub fn text(home: &str) -> $crate::__interface::String {
+                let mut docs = $crate::__interface::String::new();
+                $( $crate::__decl_doc!(docs; $($meta)*); )*
+                docs.push_str(&decl().render_in(home));
+                docs
             }
 
             /// Its identity.
@@ -154,7 +169,10 @@ macro_rules! declare {
 
                 impl Typed for $record {
                     fn ty() -> Ty {
-                        Ty::Record(vec![ $( Field {
+                        Ty::Record(
+                            concat!(stringify!($api), ".",
+                                stringify!($record)).to_string(),
+                            vec![ $( Field {
                             name: stringify!($field).to_string(),
                             ty: $crate::__ty!( $ft $( ( $fb ) )? ),
                         } ),* ])
@@ -317,4 +335,16 @@ macro_rules! __call {
             Ok($crate::decode(&out)?)
         }
     };
+}
+
+/// Retain api documentation in the rendered host module.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __decl_doc {
+    ($text:ident; doc = $doc:literal) => {
+        $text.push_str("##!");
+        $text.push_str($doc);
+        $text.push('\n');
+    };
+    ($text:ident; $($other:tt)*) => {};
 }

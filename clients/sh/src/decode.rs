@@ -49,7 +49,7 @@ pub fn record(
     ty: &Ty,
     tokens: &[&str],
 ) -> Result<Vec<u8>, Miss> {
-    let Ty::Record(fields) = ty else {
+    let Ty::Record(_, fields) = ty else {
         return Err(missed(shell, name, "", &[]));
     };
     let filled =
@@ -103,7 +103,7 @@ pub fn record_tail(
     ty: &Ty,
     tail: &str,
 ) -> Result<Vec<u8>, Miss> {
-    let Ty::Record(fields) = ty else {
+    let Ty::Record(_, fields) = ty else {
         return Err(missed(shell, name, "", &[]));
     };
     let Some(at) = rest_at(fields) else {
@@ -487,11 +487,11 @@ fn empty(ty: &Ty) -> Value {
         Ty::Array(n, item) => {
             Value::Sequence((0..*n).map(|_| empty(item)).collect())
         }
-        Ty::Record(fields) => {
+        Ty::Record(_, fields) => {
             let named = |field: &Field| (field.name.clone(), empty(&field.ty));
             Value::Record(fields.iter().map(named).collect())
         }
-        Ty::Choice(fields) => fields.first().map_or(Value::Unit, |field| {
+        Ty::Choice(_, fields) => fields.first().map_or(Value::Unit, |field| {
             Value::Choice(field.name.clone(), Box::new(empty(&field.ty)))
         }),
     }
@@ -552,7 +552,7 @@ mod tests {
 
     /// The record `tail` fills, as a value.
     fn read(fields: Vec<Field>, tail: &str) -> Result<Value, Miss> {
-        let ty = Ty::Record(fields);
+        let ty = Ty::Record("test.Record".into(), fields);
         let bytes = record_tail(&shell(), "n", &ty, tail)?;
         Ok(dynamic::decode(&ty, &bytes).unwrap())
     }

@@ -1,0 +1,16 @@
+##! `/self/dev/buffers`: the Buffers this Client holds, each a
+##! draft over one of the server's.
+##!
+##! `open` takes the rd a `text.open` would take, the caller having
+##! resolved it, and a source a draft is already over answers that
+##! draft, so a region shown twice costs one Buffer. `scratch` is a
+##! draft over nothing, which gains a source at a `save_as`.
+##! `close` takes the draft out of the tree with the handle it held
+##! on its Buffer; what was pending goes with it.
+##! buffers api, version 1.
+## Needs WRITE.
+pub open: (h: Rd<client.buffers>) -> (source: Rd<()>) -> Rd<()>
+## Needs WRITE.
+pub scratch: (h: Rd<client.buffers>) -> Rd<()>
+## Needs WRITE.
+pub close: (h: Rd<client.buffers>) -> (draft: Rd<()>) -> ()

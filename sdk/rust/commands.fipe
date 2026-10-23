@@ -1,0 +1,2 @@
+## A resource.
+pub type Rd<Api>

@@ -1,0 +1,10 @@
+##! `Progress { done, total }`, and no method: nothing calls it,
+##! only reads its bytes.
+##! progress api, version 1.
+## The Progress type.
+pub type Progress {
+    ## The done field.
+    pub done: U64,
+    ## The total field.
+    pub total: U64,
+}

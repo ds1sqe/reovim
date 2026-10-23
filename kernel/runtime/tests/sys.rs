@@ -327,6 +327,7 @@ fn decl() -> Decl {
         methods: vec![Method {
             number: 2,
             name: "hello".to_string(),
+            input_name: None,
             input: Ty::Unit,
             output: Ty::Unit,
             right: Rights::READ,

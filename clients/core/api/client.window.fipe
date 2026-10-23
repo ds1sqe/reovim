@@ -1,0 +1,41 @@
+##! `/self/dev/windows/0`: one region of a Client's display.
+##!
+##! `size` is how big it is, in the cells of whatever draws it;
+##! `view` is what the Plugin holding the region answers. A `View`
+##! names the rd it is in the bytes of and is otherwise in those
+##! bytes: the first byte shown, where the cursor is and what shape
+##! it takes, styled spans, and the Plugin's own word for its
+##! region. How that becomes a picture is the Client's, which reads
+##! `over` for the text to lay the View out on.
+##! window api, version 1.
+## The Size type.
+pub type Size {
+    ## The cols field.
+    pub cols: U64,
+    ## The rows field.
+    pub rows: U64,
+}
+## The View type.
+pub type View {
+    ## The over field.
+    pub over: Rd<()>,
+    ## The top field.
+    pub top: U64,
+    ## The cursor field.
+    pub cursor: U64,
+    ## The shape field.
+    pub shape: U64,
+    ## The spans field.
+    pub spans: Vec<Span>,
+    ## The status field.
+    pub status: String,
+}
+## The Span type.
+pub type Span {
+    ## The from field.
+    pub from: U64,
+    ## The to field.
+    pub to: U64,
+    ## The style field.
+    pub style: U64,
+}
