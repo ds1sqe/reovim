@@ -158,7 +158,7 @@ fn declarations_are_published_by_name_and_version_without_conflicts() {
     let Out::Info(info) = rig.ok(Op::Info { rd }) else { panic!("info") };
     assert_eq!(info.flags, Flags::READ);
     assert_eq!(info.apis, vec![decl().hash()]);
-    assert!(rig.since(cursor).0.is_empty());
+    assert_eq!(rig.since(cursor).0, Vec::new());
     assert_eq!(
         rig.err(Op::Lookup { rd: apis, name: "other".into() }),
         Error::Invalid
