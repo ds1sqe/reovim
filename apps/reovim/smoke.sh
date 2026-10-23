@@ -9,6 +9,13 @@ BIN="$(realpath "${1:-target/debug/reovim}")"
 DIR="$(mktemp -d /tmp/reovim-smoke.XXXXXXXX)"
 readonly BIN DIR
 TMUX=(tmux -L "reovim-smoke-$$")
+# The editor's socket goes under the run's own runtime directory. The
+# Wayland socket lives under the real one, so `wl-copy` is told where
+# it is by its absolute path before the directory moves.
+if [[ -n "${WAYLAND_DISPLAY-}" && "$WAYLAND_DISPLAY" != /* ]]; then
+    runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    export WAYLAND_DISPLAY="$runtime/$WAYLAND_DISPLAY"
+fi
 export XDG_RUNTIME_DIR="$DIR/run"
 mkdir -p "$DIR/config"
 export XDG_CONFIG_HOME="$DIR/config"
