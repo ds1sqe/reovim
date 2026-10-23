@@ -128,6 +128,24 @@ impl Bin {
         self.host.upgrade().ok_or(Error::Gone)
     }
 
+    fn script(&self, ctx: &dyn Calls, rd: Rd, path: &str) -> Result<Rd, Error> {
+        use reovim_client_api::exec;
+        let cli = ops::lookup(ctx, SELF, "cli")
+            .and_then(|cli| ops::lookup(ctx, cli, "exec"))
+            .map_err(|_| Error::Unsupported)?;
+        if !ops::info(ctx, cli)?.apis.contains(&exec::hash()) {
+            return Err(Error::Unsupported);
+        }
+        ops::call(
+            ctx,
+            cli,
+            exec::hash(),
+            &exec::decl().methods[0],
+            reovim_sdk::encode(&String::from(path)),
+        )?;
+        self.done(ctx, rd)
+    }
+
     /// One run's output: a cell holding nothing, neither name printing
     /// anything.
     fn done(&self, ctx: &dyn Calls, rd: Rd) -> Result<Rd, Error> {
@@ -148,6 +166,14 @@ impl load::Api for Bin {
     ) -> Result<Rd, Error> {
         if args.path.is_empty() {
             return Err(Error::Invalid);
+        }
+        if args.local
+            && args
+                .path
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| ext.eq_ignore_ascii_case("fipe"))
+        {
+            return self.script(ctx, rd, &args.path);
         }
         let host = self.host()?;
         if args.local {

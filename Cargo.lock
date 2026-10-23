@@ -314,6 +314,7 @@ version = "0.16.0-dev"
 name = "reovim-plugin-cli"
 version = "0.16.0-dev"
 dependencies = [
+ "fipe",
  "reovim-client",
  "reovim-client-api",
  "reovim-client-region",
@@ -322,6 +323,7 @@ dependencies = [
  "reovim-kernel-interface",
  "reovim-rig",
  "reovim-sdk",
+ "reovim-search-api",
  "reovim-text-api",
 ]
 

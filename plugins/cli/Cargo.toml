@@ -9,6 +9,8 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+fipe = "=0.2.0-dev.2"
+reovim-search-api = { path = "../../modules/search/api" }
 reovim-client-api = { path = "../../clients/core/api" }
 reovim-client-region = { path = "../../clients/core/region" }
 reovim-kernel-interface = { path = "../../kernel/interface" }

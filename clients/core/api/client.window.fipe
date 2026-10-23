@@ -8,6 +8,8 @@
 ##! region. How that becomes a picture is the Client's, which reads
 ##! `over` for the text to lay the View out on.
 ##! window api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.window>
 ## The Size type.
 pub type Size {
     ## The cols field.

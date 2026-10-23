@@ -11,6 +11,8 @@
 ##! wire message, keeping what was typed and what was pending
 ##! alike, until `reload` takes the server's head in their place.
 ##! draft api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.draft>
 ## Needs WRITE.
 pub sync: (h: Rd<client.draft>) -> ()
 ## Needs WRITE.

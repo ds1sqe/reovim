@@ -22,7 +22,7 @@ impl Decl {
     /// let decl = Decl {
     ///     api: "example".into(), ver: 1, methods: vec![], records: vec![],
     /// };
-    /// assert_eq!(decl.render(), "##! example api, version 1.\n");
+    /// assert!(decl.render().contains("pub at: (path: String)"));
     /// ```
     #[must_use]
     pub fn render(&self) -> String {
@@ -43,7 +43,10 @@ impl Decl {
     ///     }],
     /// };
     /// assert_eq!(decl.render_in("text"), concat!(
-    ///     "##! open api, version 1.\n## Needs WRITE.\n",
+    ///     "##! open api, version 1.\n",
+    ///     "## The resource at `path` that offers this api.\n",
+    ///     "pub at: (path: String) -> Rd<text.open>\n",
+    ///     "## Needs WRITE.\n",
     ///     "pub open: (h: Rd<text.open>) -> (source: Rd<()>) -> Rd<()>\n",
     /// ));
     /// ```
@@ -55,6 +58,12 @@ impl Decl {
 
 fn render(decl: &Decl, home: &str) -> String {
     let mut out = format!("##! {} api, version {}.\n", decl.api, decl.ver);
+    let _ = writeln!(
+        out,
+        "## The resource at `path` that offers this api.\n\
+         pub at: (path: String) -> Rd<{}>",
+        module_name(home, &decl.api)
+    );
     let mut types = Vec::new();
     for (name, fields) in &decl.records {
         collect(

@@ -104,6 +104,10 @@ fn a_module_registers_under_the_bin_above_its_home() {
         run(ctx, load, &loading(true, "x.rvm")),
         Err(Error::Unsupported)
     );
+    assert_eq!(
+        run(ctx, load, &loading(true, "hello.fipe")),
+        Err(Error::Unsupported)
+    );
 
     // `unload` takes every rd the Module serves, by owner and not by
     // subtree, so the five under `/self/bin` go with the home.

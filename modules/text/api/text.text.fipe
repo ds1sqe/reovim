@@ -3,6 +3,8 @@
 ##! one is `Stale`. What makes one insert one undo step is the
 ##! draft a Client holds, which sends a session as one call.
 ##! text api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<text.text>
 ## The Edit type.
 pub type Edit {
     ## The at field.

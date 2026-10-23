@@ -1,6 +1,8 @@
 ##! `/module/text/open`: a Buffer over any rd, or over nothing:
 ##! `new` makes one that is empty and cannot save.
 ##! open api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<text.open>
 ## Needs WRITE.
 pub open: (h: Rd<text.open>) -> (source: Rd<()>) -> Rd<()>
 ## Needs WRITE.

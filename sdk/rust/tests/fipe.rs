@@ -97,10 +97,19 @@ fn every_rendering_loads_and_checks_a_call() {
     let fipe::ast::Entry::Item(item) = &open.module.entries[0] else {
         panic!("the first declaration is not a signature");
     };
-    assert_eq!(item.doc.as_deref(), Some("Needs WRITE."));
+    assert_eq!(
+        item.doc.as_deref(),
+        Some("The resource at `path` that offers this api.")
+    );
     let mut session = Session::new(decls);
     let Outcome::Done(report) = session.line("use text.open") else {
         panic!("host module resolved as a file");
+    };
+    assert!(report.diagnostics.is_empty(), "{report:?}");
+    let Outcome::Done(report) =
+        session.line("x = text.open.at \"/module/text/open\"")
+    else {
+        panic!("resource lookup resolved as a file")
     };
     assert!(report.diagnostics.is_empty(), "{report:?}");
     let Outcome::Done(report) =

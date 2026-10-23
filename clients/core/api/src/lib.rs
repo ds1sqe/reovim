@@ -451,6 +451,14 @@ impl Key {
 /// cell answers a read; the Kernel's, so it is one and not two.
 pub use reovim_kernel_interface::part;
 
+declare! {
+    /// Execute Fipe files at this Client's `/self/cli/exec`.
+    api exec ver 1 {
+        0 load(path: utf8(4096)) -> (): WRITE;
+        1 source(path: utf8(4096)) -> (): WRITE;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::string::{String, ToString};

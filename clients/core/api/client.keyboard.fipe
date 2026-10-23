@@ -9,6 +9,8 @@
 ##! put the key there. Neither is a cursor; they are there from the
 ##! first key so a stream recorded today merges and replays later.
 ##! keyboard api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.keyboard>
 ## The Press type.
 pub type Press {
     ## The key field.

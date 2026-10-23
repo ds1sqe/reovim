@@ -40,6 +40,8 @@
 ##! declared here for a consumer that does not exist: when one
 ##! does, it brings its own declaration with it.
 ##! resolver api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.resolver>
 use client.keyboard
 ## The Input type.
 pub type Input {

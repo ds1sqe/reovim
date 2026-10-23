@@ -27,6 +27,8 @@
 ##! theme having resolved it already: never 0, and a line's runs
 ##! never overlap and stand in order of `from`.
 ##! display api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.display>
 ## The Screen type.
 pub type Screen {
     ## The rows field.

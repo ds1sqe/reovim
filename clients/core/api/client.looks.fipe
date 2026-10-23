@@ -15,6 +15,8 @@
 ##! is called and never ticked: it parses what the range holds when
 ##! it is asked.
 ##! looks api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.looks>
 ## The Range type.
 pub type Range {
     ## The from field.

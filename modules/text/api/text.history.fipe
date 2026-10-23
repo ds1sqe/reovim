@@ -1,6 +1,8 @@
 ##! Every Buffer: the `history` api of 00-core.md. Revisions count
 ##! from 1; 0 is "none" as a parent or as `published`.
 ##! history api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<text.history>
 ## The Tree type.
 pub type Tree {
     ## The nodes field.

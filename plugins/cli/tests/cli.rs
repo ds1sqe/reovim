@@ -269,7 +269,7 @@ fn tab_lists_several_under_the_line() {
         "call", "watch", "date", "uptime", "capture", "keys", "cd", "pwd",
         "help",
     ];
-    let mut shown = vec![at.clone()];
+    let mut shown = vec![at.clone(), "source".into()];
     shown.extend(all.iter().map(|name| String::from(*name)));
     shown.push(at.clone());
     assert_eq!(frame(&mut tui).lines, shown, "nothing has scrolled off yet");
@@ -361,4 +361,155 @@ fn a_transcript_longer_than_the_region_keeps_the_prompt_in_it() {
     assert_eq!(frame.lines.len(), 23, "the rows the region has");
     assert_eq!(frame.lines[22], prompt("work"), "the prompt is the last");
     assert_eq!(frame.cursor.0, 22, "and the cursor is on it");
+}
+
+#[test]
+fn source_calls_a_declared_api_and_prints_each_value() {
+    let rig = work("fipe-source");
+    rig.file(
+        "work/new.fipe",
+        concat!(
+            "use text.open\n",
+            "text.open.new (text.open.at \"/module/text/open\")\n",
+            "\"finished\"\n",
+        )
+        .as_bytes(),
+    );
+    let mut tui = buffer(&rig, &Seen::default());
+    line(&mut tui, "source new.fipe");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.contains("\"finished\""), "{shown}");
+    assert!(!shown.contains("invalid"), "{shown}");
+}
+
+#[test]
+fn a_fipe_type_error_runs_nothing() {
+    let rig = work("fipe-type");
+    rig.file(
+        "work/bad.fipe",
+        concat!(
+            "use sdk.env\n",
+            "sdk.env.set (sdk.env.at \"/self/cli/env\") ",
+            "-key \"effect\" -value \"changed\"\n",
+            "1 + True\n",
+        )
+        .as_bytes(),
+    );
+    let host = rig.host();
+    let mut tui = opened(
+        &host,
+        table(&Seen::default()),
+        Clip::none(),
+        "",
+        Some("work/a"),
+        None,
+    )
+    .unwrap();
+    tui.key(Key::Char('x')).unwrap();
+    line(&mut tui, "source bad.fipe");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.contains("bad.fipe:3:"), "{shown}");
+    let ctx = host.own();
+    let value = reovim_sdk::env::get(
+        &ctx,
+        reovim_sdk::cell::resolve(&ctx, reovim_sdk::walk::ROOT, "/self/cli")
+            .unwrap(),
+        "effect",
+    )
+    .unwrap();
+    assert_eq!(value, None, "the first line had no effect");
+}
+
+#[test]
+fn a_loaded_public_function_is_a_shell_command() {
+    let rig = work("fipe-load");
+    rig.file(
+        "work/hello.fipe",
+        concat!(
+            "pub greet: String -> String = name => name\n",
+            "pub pick: String -> String -> String = left right => right\n",
+        )
+        .as_bytes(),
+    );
+    let mut tui = buffer(&rig, &Seen::default());
+    line(&mut tui, "load -l hello.fipe");
+    line(&mut tui, "help greet");
+    line(&mut tui, "greet --name reovim");
+    line(&mut tui, "greet positional");
+    line(&mut tui, "pick left right");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.contains("greet [name]"), "{shown}");
+    assert!(shown.lines().any(|s| s == "reovim"), "{shown}");
+    assert!(shown.lines().any(|s| s == "positional"), "{shown}");
+    assert!(shown.lines().any(|s| s == "right"), "{shown}");
+}
+
+#[test]
+fn load_refuses_a_polymorphic_public_function() {
+    let rig = work("fipe-unlabeled");
+    rig.file("work/unlabeled.fipe", b"pub greet = name => name\n");
+    let mut tui = buffer(&rig, &Seen::default());
+    line(&mut tui, "load -l unlabeled.fipe");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.contains("unmappable"), "{shown}");
+}
+
+#[test]
+fn a_fipe_budget_fault_is_logged_and_the_next_line_runs() {
+    let rig = work("fipe-budget");
+    rig.file(
+        "work/loop.fipe",
+        concat!(
+            "use text.open\n",
+            "h = text.open.at \"/module/text/open\"\n",
+            "loop: I64 -> I64 = n => loop (n + 1)\n",
+            "loop 0\n",
+        )
+        .as_bytes(),
+    );
+    let mut tui = buffer(&rig, &Seen::default());
+    line(&mut tui, "source loop.fipe");
+    line(&mut tui, "pwd");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.contains("budget is exhausted"), "{shown}");
+    assert!(shown.lines().any(|s| s == "/module/fs/root/work"), "{shown}");
+    let mut client = rig.client();
+    let log = client.resolve("/sys/log").unwrap();
+    let log = reovim_sdk::log::parse(&client.read_all(log).unwrap());
+    assert!(
+        log.iter().any(|entry| {
+            let text = entry.text();
+            text.contains("fipe: ") && text.contains("budget")
+        }),
+        "{log:?}"
+    );
+}
+
+#[test]
+fn a_defaulted_parameter_is_exposed_by_its_definition_name() {
+    let rig = work("fipe-default");
+    rig.file(
+        "work/defaults.fipe",
+        b"pub depth: I64 -> I64 = (depth = 1) => depth\n",
+    );
+    let mut tui = buffer(&rig, &Seen::default());
+    line(&mut tui, "load -l defaults.fipe");
+    line(&mut tui, "depth --depth 7");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.lines().any(|s| s == "7"), "{shown}");
+}
+
+#[test]
+fn an_exported_fault_is_printed_and_budget_is_read_for_each_run() {
+    let rig = work("fipe-export-budget");
+    rig.file("work/spin.fipe", b"pub spin: I64 -> I64 = n => spin (n + 1)\n");
+    rig.file("work/budget", b"1000");
+    let mut tui = buffer(&rig, &Seen::default());
+    line(&mut tui, "load -l spin.fipe");
+    line(&mut tui, "cat budget > /self/cli/budget");
+    line(&mut tui, "spin -n 0");
+    line(&mut tui, "pwd");
+    let shown = frame(&mut tui).lines.join("\n");
+    assert!(shown.contains("budget is exhausted"), "{shown}");
+    assert!(shown.lines().any(|s| s == "/module/fs/root/work"), "{shown}");
 }

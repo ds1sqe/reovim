@@ -2,6 +2,8 @@
 ##! A name already on disk is `Stale`, one the mirror does not
 ##! accept is `Invalid`.
 ##! fs api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<fs.fs>
 ## Needs WRITE.
 pub create: (h: Rd<fs.fs>) -> (name: String) -> Rd<()>
 ## Needs WRITE.

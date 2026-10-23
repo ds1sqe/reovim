@@ -8,6 +8,8 @@
 ##! `close` takes the draft out of the tree with the handle it held
 ##! on its Buffer; what was pending goes with it.
 ##! buffers api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.buffers>
 ## Needs WRITE.
 pub open: (h: Rd<client.buffers>) -> (source: Rd<()>) -> Rd<()>
 ## Needs WRITE.

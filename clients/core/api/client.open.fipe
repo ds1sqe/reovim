@@ -24,6 +24,8 @@
 ##! has taken no step yet has nothing to go back to, and the Client
 ##! ends there.
 ##! open api, version 1.
+## The resource at `path` that offers this api.
+pub at: (path: String) -> Rd<client.open>
 ## The Ask type.
 pub type Ask {
     ## The target field.

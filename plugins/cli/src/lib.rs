@@ -23,10 +23,17 @@
 //! it for what it has since, so a `cat -f` in the buffer shows new
 //! bytes with no key pressed.
 //!
+//! `source PATH` checks a Fipe file before running it under the surface's
+//! budget. `load -l PATH.fipe` exposes its public functions as commands.
+//!
 //! Leaving is `back` on `/self/dev/open`: the region shows again what
 //! it showed before this buffer, which is the Client's to do.
 
 extern crate alloc;
+
+mod exec;
+mod export;
+mod value;
 
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -35,7 +42,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::{OnceCell, RefCell};
 
-use reovim_client_api::{BAR, Key, NONE, window};
+use reovim_client_api::{BAR, Key, NONE, exec as execution, window};
 use reovim_client_region::{Surface, count, drafted};
 use reovim_client_sh::{Act, Line, Open, Ran, Shell, complete, run};
 use reovim_kernel_interface::{
@@ -43,8 +50,17 @@ use reovim_kernel_interface::{
     Reply, Rights,
 };
 use reovim_sdk::env::{Entry, Set, env};
-use reovim_sdk::{encode, sgr};
+use reovim_sdk::walk::ROOT;
+use reovim_sdk::{cell, encode, ops, sgr};
 use reovim_text_api::text;
+
+reovim_sdk::declare! {
+    /// Check and execute a Fipe file on this surface.
+    api source ver 1 {
+        0 run(args: Args) -> Rd: READ;
+    }
+    record Args { path: utf8(4096), cwd: Rd }
+}
 
 /// The cli buffer, ready for a Client to load.
 #[must_use]
@@ -92,6 +108,7 @@ struct Cli {
     /// over, and no key after that one is its own.
     leaving: bool,
     env: BTreeMap<String, String>,
+    paths: Vec<String>,
 }
 
 /// The buffer's state behind one `RefCell`: no borrow of it outlives an
@@ -101,6 +118,11 @@ struct Loaded {
     state: RefCell<Cli>,
     surface: Surface,
     view: OnceCell<Rd>,
+    budget_rd: OnceCell<Rd>,
+    budget: RefCell<String>,
+    executor: RefCell<Option<exec::Executor>>,
+    exports: RefCell<BTreeMap<Rd, export::Export>>,
+    cells: cell::Cells,
 }
 
 impl Module for Loaded {
@@ -108,6 +130,22 @@ impl Module for Loaded {
     /// was opened, the first prompt shown, and the one cell a Plugin
     /// serves, `view`, beside its `env` api.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
+        self.executor.replace(Some(exec::Executor::new()?));
+        let exec = ctx.register(DriverId(0), home, Some("exec"))?;
+        ctx.report(exec, Flags::WRITE, &[execution::decl()])?;
+        let budget = ctx.register(DriverId(0), home, Some("budget"))?;
+        ctx.report(budget, Flags::READ.union(Flags::WRITE), &[])?;
+        self.budget_rd.set(budget).map_err(|_| Error::Invalid)?;
+        self.budget.replace("1000000".into());
+        let bin = ctx.register(DriverId(0), home, Some("bin"))?;
+        ctx.report(bin, Flags::CONTAINER, &[])?;
+        let source = ctx.register(DriverId(0), bin, Some("source"))?;
+        ctx.report(
+            source,
+            Flags::READ.union(Flags::CONTAINER),
+            &[source::decl()],
+        )?;
+        self.state.borrow_mut().shell.first("/self/cli/bin");
         let view = self.surface.start(ctx, home)?;
         self.view.set(view).map_err(|_| Error::Invalid)?;
         let rd = ctx.register(DriverId(0), home, Some("env"))?;
@@ -148,11 +186,21 @@ impl Driver for Loaded {
         &self,
         ctx: &dyn Calls,
         rd: u64,
-        _: Hash,
+        api: Hash,
         method: u16,
         input: &[u8],
     ) -> Reply<Vec<u8>> {
-        env::dispatch(self, ctx, Rd(rd), method, input).into()
+        let rd = Rd(rd);
+        if api == env::hash() {
+            return env::dispatch(self, ctx, rd, method, input).into();
+        }
+        if api == execution::hash() {
+            return execution::dispatch(self, ctx, rd, method, input).into();
+        }
+        if api == source::hash() {
+            return source::dispatch(self, ctx, rd, method, input).into();
+        }
+        self.function(ctx, rd, api, method, input).into()
     }
 
     fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
@@ -166,10 +214,50 @@ impl Driver for Loaded {
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
-        if self.view.get() != Some(&Rd(rd)) {
+        if self.budget_rd.get() == Some(&Rd(rd)) {
+            let budget = self.budget.borrow();
+            let at = usize::try_from(at).unwrap_or(usize::MAX);
+            let bytes = budget.as_bytes();
+            return Reply::ok(
+                bytes
+                    .get(at..at.saturating_add(len).min(bytes.len()))
+                    .unwrap_or_default()
+                    .to_vec(),
+            );
+        }
+        if self.view.get() == Some(&Rd(rd)) {
+            return self.surface.read(at, len, || self.framed(ctx));
+        }
+        self.cells.read(ctx, Rd(rd), at, len).into()
+    }
+
+    fn write(
+        &self,
+        ctx: &dyn Calls,
+        rd: u64,
+        at: u64,
+        bytes: &[u8],
+    ) -> Reply<usize> {
+        if self.budget_rd.get() != Some(&Rd(rd)) || at != 0 {
             return Reply::err(Error::Unsupported);
         }
-        self.surface.read(at, len, || self.framed(ctx))
+        let Ok(text) = core::str::from_utf8(bytes) else {
+            return Reply::err(Error::Invalid);
+        };
+        if text.is_empty()
+            || !text.bytes().all(|b| b.is_ascii_digit())
+            || text.parse::<u64>().is_err()
+        {
+            return Reply::err(Error::Invalid);
+        }
+        self.budget.replace(text.into());
+        ctx.changed(Rd(rd), reovim_kernel_interface::Kind::Modify)
+            .map(|()| bytes.len())
+            .into()
+    }
+
+    fn close(&self, ctx: &dyn Calls, rd: u64) -> Reply<()> {
+        self.cells.close(ctx, Rd(rd)).into()
     }
 }
 
@@ -312,8 +400,12 @@ impl Loaded {
         }
         // The borrow is gone before the line runs: a Driver of this
         // Client's own may come back in here.
-        let mut shell = core::mem::take(&mut self.state.borrow_mut().shell);
+        self.state.borrow_mut().paths.clear();
+        let mut shell = self.state.borrow().shell.clone();
         let outcome = run(ctx, &mut shell, line);
+        for path in core::mem::take(&mut self.state.borrow_mut().paths) {
+            shell.first(&path);
+        }
         self.state.borrow_mut().shell = shell;
         let said = match outcome {
             Ok(Ran { out, open }) => {
@@ -472,6 +564,152 @@ fn read(
     let to = at + text.len() as u64;
     spans.extend(open.map(|run| window::Span { to, ..run }));
     (text, spans)
+}
+
+impl execution::Api for Loaded {
+    fn load(&self, ctx: &dyn Calls, _: Rd, path: String) -> Result<(), Error> {
+        self.execute(ctx, &path, true)
+    }
+
+    fn source(
+        &self,
+        ctx: &dyn Calls,
+        _: Rd,
+        path: String,
+    ) -> Result<(), Error> {
+        self.execute(ctx, &path, false)
+    }
+}
+
+impl source::Api for Loaded {
+    fn run(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        args: source::Args,
+    ) -> Result<Rd, Error> {
+        let target = cell::resolve(ctx, args.cwd, &args.path)?;
+        let path = ops::where_is(ctx, target)?;
+        self.execute(ctx, &path, false)?;
+        self.cells.open(ctx, DriverId(0), rd, Vec::new())
+    }
+}
+
+impl Loaded {
+    fn execute(
+        &self,
+        ctx: &dyn Calls,
+        path: &str,
+        load: bool,
+    ) -> Result<(), Error> {
+        let cwd = self.state.borrow().shell.cwd();
+        let target = cell::resolve(ctx, cwd, path)?;
+        let path = ops::where_is(ctx, target)?;
+        let path = path.as_str();
+        let text = exec::read(ctx, path)?;
+        let budget =
+            self.budget.borrow().parse().map_err(|_| Error::Invalid)?;
+        let mut executor =
+            self.executor.borrow_mut().take().ok_or(Error::Busy)?;
+        let result = if load {
+            executor.load(ctx, path, &text, budget)
+        } else {
+            executor.run(ctx, path, &text, budget)
+        };
+        let session = load.then(|| executor.session.clone());
+        self.executor.replace(Some(executor));
+        let (report, output) = result?;
+        self.state.borrow_mut().said(&output);
+        if load && report.unit.is_some() {
+            return self.install(
+                ctx,
+                path,
+                &text,
+                &session.ok_or(Error::Invalid)?,
+            );
+        }
+        Ok(())
+    }
+
+    fn install(
+        &self,
+        ctx: &dyn Calls,
+        path: &str,
+        text: &str,
+        session: &fipe::session::Session,
+    ) -> Result<(), Error> {
+        let stem = exec::stem(path)?;
+        let exports = match export::exports(session, path, stem, text) {
+            Ok(exports) => exports,
+            Err(message) => {
+                self.state.borrow_mut().said(&format!("{path}: {message}\n"));
+                return Err(Error::Invalid);
+            }
+        };
+        let parent = cell::resolve(ctx, ROOT, "/self")?;
+        let root = ctx.register(DriverId(0), parent, Some(stem))?;
+        let result = self.register_functions(ctx, root, exports);
+        if result.is_err() {
+            let _ = ctx.unregister(root);
+            self.exports
+                .borrow_mut()
+                .retain(|rd, _| ops::info(ctx, *rd).is_ok());
+            return result;
+        }
+        let path = format!("/self/{stem}");
+        let mut cli = self.state.borrow_mut();
+        cli.shell.first(&path);
+        cli.paths.push(path);
+        Ok(())
+    }
+
+    fn register_functions(
+        &self,
+        ctx: &dyn Calls,
+        root: Rd,
+        exports: Vec<export::Export>,
+    ) -> Result<(), Error> {
+        ctx.report(root, Flags::CONTAINER, &[])?;
+        for export in exports {
+            let name =
+                export.decl.api.rsplit('.').next().ok_or(Error::Invalid)?;
+            let rd = ctx.register(DriverId(0), root, Some(name))?;
+            ctx.report(
+                rd,
+                Flags::READ.union(Flags::CONTAINER),
+                core::slice::from_ref(&export.decl),
+            )?;
+            self.exports.borrow_mut().insert(rd, export);
+        }
+        Ok(())
+    }
+
+    fn function(
+        &self,
+        ctx: &dyn Calls,
+        rd: Rd,
+        api: Hash,
+        method: u16,
+        input: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        let export = self
+            .exports
+            .borrow()
+            .get(&rd)
+            .cloned()
+            .ok_or(Error::Unsupported)?;
+        if method != 0 || api != export.decl.hash() {
+            return Err(Error::Unsupported);
+        }
+        let budget =
+            self.budget.borrow().parse().map_err(|_| Error::Invalid)?;
+        let executor = self.executor.borrow_mut().take().ok_or(Error::Busy)?;
+        let output = executor.invoke(ctx, &export, input, budget);
+        self.executor.replace(Some(executor));
+        let output = output?;
+        let cell = self.cells.open(ctx, DriverId(0), rd, output)?;
+        Ok(encode(&cell))
+    }
 }
 
 #[cfg(test)]
