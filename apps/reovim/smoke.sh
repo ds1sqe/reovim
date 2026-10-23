@@ -17,6 +17,9 @@ if [[ -n "${WAYLAND_DISPLAY-}" && "$WAYLAND_DISPLAY" != /* ]]; then
     export WAYLAND_DISPLAY="$runtime/$WAYLAND_DISPLAY"
 fi
 export XDG_RUNTIME_DIR="$DIR/run"
+# The screens compared below are colored ones; a NO_COLOR inherited
+# from the caller would turn the viewer's off and not the editor's.
+unset NO_COLOR
 mkdir -p "$DIR/config"
 export XDG_CONFIG_HOME="$DIR/config"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
@@ -59,8 +62,10 @@ fail() {
 # lands in `$DIR/exit-$name`.
 sized() {
     local name="$1" dir="$2" cols="$3" rows="$4" command="$5"
+    # tmux runs the pane's command under the login shell, which may
+    # not read `$?` as sh does; bash runs it the same way everywhere.
     "${TMUX[@]}" new-session -d -s "$name" -x "$cols" -y "$rows" -c "$dir" \
-        "$command; echo \$? > '$DIR/exit-$name'; sleep 30"
+        bash -c "$command; echo \$? > '$DIR/exit-$name'; sleep 30"
 }
 
 # A pane running `command` in `dir`, at 80x24; its exit code lands in

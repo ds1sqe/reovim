@@ -119,8 +119,9 @@ run_case() {
     [[ -n "$quit" ]] || { echo "$name: keys do not end in a quit"; return 1; }
     keys="${keys%"$quit"}"
     SESSION="$name"
+    # bash, not the login shell, so `$?` reads the same everywhere.
     "${TMUX[@]}" new-session -d -s "$SESSION" -x 80 -y 24 -c "$work" \
-        "$BIN file; echo \$? > '$work/exit'; sleep 1"
+        bash -c "$BIN file; echo \$? > '$work/exit'; sleep 1"
     shown 'file  [0-9]*:[0-9]*  r[0-9]*' \
         || { echo "$name: no frame"; return 1; }
     local run=""
