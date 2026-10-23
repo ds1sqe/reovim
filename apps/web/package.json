@@ -1,6 +1,6 @@
 {
   "private": true,
   "type": "module",
-  "engines": { "node": "26.8.0" },
+  "engines": { "node": "26" },
   "config": { "typescript": "6.0.3" }
 }
