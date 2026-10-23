@@ -24,7 +24,7 @@ use core::cell::{Cell, RefCell, RefMut};
 use reovim_kernel_interface::{
     Calls, Decl, Driver, DriverId, Error, Event, Flags, Handle, Hash, Info,
     Kind, Module, ModuleId, Op, Out, Outcome, Rd, Reply, Rights, Token, allows,
-    check_call, part,
+    check_call, check_reply, part,
 };
 
 use crate::client::{Client, ROOT};
@@ -1195,6 +1195,7 @@ fn call(
     let d = host.driver(module, driver)?;
     let calls = host.calls(module);
     let out = ready(d.call(&calls, slot.cookie, api, method, &input))?;
+    check_reply(&host.state.borrow().decls, api, method, &out)?;
     Ok(Out::Bytes(out))
 }
 

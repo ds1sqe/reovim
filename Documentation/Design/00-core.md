@@ -133,7 +133,7 @@ Lower and upper are positions, not kinds; a Driver does both.
 
 ```text
 /                 id 0   Kernel   Container
-  sys/            id 1   Kernel   modules/<name>, decls/<hash>, var
+  sys/            id 1   Kernel   decls/<hash>, apis/<api>/<ver>, log
   module/<name>/         Kernel   only Module <name> registers below
   session/<id>/          Kernel   common; made when a Client connects
     client/<cid>/        Kernel   capability, heard, self
@@ -184,19 +184,23 @@ api "history"  id=…  ver=1
 - A Driver brings the bytes with `report(rd, flags, apis)`, after
   `register` or any time later. The Kernel checks bounds, stores each once,
   records the hashes on the rd and serves the bytes at `/sys/decls/<hash>`.
+  `/sys/apis/<api>/<ver>` serves the same canonical bytes by name and
+  version; one name and version identify one declaration. Reporting different
+  bytes under that pair is Invalid and stores nothing.
   The Kernel publishes no declaration.
 - A caller calls by hash and method number. The Kernel checks the rd
   offers that hash, the method exists, the handle holds its right and
   the input fits, then calls the vtable. No match returns Unsupported
-  before the Driver runs.
+  before the Driver runs. The Kernel also checks every successful reply
+  against the declared output type; a misfit returns Invalid.
 - A Record or Choice carries its qualified type name in the canonical
   bytes: equally shaped types with different names have different identities.
   The records are hashed with the methods, so a reshaped record is a new
   identity even where no method's type names it: an api of records and
   no method at all is its records.
 - Methods never change at runtime. New bytes are a new hash, and an rd
-  may offer old and new. What changes at runtime is which rds exist and
-  which apis an rd offers; watchers see Create, Delete, Attrib.
+  may offer old and new versions. What changes at runtime is which rds
+  exist and which apis an rd offers; watchers see Create, Delete, Attrib.
 - Modules never link each other. A Vim Module and a Mesh Driver share
   only the `history` bytes; either may be replaced without recompile.
 - Types: Unit, Bool, U8, U32, U64, I64, F64, Bytes(max), Utf8(max),

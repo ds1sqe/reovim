@@ -1,5 +1,5 @@
 //! The one value encoding a declared type describes. `fits` is the
-//! Kernel's "input fits" check and the shape a wire endpoint encodes.
+//! Kernel's input and output checks and the shape a wire endpoint encodes.
 
 use crate::decl::{Field, Ty};
 

@@ -6,7 +6,8 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
-    Caller, Error, Handle, ModuleId, Outcome, Rd, Token,
+    Caller, Decl, Error, Handle, Hash, ModuleId, Out, Outcome, Rd, Token,
+    check_reply,
 };
 
 pub enum State {
@@ -31,6 +32,8 @@ pub struct Wait {
     /// fills that rd's cache, so the rd counts as listed when the rows
     /// land and not when the op was run.
     pub listing: Option<Rd>,
+    /// The declaration and method whose output a call must answer.
+    pub call: Option<(Hash, u16)>,
     pub state: State,
 }
 
@@ -43,6 +46,7 @@ impl Wait {
             handle,
             opening: false,
             listing: None,
+            call: None,
             state: State::Waiting,
         }
     }
@@ -68,6 +72,18 @@ impl Pending {
         handle: Option<Handle>,
     ) -> Result<Token, Error> {
         self.begin(module, own, Wait::new(caller, handle))
+    }
+
+    /// Remember the output contract on a call's newly opened wait.
+    pub fn calling(
+        &mut self,
+        token: Token,
+        api: Hash,
+        method: u16,
+    ) -> Result<(), Error> {
+        self.by_token.get_mut(&token).ok_or(Error::Invalid)?.call =
+            Some((api, method));
+        Ok(())
     }
 
     /// The same for the `open` that made `handle`, whose `done` the
@@ -137,12 +153,13 @@ impl Pending {
         module: ModuleId,
         own: u64,
         outcome: Outcome,
+        decls: &BTreeMap<Hash, Decl>,
     ) -> Result<Option<Handle>, Error> {
         let token =
             self.by_driver.remove(&(module, own)).ok_or(Error::Invalid)?;
         let wait = self.by_token.get_mut(&token).ok_or(Error::Invalid)?;
         if matches!(wait.state, State::Waiting) {
-            wait.state = State::Done(outcome);
+            wait.state = State::Done(checked(outcome, wait.call, decls));
         }
         Ok(wait.handle)
     }
@@ -229,5 +246,20 @@ impl Pending {
             .filter(|wait| wait.opening && matches!(wait.state, State::Waiting))
             .filter_map(|wait| wait.handle)
             .collect()
+    }
+}
+
+/// A call can finish only with one value of its declared output type.
+fn checked(
+    outcome: Outcome,
+    call: Option<(Hash, u16)>,
+    decls: &BTreeMap<Hash, Decl>,
+) -> Outcome {
+    match (call, outcome) {
+        (Some((api, method)), Ok(Out::Bytes(bytes))) => {
+            check_reply(decls, api, method, &bytes).map(|()| Out::Bytes(bytes))
+        }
+        (Some(_), Ok(_)) => Err(Error::Invalid),
+        (_, outcome) => outcome,
     }
 }

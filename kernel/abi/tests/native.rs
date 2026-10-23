@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use reovim_kernel_abi::{
     ABI, Ctx, MAGIC, RvBytes, RvCalls, RvDriver, RvModule, RvReply, boot,
 };
+use reovim_kernel_interface::codec::put_bytes;
 use reovim_kernel_interface::wire::{self, Message};
 use reovim_kernel_interface::{
     Caller, Decl, Error, Handle, Kind, Method, Op, Out, Rd, Reply, Rights, Ty,
@@ -43,6 +44,12 @@ fn decl() -> Decl {
         ],
         records: Vec::new(),
     }
+}
+
+fn blob(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    put_bytes(&mut out, bytes);
+    out
 }
 
 const unsafe fn k<'a>(k: *const RvCalls) -> &'a RvCalls {
@@ -113,7 +120,8 @@ unsafe extern "C" fn write(
     unsafe { (k.changed.unwrap())(k.ctx, rd, 0) };
     let later = LATER.swap(0, Ordering::Relaxed);
     if later != 0 {
-        unsafe { (k.done.unwrap())(k.ctx, later, 0, RvBytes::of(b"later")) };
+        let bytes = blob(b"later");
+        unsafe { (k.done.unwrap())(k.ctx, later, 0, RvBytes::of(&bytes)) };
     }
     RvReply::ok(buf.len as u64)
 }
@@ -157,8 +165,9 @@ unsafe extern "C" fn call(
         }
         _ => return unsafe { (k.unregister.unwrap())(k.ctx, rd) },
     };
+    let answer = blob(answer);
     unsafe {
-        OUT[..answer.len()].copy_from_slice(answer);
+        OUT[..answer.len()].copy_from_slice(&answer);
         *out =
             RvBytes { ptr: (&raw const OUT).cast::<u8>(), len: answer.len() };
     }
@@ -290,8 +299,8 @@ fn a_descriptor_serves_through_the_kernel() {
     };
     assert_eq!(rig.submit(Op::Ask { token }), Reply::err(Error::Busy));
     rig.ok(Op::Write { h, at: 0, bytes: b"6".to_vec() });
-    assert_eq!(Rig::bytes(rig.submit(Op::Ask { token })), b"later");
-    assert_eq!(Rig::bytes(rig.submit(call(h, 1))), b"ok");
+    assert_eq!(Rig::bytes(rig.submit(Op::Ask { token })), blob(b"later"));
+    assert_eq!(Rig::bytes(rig.submit(call(h, 1))), blob(b"ok"));
     assert_eq!(Rig::bytes(rig.submit(call(h, 2))), b"");
     // `rename` moved the one rd, so the new name answers what the old
     // name answered and no second rd was made.

@@ -1,12 +1,14 @@
 //! The seven calls, bound to one Module.
 
+use alloc::collections::BTreeMap;
+
 use reovim_kernel_interface::{
     Caller, Calls, Decl, DriverId, Error, Flags, Handle, Hash, Kind, ModuleId,
     Op, Out, Outcome, Rd, Reply, Rights, Token,
 };
 
 use crate::kernel::{Kernel, State};
-use crate::table::{DECLS, Node, Owner};
+use crate::table::{APIS, CONTAINER, DECLS, Node, Owner};
 
 /// What a Module holds to speak to the Kernel.
 pub struct ModuleCalls<'k> {
@@ -56,6 +58,7 @@ impl Calls for ModuleCalls<'_> {
         let now = self.kernel.now();
         let mut s = self.kernel.state.borrow_mut();
         owned(&s, rd, self.module)?;
+        check_decls(&s, apis)?;
         let hashes = apis
             .iter()
             .map(|d| store_decl(&mut s, d, now))
@@ -104,7 +107,8 @@ impl Calls for ModuleCalls<'_> {
         {
             entry.listed = true;
         }
-        let handle = s.pending.done(self.module, token.0, outcome)?;
+        let State { pending, decls, .. } = &mut *s;
+        let handle = pending.done(self.module, token.0, outcome, decls)?;
         if let Some(slot) = handle.and_then(|h| s.handles.get_mut(&h)) {
             slot.pending = slot.pending.saturating_sub(1);
         }
@@ -174,21 +178,63 @@ fn owned(
     }
 }
 
-/// Check, store once, publish at `/sys/decls/<hash>`; refuse a collision.
-fn store_decl(s: &mut State, decl: &Decl, now: u64) -> Result<Hash, Error> {
+/// A report is checked in full before any declaration is stored.
+fn check_decls(s: &State, apis: &[Decl]) -> Result<(), Error> {
+    let mut names = BTreeMap::new();
+    for decl in apis {
+        let hash = check_decl(s, decl)?;
+        let key = (&decl.api, decl.ver);
+        if names.insert(key, hash).is_some_and(|known| known != hash) {
+            return Err(Error::Invalid);
+        }
+    }
+    Ok(())
+}
+
+/// Validate identity before publishing any part of a report.
+fn check_decl(s: &State, decl: &Decl) -> Result<Hash, Error> {
     decl.check()?;
     let hash = decl.hash();
-    if let Some(known) = s.decls.get(&hash) {
-        return if known.canonical() == decl.canonical() {
-            Ok(hash)
-        } else {
-            Err(Error::Invalid)
-        };
+    if let Some(known) = s.decls.get(&hash)
+        && known.canonical() != decl.canonical()
+    {
+        return Err(Error::Invalid);
+    }
+    let version = alloc::format!("{}", decl.ver);
+    let named = s.table.child(APIS, &decl.api);
+    if named.is_none() {
+        s.table.check_name(APIS, Some(&decl.api))?;
+    }
+    let known = named.and_then(|rd| s.table.child(rd, &version));
+    if let Some(rd) = known
+        && s.table.get(rd)?.owner != Owner::Kernel(Node::Decl(hash))
+    {
+        return Err(Error::Invalid);
+    }
+    Ok(hash)
+}
+
+/// Store once and publish by hash and by api name and version.
+fn store_decl(s: &mut State, decl: &Decl, now: u64) -> Result<Hash, Error> {
+    let hash = check_decl(s, decl)?;
+    if s.decls.contains_key(&hash) {
+        return Ok(hash);
     }
     s.decls.insert(hash, decl.clone());
     let name = alloc::format!("{:016x}", hash.0);
     let owner = Owner::Kernel(Node::Decl(hash));
     let rd = s.table.insert(DECLS, Some(&name), owner, Flags::READ, now);
     s.emit(DECLS, Kind::Create, Some(rd));
+    let api = if let Some(rd) = s.table.child(APIS, &decl.api) {
+        rd
+    } else {
+        let owner = Owner::Kernel(Node::Container);
+        let rd = s.table.insert(APIS, Some(&decl.api), owner, CONTAINER, now);
+        s.emit(APIS, Kind::Create, Some(rd));
+        rd
+    };
+    let version = alloc::format!("{}", decl.ver);
+    let rd = s.table.insert(api, Some(&version), owner, Flags::READ, now);
+    s.emit(api, Kind::Create, Some(rd));
     Ok(hash)
 }

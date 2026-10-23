@@ -13,14 +13,15 @@ use reovim_kernel_interface::{
 /// `/` 0, `/sys` 1, `/sys/decls` 2, `/sys/log` 3, `/module` 4,
 /// `/session` 5, `/var` 6, `/sys/loglevel` 7, `/sys/limit` 8 with its
 /// five cells 9 to 13, `/sys/core` 14, `/bin` 15, `/sys/info` 16 with
-/// its five cells 17 to 21. These rows are made afresh at every boot,
-/// so one of them moves when the tree it names moves; an id a run
+/// its five cells 17 to 21, `/sys/apis` 22. These rows are made afresh
+/// at every boot, so one moves when the tree it names moves; an id a run
 /// hands out never does, being taken one at a time from `FIRST` and
 /// never given twice. Ids below `FIRST` are reserved for the Kernel;
 /// everything registered later starts there.
 pub const ROOT: Rd = Rd(0);
 pub const SYS: Rd = Rd(1);
 pub const DECLS: Rd = Rd(2);
+pub const APIS: Rd = Rd(22);
 pub const LOG: Rd = Rd(3);
 pub const MODULES: Rd = Rd(4);
 pub const SESSIONS: Rd = Rd(5);
@@ -236,6 +237,8 @@ impl Table {
             let owner = Owner::Kernel(Node::Info(fact));
             table.insert(INFO, Some(fact.name()), owner, R, now);
         }
+        let owner = Owner::Kernel(Node::Container);
+        table.insert(SYS, Some("apis"), owner, CONTAINER, now);
         table.next = FIRST;
         table
     }

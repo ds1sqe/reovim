@@ -18,7 +18,8 @@ pub mod wire;
 
 pub use decl::{Decl, Field, Method, Ty, fnv1a};
 pub use driver::{
-    Booted, Calls, Driver, Module, allows, check_call, part, spliced,
+    Booted, Calls, Driver, Module, allows, check_call, check_reply, part,
+    spliced,
 };
 pub use op::{Op, Out};
 pub use types::{

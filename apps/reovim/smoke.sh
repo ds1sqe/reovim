@@ -620,7 +620,7 @@ ended viewsel
 # written by nobody; /sys/core is everything the Kernel holds, saved in
 # one read as a core is.
 rights="$("$BIN" cli ls -l /sys)"
-[[ "$(grep -c . <<< "$rights")" == 6 ]] || fail "/sys holds: $rights"
+grep -qE '^c r-  .*  apis$' <<< "$rights" || fail "/sys/apis is not a c r"
 grep -qE '^- r-  .*  core$' <<< "$rights" || fail "/sys/core is not r"
 grep -qE '^c r-  .*  info$' <<< "$rights" || fail "/sys/info is not a c r"
 facts="$("$BIN" cli ls -l /sys/info)"

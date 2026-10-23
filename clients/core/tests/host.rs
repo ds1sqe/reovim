@@ -535,3 +535,39 @@ fn a_wire_reply_that_is_not_ready_comes_back_ready() {
     assert_eq!(ops::bytes(ctx, late).unwrap(), b"late");
     assert!(rig.asks.get() >= 2, "asked {} times", rig.asks.get());
 }
+
+struct Short;
+
+impl Driver for Short {
+    fn open(&self, _: &dyn Calls, _: Rd, _: Rights) -> Reply<u64> {
+        Reply::ok(0)
+    }
+
+    fn call(
+        &self,
+        _: &dyn Calls,
+        _: u64,
+        _: Hash,
+        _: u16,
+        _: &[u8],
+    ) -> Reply<Vec<u8>> {
+        Reply::ok(vec![1, 2, 3])
+    }
+}
+
+#[test]
+fn a_local_reply_must_fit_the_declared_output() {
+    let rig = Rig::new();
+    let host = Host::over(rig.client(), clock::now);
+    let module =
+        host.load("short", Rc::new(Nothing), vec![Rc::new(Short)]).unwrap();
+    let calls = host.calls(module);
+    let rd = calls.register(DriverId(0), SELF, Some("value")).unwrap();
+    let mut declared = decl();
+    declared.methods[0].output = Ty::U64;
+    calls.report(rd, Flags::WRITE, &[declared.clone()]).unwrap();
+    let h = calls.open(rd, Rights::WRITE).unwrap();
+    let call =
+        Op::Call { h, api: declared.hash(), method: 0, input: put("changed") };
+    assert_eq!(calls.submit(call), Reply::err(Error::Invalid));
+}

@@ -163,7 +163,10 @@ fn every_name_reads_its_target_from_where_the_line_stands() {
     assert_eq!(go(ctx, "ls sub"), "deep\n");
     assert_eq!(go(ctx, "cat sub/deep"), "x");
     assert_eq!(go(ctx, "ls .."), "root\n");
-    assert_eq!(go(ctx, "ls /sys"), "core\ndecls\ninfo\nlimit\nlog\nloglevel\n");
+    assert_eq!(
+        go(ctx, "ls /sys"),
+        "apis\ncore\ndecls\ninfo\nlimit\nlog\nloglevel\n"
+    );
     assert!(go(ctx, "stat note").starts_with("- rw "));
 
     // What a name under the cwd cannot be. (A name that is not on
@@ -233,10 +236,10 @@ fn an_environment_field_is_never_matched_by_a_token() {
     // The screen the host gives is what a listing is laid out across.
     shell.screen(80, false);
     let across = typed(ctx, &mut shell, "ls /sys");
-    assert_eq!(across, "core  decls  info  limit  log  loglevel\n");
+    assert_eq!(across, "apis  core  decls  info  limit  log  loglevel\n");
     shell.screen(0, false);
     let down = typed(ctx, &mut shell, "ls /sys");
-    assert_eq!(down, "core\ndecls\ninfo\nlimit\nlog\nloglevel\n");
+    assert_eq!(down, "apis\ncore\ndecls\ninfo\nlimit\nlog\nloglevel\n");
 }
 
 /// A directory `Shell::first` puts ahead of the Shell's own; PATH is

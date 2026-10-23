@@ -155,7 +155,7 @@ fn write(inner: &mut Inner, at: u64, buf: &[u8]) -> Reply<usize> {
 fn call(inner: &mut Inner, method: u16, input: &[u8]) -> Reply<Vec<u8>> {
     inner.runs += 1;
     match method {
-        0 => Reply::ok(inner.bytes.clone()),
+        0 => Reply::ok(blob(&inner.bytes)),
         1 => {
             inner.bytes = input[4..].to_vec();
             Reply::ok(Vec::new())
@@ -242,11 +242,12 @@ fn fixed_tree_is_reachable_from_root() {
     let limit = rig.lookup(SYS, "limit");
     let core = rig.lookup(SYS, "core");
     let info = rig.lookup(SYS, "info");
+    let apis = rig.lookup(SYS, "apis");
     // The fixed rows are made afresh at every boot, so they stand in
     // the order the table lists them and not in the order they grew.
     assert_eq!(
         rig.ok(Op::Children { rd: SYS }),
-        Out::Rds(vec![decls, log, level, limit, core, info])
+        Out::Rds(vec![decls, log, level, limit, core, info, apis])
     );
     let limits = [
         "watch_ring",
@@ -564,7 +565,7 @@ fn call_is_checked_before_the_driver_runs() {
     assert_eq!(rig.err(call(h, api(), 0, vec![1])), Error::Invalid);
     assert_eq!(test.runs(), 0, "nothing reached the Driver");
     assert_eq!(rig.ok(call(h, api(), 1, blob(b"hi"))), Out::Bytes(vec![]));
-    assert_eq!(rig.ok(call(ro, api(), 0, vec![])), Out::Bytes(b"hi".to_vec()));
+    assert_eq!(rig.ok(call(ro, api(), 0, vec![])), Out::Bytes(blob(b"hi")));
     assert_eq!(test.runs(), 2);
     let sys = rig.open(SYS, Rights::READ);
     assert_eq!(rig.err(call(sys, api(), 0, vec![])), Error::Unsupported);
@@ -581,9 +582,9 @@ fn pending_is_finished_by_done_and_asked_once() {
     };
     assert_eq!(rig.err(Op::Ask { token }), Error::Busy);
     assert_eq!(rig.calls().done(Token(9), Ok(Out::Unit)), Err(Error::Invalid));
-    rig.calls().done(Token(1), Ok(Out::Bytes(b"late".to_vec()))).unwrap();
+    rig.calls().done(Token(1), Ok(Out::Bytes(blob(b"late")))).unwrap();
     assert_eq!(rig.calls().done(Token(1), Ok(Out::Unit)), Err(Error::Invalid));
-    assert_eq!(rig.ok(Op::Ask { token }), Out::Bytes(b"late".to_vec()));
+    assert_eq!(rig.ok(Op::Ask { token }), Out::Bytes(blob(b"late")));
     assert_eq!(rig.err(Op::Ask { token }), Error::Invalid);
 }
 

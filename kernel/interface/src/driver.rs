@@ -74,7 +74,7 @@ pub trait Driver {
     }
 
     /// Run a declared method; the Kernel has checked hash, method, right
-    /// and input fit.
+    /// and input fit. The Kernel checks the output against its declared type.
     fn call(
         &self,
         ctx: &dyn Calls,
@@ -142,6 +142,32 @@ pub fn check_call(
     Ok(())
 }
 
+/// What a tree checks after [`Driver::call`]: the reply is exactly one
+/// value of the method's output type.
+///
+/// ```
+/// use reovim_kernel_interface::{Error, Hash, check_reply};
+/// assert_eq!(check_reply(&Default::default(), Hash(0), 0, &[]),
+///            Err(Error::Invalid));
+/// ```
+///
+/// # Errors
+/// `Invalid` for an unknown api or method, or a reply that is not one
+/// value of the method's output type.
+pub fn check_reply(
+    decls: &BTreeMap<Hash, Decl>,
+    api: Hash,
+    method: u16,
+    reply: &[u8],
+) -> Result<(), Error> {
+    let decl = decls.get(&api).ok_or(Error::Invalid)?;
+    let method = decl.method(method).ok_or(Error::Invalid)?;
+    if !value::fits(reply, &method.output) {
+        return Err(Error::Invalid);
+    }
+    Ok(())
+}
+
 /// Up to `len` bytes of `bytes` from `at`, or as many as there are:
 /// what a cell answers a read at an offset with.
 #[must_use]
@@ -199,7 +225,8 @@ pub trait Calls {
     ///
     /// # Errors
     /// `Denied` unless this Module serves `rd`; `Invalid` for a
-    /// declaration out of bounds or a hash collision.
+    /// declaration out of bounds, a hash collision, or different bytes for
+    /// an api name and version already reported to the Kernel.
     fn report(&self, rd: Rd, flags: Flags, apis: &[Decl]) -> Result<(), Error>;
 
     /// Remove `rd` and its subtree; each gets `Gone`, the parent

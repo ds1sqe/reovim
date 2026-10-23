@@ -60,7 +60,10 @@ fn a_fact_is_a_file_under_sys_info() {
 
     // One fact, one path: the heap does not stand loose under `/sys`
     // beside the Container its kin are in.
-    assert_eq!(go(ctx, "ls /sys"), "core\ndecls\ninfo\nlimit\nlog\nloglevel\n");
+    assert_eq!(
+        go(ctx, "ls /sys"),
+        "apis\ncore\ndecls\ninfo\nlimit\nlog\nloglevel\n"
+    );
     assert_eq!(go(ctx, "cat /sys/mem"), "cat /sys/mem: invalid");
 }
 

@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use reovim_kernel_interface::{
     Caller, DriverId, Error, Flags, Handle, Hash, ModuleId, Op, Out, Rd, Reply,
-    Rights, Token, allows, check_call, part,
+    Rights, Token, allows, check_call, check_reply, part,
 };
 
 use reovim_kernel_interface::Kind;
@@ -384,7 +384,23 @@ fn call(
         (k.now().saturating_sub(at), grew(before, k.heap().live))
     });
     stamp(k, slot.rd, api, method, "reply", spent);
-    finish(k, caller, Some(h), slot.served, reply, Out::Bytes)
+    if let Reply::Ready(Ok(bytes)) = &reply
+        && check_reply(&k.state.borrow().decls, api, method, bytes).is_err()
+    {
+        k.say(DEBUG, || {
+            alloc::format!(
+                "call api={:016x} method={method} invalid reply len={}",
+                api.0,
+                bytes.len()
+            )
+        });
+        return Err(Error::Invalid);
+    }
+    let reply = finish(k, caller, Some(h), slot.served, reply, Out::Bytes)?;
+    if let Reply::Pending(token) = reply {
+        k.state.borrow_mut().pending.calling(token, api, method)?;
+    }
+    Ok(reply)
 }
 
 fn watch(k: &Kernel, caller: Caller, h: Handle, on: bool) -> Answer {
