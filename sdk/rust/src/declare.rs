@@ -268,6 +268,10 @@ macro_rules! __rust {
 #[macro_export]
 macro_rules! __method {
     ($method:ident () -> $out:tt $( ( $outb:expr ) )?) => {
+        /// The declared method.
+        ///
+        /// # Errors
+        /// The provider's refusal or a failed operation it submits.
         fn $method(
             &self,
             ctx: &dyn Calls,
@@ -276,6 +280,10 @@ macro_rules! __method {
     };
     ($method:ident ($arg:ident : $in:tt $( ( $inb:expr ) )?)
         -> $out:tt $( ( $outb:expr ) )?) => {
+        /// The declared method.
+        ///
+        /// # Errors
+        /// The provider's refusal or a failed operation it submits.
         fn $method(
             &self,
             ctx: &dyn Calls,

@@ -1,4 +1,5 @@
 //! `/self/dev`, the Client's own devices as cells.
+//! `/self/env` offers the Client's named text values through the env api.
 //!
 //! One Module, two Drivers, one `RefCell` each. What a Client used to
 //! answer in Rust is a tree here: where it stands, what was typed, how
@@ -41,6 +42,7 @@ use reovim_kernel_interface::{
     Booted, Calls, Decl, Driver, DriverId, Error, Flags, Handle, Hash, Kind,
     Module, Rd, Reply, Rights,
 };
+use reovim_sdk::env::{Entry, Set, env};
 use reovim_sdk::{cell, decode, encode, ops};
 
 use crate::buffers::Buffers;
@@ -148,6 +150,7 @@ enum Held {
     Keyboard,
     Link,
     Open,
+    Env,
     Ask,
     Size,
     View,
@@ -208,6 +211,7 @@ struct Region {
 struct State {
     home: Option<Rd>,
     cells: BTreeMap<Rd, Held>,
+    env: BTreeMap<String, String>,
     handles: BTreeMap<u64, Slot>,
     next: u64,
     /// The rd of this Client at the server, which stamps a press.
@@ -322,6 +326,7 @@ impl Dev {
         let state = State {
             home: None,
             cells: BTreeMap::new(),
+            env: BTreeMap::new(),
             handles: BTreeMap::new(),
             next: 1,
             client: Rd(0),
@@ -652,6 +657,13 @@ impl Module for Dev {
         let rw = (Flags::READ.union(Flags::WRITE), &[][..]);
         let dir = (Flags::READ.union(Flags::CONTAINER), &[][..]);
         self.buffers.start(ctx, home)?;
+        self.add(
+            ctx,
+            SELF,
+            "env",
+            (Flags::READ.union(Flags::WRITE), &[env::decl()]),
+            Held::Env,
+        )?;
         self.add(ctx, home, "clipboard", rw, Held::Clipboard)?;
         self.add(ctx, home, "cwd", read, Held::Cwd)?;
         let display = self.add(ctx, home, "display", dir, Held::Dir)?;
@@ -732,15 +744,33 @@ impl Driver for Dev {
         let Ok((held, rd, _)) = self.slot(h) else {
             return Reply::err(Error::Invalid);
         };
-        if held != Held::Open {
-            return Reply::err(Error::Unsupported);
+        match held {
+            Held::Open => open::dispatch(self, ctx, rd, method, input),
+            Held::Env => env::dispatch(self, ctx, rd, method, input),
+            _ => Err(Error::Unsupported),
         }
-        open::dispatch(self, ctx, rd, method, input).into()
+        .into()
     }
 
     fn close(&self, _: &dyn Calls, h: u64) -> Reply<()> {
         self.state.borrow_mut().handles.remove(&h);
         Reply::ok(())
+    }
+}
+
+impl env::Api for Dev {
+    fn get(&self, _: &dyn Calls, _: Rd, key: String) -> Result<Entry, Error> {
+        let s = self.state.borrow();
+        let value = s.env.get(&key);
+        Ok(Entry {
+            set: value.is_some(),
+            value: value.cloned().unwrap_or_default(),
+        })
+    }
+
+    fn set(&self, _: &dyn Calls, _: Rd, entry: Set) -> Result<(), Error> {
+        self.state.borrow_mut().env.insert(entry.key, entry.value);
+        Ok(())
     }
 }
 

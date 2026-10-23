@@ -17,7 +17,8 @@
 //! refills its listing; nothing ever flushes it, so the transcript is
 //! this Client's own and the View is laid out over bytes it holds.
 //!
-//! One cell is served, `view`: a whole read of it is one frame. A run
+//! `env` holds this surface's named text values. A whole read of
+//! `view` is one frame. A run
 //! that came back open is a Driver that follows, and each frame asks
 //! it for what it has since, so a `cat -f` in the buffer shows new
 //! bytes with no key pressed.
@@ -27,18 +28,21 @@
 
 extern crate alloc;
 
+use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::{OnceCell, RefCell};
 
 use reovim_client_api::{BAR, Key, NONE, window};
 use reovim_client_region::{Surface, count, drafted};
 use reovim_client_sh::{Act, Line, Open, Ran, Shell, complete, run};
 use reovim_kernel_interface::{
-    Booted, Calls, Driver, Error, Handle, Module, Rd, Reply, Rights,
+    Booted, Calls, Driver, DriverId, Error, Flags, Handle, Hash, Module, Rd,
+    Reply, Rights,
 };
+use reovim_sdk::env::{Entry, Set, env};
 use reovim_sdk::{encode, sgr};
 use reovim_text_api::text;
 
@@ -87,6 +91,7 @@ struct Cli {
     /// Ctrl-C or Ctrl-D asked for the region back: this Plugin is
     /// over, and no key after that one is its own.
     leaving: bool,
+    env: BTreeMap<String, String>,
 }
 
 /// The buffer's state behind one `RefCell`: no borrow of it outlives an
@@ -95,14 +100,18 @@ struct Cli {
 struct Loaded {
     state: RefCell<Cli>,
     surface: Surface,
+    view: OnceCell<Rd>,
 }
 
 impl Module for Loaded {
     /// A scratch Buffer of its own, the Shell stood where the region
     /// was opened, the first prompt shown, and the one cell a Plugin
-    /// serves, `view`.
+    /// serves, `view`, beside its `env` api.
     fn start(&self, ctx: &dyn Calls, home: Rd) -> Result<(), Error> {
-        self.surface.start(ctx, home)?;
+        let view = self.surface.start(ctx, home)?;
+        self.view.set(view).map_err(|_| Error::Invalid)?;
+        let rd = ctx.register(DriverId(0), home, Some("env"))?;
+        ctx.report(rd, Flags::READ.union(Flags::WRITE), &[env::decl()])?;
         let over = self.surface.region()?.ask(ctx)?.target;
         let buffer = drafted(ctx, None)?;
         let rights = Rights::READ.union(Rights::WRITE);
@@ -118,7 +127,34 @@ impl Module for Loaded {
     }
 }
 
+impl env::Api for Loaded {
+    fn get(&self, _: &dyn Calls, _: Rd, key: String) -> Result<Entry, Error> {
+        let cli = self.state.borrow();
+        let value = cli.env.get(&key);
+        Ok(Entry {
+            set: value.is_some(),
+            value: value.cloned().unwrap_or_default(),
+        })
+    }
+
+    fn set(&self, _: &dyn Calls, _: Rd, entry: Set) -> Result<(), Error> {
+        self.state.borrow_mut().env.insert(entry.key, entry.value);
+        Ok(())
+    }
+}
+
 impl Driver for Loaded {
+    fn call(
+        &self,
+        ctx: &dyn Calls,
+        rd: u64,
+        _: Hash,
+        method: u16,
+        input: &[u8],
+    ) -> Reply<Vec<u8>> {
+        env::dispatch(self, ctx, Rd(rd), method, input).into()
+    }
+
     fn open(&self, _: &dyn Calls, rd: Rd, _: Rights) -> Reply<u64> {
         Reply::ok(rd.0)
     }
@@ -126,10 +162,13 @@ impl Driver for Loaded {
     fn read(
         &self,
         ctx: &dyn Calls,
-        _: u64,
+        rd: u64,
         at: u64,
         len: usize,
     ) -> Reply<Vec<u8>> {
+        if self.view.get() != Some(&Rd(rd)) {
+            return Reply::err(Error::Unsupported);
+        }
         self.surface.read(at, len, || self.framed(ctx))
     }
 }

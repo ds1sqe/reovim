@@ -12,6 +12,14 @@ fn committed_progress_matches() {
     );
 }
 
+#[test]
+fn committed_env_matches() {
+    assert_eq!(
+        include_str!("../sdk.env.fipe"),
+        reovim_sdk::env::env::text("sdk")
+    );
+}
+
 fn declarations() -> Declarations {
     let mut decls = Declarations::new();
     decls.commands(include_str!("../commands.fipe")).unwrap();
@@ -63,6 +71,7 @@ fn declarations() -> Declarations {
             "client.resolver",
             include_str!("../../../clients/core/api/client.resolver.fipe"),
         ),
+        ("sdk.env", include_str!("../sdk.env.fipe")),
         ("sdk.progress", include_str!("../../../sdk/rust/sdk.progress.fipe")),
     ];
     for (name, source) in modules {

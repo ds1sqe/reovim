@@ -21,6 +21,7 @@ pub mod date;
 mod declare;
 mod drivers;
 pub mod dynamic;
+pub mod env;
 pub mod log;
 pub mod look;
 pub mod ops;

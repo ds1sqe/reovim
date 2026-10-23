@@ -12,6 +12,9 @@ publish = false
 reovim-kernel-interface = { path = "../../kernel/interface" }
 
 [dev-dependencies]
+reovim-client = { path = "../../clients/core" }
+reovim-plugin-cli = { path = "../../plugins/cli" }
+reovim-rig = { path = "../../clients/rig" }
 fipe = "=0.2.0-dev.2"
 reovim-text-api = { path = "../../modules/text/api" }
 

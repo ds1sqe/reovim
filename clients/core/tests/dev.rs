@@ -395,9 +395,9 @@ fn the_cells_of_dev_are_where_the_tree_says_they_are() {
     let size = it.at("windows/0/size");
     let at = ops::where_is(&it.calls(), size).unwrap();
     assert_eq!(at, "/self/dev/windows/0/size");
-    // Nothing is loaded under `/self` but the Client's own two until
+    // Only the Client's own entries stand under `/self` until
     // the first read of the view gives the region away.
-    assert_eq!(it.names(SELF), ["bin", "dev"]);
+    assert_eq!(it.names(SELF), ["bin", "dev", "env"]);
 
     // A display holds only the facts it has: nothing has drawn on this
     // Host, so its own size and its frame all read empty, unlike
@@ -557,7 +557,7 @@ fn a_view_is_the_whole_read_of_the_region() {
     assert_eq!(stub.frames(), 1, "one whole read is one frame");
     // And the region's Plugin is a Module of the Client's, under the
     // name the table gave it.
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+    assert_eq!(it.names(SELF), ["bin", "dev", "env", "stub"]);
     let at = ops::where_is(&it.calls(), stub.view()).unwrap();
     assert_eq!(at, "/self/stub/view");
 }
@@ -620,7 +620,7 @@ fn open_swaps_the_region_to_the_plugin_the_table_gives_the_shape() {
     assert_eq!(first.frames(), 2);
 
     // What the old Plugin held went with it, and so did its name.
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+    assert_eq!(it.names(SELF), ["bin", "dev", "env", "stub"]);
     assert_eq!(open_on(&mut other, target), 0, "nothing of the old is left");
     ops::shut(&it.calls(), &[held]);
 }
@@ -640,7 +640,7 @@ fn open_by_name_swaps_to_the_plugin_the_table_knows() {
     it.frame();
     let named = kept.borrow()[1].clone();
     assert_eq!(named.started().0.target, target, "the name stands for it");
-    assert_eq!(it.names(SELF), ["bin", "cli", "dev"]);
+    assert_eq!(it.names(SELF), ["bin", "cli", "dev", "env"]);
 }
 
 #[test]
@@ -664,7 +664,7 @@ fn back_gives_the_region_to_the_plugin_of_the_step_before_it() {
     kept.borrow()[1].will(Act::Back);
     it.frame();
     assert_eq!(kept.borrow()[2].started().0.target, note, "and back again");
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+    assert_eq!(it.names(SELF), ["bin", "dev", "env", "stub"]);
 
     // One step, and no stack: the step is spent, and the Client ends.
     kept.borrow()[2].will(Act::Back);
@@ -819,13 +819,17 @@ fn a_swap_to_a_plugin_that_will_not_start_leaves_the_region_shown() {
     // Nothing of the Plugin that would not start is left, so its name
     // is free and the Client is not wedged: what the table serves is
     // served, and the ask that failed fails the same way as before.
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+    assert_eq!(it.names(SELF), ["bin", "dev", "env", "stub"]);
     kept.borrow()[1].will(Act::Open(note, String::from("bad")));
     it.frame();
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"], "and again");
+    assert_eq!(it.names(SELF), ["bin", "dev", "env", "stub"], "and again");
     kept.borrow()[2].will(Act::Open(note, String::from("cli")));
     it.frame();
-    assert_eq!(it.names(SELF), ["bin", "cli", "dev"], "the region moves");
+    assert_eq!(
+        it.names(SELF),
+        ["bin", "cli", "dev", "env"],
+        "the region moves"
+    );
 
     // Nothing carries the answer back to the Plugin that asked, so the
     // log has it, as an ask no Plugin serves does.
@@ -860,14 +864,18 @@ fn the_names_the_client_is_nothing_without_are_not_unloaded() {
     assert_eq!(taking("dev"), Err(Error::Denied), "its own devices");
     assert_eq!(taking("bin"), Err(Error::Denied), "the Host's own row");
     assert_eq!(taking("stub"), Err(Error::Denied), "the region's Plugin");
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"], "and none of it went");
+    assert_eq!(
+        it.names(SELF),
+        ["bin", "dev", "env", "stub"],
+        "and none of it went"
+    );
     assert_eq!(it.frame().status, "", "the region reads as it read");
 
     // What this Client loaded of its own userland still goes.
     let coreutils = reovim_module_coreutils::boot("");
     it.host.load("coreutils", coreutils.module, coreutils.drivers).unwrap();
     assert_eq!(taking("coreutils").as_deref(), Ok(""));
-    assert_eq!(it.names(SELF), ["bin", "dev", "stub"]);
+    assert_eq!(it.names(SELF), ["bin", "dev", "env", "stub"]);
 }
 
 #[test]

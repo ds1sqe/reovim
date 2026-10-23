@@ -408,7 +408,10 @@ name = "reovim-sdk"
 version = "0.16.0-dev"
 dependencies = [
  "fipe",
+ "reovim-client",
  "reovim-kernel-interface",
+ "reovim-plugin-cli",
+ "reovim-rig",
  "reovim-text-api",
 ]
 
